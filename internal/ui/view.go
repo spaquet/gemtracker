@@ -268,19 +268,15 @@ func (m *Model) viewResultsList() string {
 
 	// Search filter
 	filterInput := m.ResultsFilter.View()
-	filterLabel := lipgloss.NewStyle().
-		Foreground(ColorPrimary).
-		Bold(true).
-		Render("🔍 Search: ")
 	filterBox := lipgloss.NewStyle().
-		Width(m.Width - 8).
+		Width(m.Width - 6).
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(ColorPrimary).
 		Padding(0, 1).
 		MarginLeft(2).
 		MarginRight(2).
 		MarginBottom(1).
-		Render(filterLabel + filterInput)
+		Render(filterInput)
 
 	// Gems list - use actual list component
 	listHeight := m.Height - 16
