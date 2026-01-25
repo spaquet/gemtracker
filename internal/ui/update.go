@@ -24,7 +24,8 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.AnalysisResult = msg.Result
 			m.populateGemsList(msg.Result)
 			m.CurrentView = ViewResultsList
-			m.ResultsFilter.Focus()
+			// Don't call Focus() as it can cause nil pointer panic
+			// Input will accept keystrokes naturally when view is active
 		}
 		return m, nil
 	}
