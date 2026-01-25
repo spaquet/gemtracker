@@ -22,10 +22,19 @@ const (
 	ViewMain       ViewMode = "main"
 	ViewAnalyzing  ViewMode = "analyzing"
 	ViewResults    ViewMode = "results"
+	ViewResultsList ViewMode = "results_list"
 	ViewHelp       ViewMode = "help"
 	ViewError      ViewMode = "error"
 	ViewSelectPath ViewMode = "select_path"
 )
+
+type gemItem struct {
+	Name    string
+	Version string
+	Status  string
+}
+
+func (g gemItem) FilterValue() string { return g.Name }
 
 type Command struct {
 	Name        string
@@ -44,6 +53,10 @@ type Model struct {
 	CommandList    list.Model
 	SearchInput    textinput.Model
 	PathInput      textinput.Model
+	ResultsFilter  textinput.Model
+	GemsList       list.Model
+	AllGems        []gemItem
+	FilteredGems   []gemItem
 	ShowDropdown   bool
 	FilteredIndex  int
 
@@ -96,6 +109,19 @@ func NewModel(version, commit, date string) *Model {
 	m.PathInput.PromptStyle = lipgloss.NewStyle().Foreground(ColorPrimary).Bold(true)
 	m.PathInput.TextStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("255"))
 	m.PathInput.Cursor.Style = lipgloss.NewStyle().Foreground(ColorPrimary).Bold(true)
+
+	m.ResultsFilter.Placeholder = "Search gems..."
+	m.ResultsFilter.PlaceholderStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+	m.ResultsFilter.PromptStyle = lipgloss.NewStyle().Foreground(ColorPrimary).Bold(true)
+	m.ResultsFilter.TextStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("255"))
+	m.ResultsFilter.Cursor.Style = lipgloss.NewStyle().Foreground(ColorPrimary).Bold(true)
+
+	// Initialize gems list with default delegate
+	delegate := list.NewDefaultDelegate()
+	delegate.ShowDescription = false
+	m.GemsList = list.New([]list.Item{}, delegate, 0, 0)
+	m.GemsList.SetShowTitle(false)
+	m.GemsList.SetShowHelp(false)
 
 	m.initializeCommands()
 	m.setupCommandList()

@@ -1,8 +1,11 @@
 package ui
 
 import (
+	"strings"
+
 	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/spaquet/gemtracker/internal/gemfile"
 )
 
 func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -19,8 +22,8 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.ErrorMessage = msg.Error.Error()
 		} else {
 			m.AnalysisResult = msg.Result
-			m.CurrentView = ViewResults
-			m.CurrentMessage = msg.Result.Summary + "\n" + msg.Result.Details
+			m.populateGemsList(msg.Result)
+			m.CurrentView = ViewResultsList
 		}
 		return m, nil
 	}
@@ -43,6 +46,9 @@ func (m *Model) handleKeypress(msg tea.KeyMsg) (*Model, tea.Cmd) {
 			m.CurrentView = ViewMain
 			m.CurrentMessage = "Ready"
 			m.ErrorMessage = ""
+		case ViewResultsList:
+			m.CurrentView = ViewMain
+			m.ResultsFilter.Reset()
 		case ViewSelectPath:
 			path := m.PathInput.Value()
 			if path != "" {
@@ -59,6 +65,13 @@ func (m *Model) handleKeypress(msg tea.KeyMsg) (*Model, tea.Cmd) {
 		} else if m.CurrentView == ViewSelectPath {
 			m.CurrentView = ViewMain
 			m.PathInput.Reset()
+		} else if m.CurrentView == ViewResultsList {
+			if m.ResultsFilter.Value() != "" {
+				m.ResultsFilter.Reset()
+				m.filterGems("")
+			} else {
+				m.CurrentView = ViewMain
+			}
 		} else if m.CurrentView != ViewMain {
 			m.CurrentView = ViewMain
 		}
@@ -108,6 +121,17 @@ func (m *Model) handleKeypress(msg tea.KeyMsg) (*Model, tea.Cmd) {
 			var cmd tea.Cmd
 			m.PathInput, cmd = m.PathInput.Update(msg)
 			return m, cmd
+		} else if m.CurrentView == ViewResultsList {
+			oldValue := m.ResultsFilter.Value()
+			var cmd tea.Cmd
+			m.ResultsFilter, cmd = m.ResultsFilter.Update(msg)
+			newValue := m.ResultsFilter.Value()
+
+			if newValue != oldValue {
+				m.filterGems(newValue)
+			}
+
+			return m, cmd
 		}
 	}
 
@@ -151,6 +175,52 @@ func (m *Model) filterCommands(query string) {
 		})
 	}
 	m.CommandList.SetItems(items)
+}
+
+func (m *Model) populateGemsList(result *gemfile.AnalysisResult) {
+	// Convert gems to gemItem for display
+	m.AllGems = make([]gemItem, 0, len(result.AllGems))
+	for _, gem := range result.AllGems {
+		status := "✓"
+		// Mark as outdated if in the list
+		for _, outdated := range result.OutdatedGems {
+			if outdated == gem.Name {
+				status = "⚠"
+				break
+			}
+		}
+
+		m.AllGems = append(m.AllGems, gemItem{
+			Name:    gem.Name,
+			Version: gem.Version,
+			Status:  status,
+		})
+	}
+
+	m.FilteredGems = m.AllGems
+	m.updateGemsListItems()
+}
+
+func (m *Model) updateGemsListItems() {
+	items := make([]list.Item, 0, len(m.FilteredGems))
+	for _, gem := range m.FilteredGems {
+		items = append(items, gem)
+	}
+	m.GemsList.SetItems(items)
+}
+
+func (m *Model) filterGems(query string) {
+	if query == "" {
+		m.FilteredGems = m.AllGems
+	} else {
+		m.FilteredGems = []gemItem{}
+		for _, gem := range m.AllGems {
+			if strings.Contains(strings.ToLower(gem.Name), strings.ToLower(query)) {
+				m.FilteredGems = append(m.FilteredGems, gem)
+			}
+		}
+	}
+	m.updateGemsListItems()
 }
 
 func (m *Model) executeSelectedCommand() (*Model, tea.Cmd) {

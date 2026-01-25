@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/spaquet/gemtracker/internal/gemfile"
 )
 
 func (m *Model) View() string {
@@ -19,6 +20,8 @@ func (m *Model) View() string {
 		return m.viewAnalyzing()
 	case ViewResults:
 		return m.viewResults()
+	case ViewResultsList:
+		return m.viewResultsList()
 	case ViewHelp:
 		return m.viewHelp()
 	case ViewError:
@@ -246,6 +249,74 @@ func (m *Model) viewResults() string {
 		"",
 		backPrompt,
 	)
+}
+
+func (m *Model) viewResultsList() string {
+	header := m.renderHeader()
+
+	// Analysis result summary
+	result, ok := m.AnalysisResult.(*gemfile.AnalysisResult)
+	if !ok {
+		return "Error: Invalid analysis result"
+	}
+
+	summary := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("244")).
+		Padding(1, 2).
+		Render(result.Summary)
+
+	// Search filter
+	filterInput := m.ResultsFilter.View()
+	filterBox := lipgloss.NewStyle().
+		Width(m.Width - 6).
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(ColorPrimary).
+		Padding(0, 1).
+		MarginLeft(2).
+		MarginRight(2).
+		MarginBottom(1).
+		Render(filterInput)
+
+	// Gems list
+	m.GemsList.SetSize(m.Width-4, m.Height-20)
+	gemsList := m.renderGemsListItems()
+
+	// Instructions
+	instructions := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("240")).
+		Italic(true).
+		MarginTop(1).
+		Render("Type to search  •  ↑/↓: navigate  •  Esc: clear search  •  Enter: back to menu")
+
+	return lipgloss.JoinVertical(
+		lipgloss.Top,
+		header,
+		summary,
+		filterBox,
+		gemsList,
+		instructions,
+	)
+}
+
+func (m *Model) renderGemsListItems() string {
+	var items []string
+	for _, gem := range m.FilteredGems {
+		item := lipgloss.NewStyle().
+			Foreground(lipgloss.Color("244")).
+			Padding(0, 1).
+			Render(fmt.Sprintf("%s %-30s  v%s", gem.Status, gem.Name, gem.Version))
+		items = append(items, item)
+	}
+
+	content := lipgloss.JoinVertical(lipgloss.Top, items...)
+
+	return lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(ColorSecondary).
+		Padding(0, 2).
+		MarginLeft(2).
+		MarginRight(2).
+		Render(content)
 }
 
 func (m *Model) viewHelp() string {
