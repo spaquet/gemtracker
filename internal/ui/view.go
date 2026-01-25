@@ -23,6 +23,8 @@ func (m *Model) View() string {
 		return m.viewHelp()
 	case ViewError:
 		return m.viewError()
+	case ViewSelectPath:
+		return m.viewSelectPath()
 	default:
 		return m.viewMain()
 	}
@@ -314,6 +316,50 @@ func (m *Model) viewError() string {
 		message,
 		"",
 		backPrompt,
+	)
+}
+
+func (m *Model) viewSelectPath() string {
+	header := m.renderHeader()
+
+	title := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color("255")).
+		MarginBottom(1).
+		Render("Enter project path:")
+
+	pathInput := m.PathInput.View()
+	pathBox := lipgloss.NewStyle().
+		Width(m.Width - 6).
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(ColorPrimary).
+		Padding(0, 1).
+		MarginLeft(2).
+		MarginRight(2).
+		MarginTop(1).
+		MarginBottom(2).
+		Render(pathInput)
+
+	hint := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("240")).
+		Italic(true).
+		MarginLeft(2).
+		Render("Examples: /path/to/project  or  ~/Sites/myapp  or  .")
+
+	instructions := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("244")).
+		MarginLeft(2).
+		MarginTop(1).
+		Render("Press Enter to open project  •  Esc to cancel")
+
+	return lipgloss.JoinVertical(
+		lipgloss.Top,
+		header,
+		"",
+		title,
+		pathBox,
+		hint,
+		instructions,
 	)
 }
 

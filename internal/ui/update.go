@@ -33,12 +33,22 @@ func (m *Model) handleKeypress(msg tea.KeyMsg) (*Model, tea.Cmd) {
 			m.CurrentView = ViewMain
 			m.CurrentMessage = "Ready"
 			m.ErrorMessage = ""
+		case ViewSelectPath:
+			path := m.PathInput.Value()
+			if path != "" {
+				m.loadProject(path)
+				m.CurrentView = ViewMain
+				m.PathInput.Reset()
+			}
 		}
 
 	case "esc":
 		if m.ShowDropdown {
 			m.ShowDropdown = false
 			m.SearchInput.Reset()
+		} else if m.CurrentView == ViewSelectPath {
+			m.CurrentView = ViewMain
+			m.PathInput.Reset()
 		} else if m.CurrentView != ViewMain {
 			m.CurrentView = ViewMain
 		}
@@ -83,6 +93,10 @@ func (m *Model) handleKeypress(msg tea.KeyMsg) (*Model, tea.Cmd) {
 				m.filterCommands(newValue)
 			}
 
+			return m, cmd
+		} else if m.CurrentView == ViewSelectPath {
+			var cmd tea.Cmd
+			m.PathInput, cmd = m.PathInput.Update(msg)
 			return m, cmd
 		}
 	}

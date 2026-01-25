@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"os"
 	"time"
 
 	"github.com/charmbracelet/bubbles/list"
@@ -17,6 +18,7 @@ const (
 	ViewResults    ViewMode = "results"
 	ViewHelp       ViewMode = "help"
 	ViewError      ViewMode = "error"
+	ViewSelectPath ViewMode = "select_path"
 )
 
 type Command struct {
@@ -35,6 +37,7 @@ type Model struct {
 	Commands       []Command
 	CommandList    list.Model
 	SearchInput    textinput.Model
+	PathInput      textinput.Model
 	ShowDropdown   bool
 	FilteredIndex  int
 
@@ -70,6 +73,7 @@ func NewModel(version, commit, date string) *Model {
 		CurrentView:    ViewMain,
 		Cursor:         0,
 		SearchInput:    textinput.New(),
+		PathInput:      textinput.New(),
 		CurrentMessage: "Ready",
 	}
 
@@ -79,6 +83,12 @@ func NewModel(version, commit, date string) *Model {
 	m.SearchInput.TextStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("255"))
 	m.SearchInput.Cursor.Style = lipgloss.NewStyle().Foreground(ColorPrimary).Bold(true)
 	m.SearchInput.Focus()
+
+	m.PathInput.Placeholder = "/path/to/project"
+	m.PathInput.PlaceholderStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+	m.PathInput.PromptStyle = lipgloss.NewStyle().Foreground(ColorPrimary).Bold(true)
+	m.PathInput.TextStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("255"))
+	m.PathInput.Cursor.Style = lipgloss.NewStyle().Foreground(ColorPrimary).Bold(true)
 
 	m.initializeCommands()
 	m.setupCommandList()
@@ -90,8 +100,41 @@ func (m *Model) Init() tea.Cmd {
 	return nil
 }
 
+func (m *Model) loadProject(path string) {
+	// Expand ~ to home directory
+	if path == "~" || path == "." {
+		if path == "." {
+			// Current directory
+			m.ProjectPath = "./"
+			m.GemfileLockPath = "./Gemfile.lock"
+		} else {
+			// Home directory
+			m.ProjectPath = "~/"
+			m.GemfileLockPath = "~/Gemfile.lock"
+		}
+	} else if len(path) > 0 && path[0] == '~' {
+		home := os.Getenv("HOME")
+		path = home + path[1:]
+		m.ProjectPath = path
+		m.GemfileLockPath = path + "/Gemfile.lock"
+	} else {
+		m.ProjectPath = path
+		m.GemfileLockPath = path + "/Gemfile.lock"
+	}
+}
+
 func (m *Model) initializeCommands() {
 	m.Commands = []Command{
+		{
+			Name:        "open",
+			Description: "Open a different Ruby project",
+			Execute: func(m *Model) tea.Cmd {
+				m.CurrentView = ViewSelectPath
+				m.PathInput.Reset()
+				m.PathInput.Focus()
+				return nil
+			},
+		},
 		{
 			Name:        "analyze",
 			Description: "Analyze Gemfile.lock for risks and conflicts",
