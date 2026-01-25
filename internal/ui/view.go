@@ -197,12 +197,7 @@ func (m *Model) renderDropdown() string {
 }
 
 func (m *Model) renderFooter() string {
-	keys := "Type / to list commands  •  ↑/↓: navigate  •  Enter: run  •  Esc: clear  •  q: quit"
-	return lipgloss.NewStyle().
-		Foreground(lipgloss.Color("244")).
-		Italic(true).
-		PaddingTop(1).
-		Render(keys)
+	return ""
 }
 
 func (m *Model) viewAnalyzing() string {
