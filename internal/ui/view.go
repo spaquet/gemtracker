@@ -108,12 +108,10 @@ _ /_|_____|_\ _
 
 	tips := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("244")).
-		Render(`Use arrow keys to navigate
-Press Enter to run commands
-Type 'q' to quit anytime
-
-Try 'analyze' to scan your
-gems for vulnerabilities!`)
+		Render(`Type / to list all commands
+Use ↑/↓ arrows to navigate
+Press Enter to run
+Type 'q' to quit anytime`)
 
 	rightSection := lipgloss.JoinVertical(
 		lipgloss.Top,
@@ -199,7 +197,7 @@ func (m *Model) renderDropdown() string {
 }
 
 func (m *Model) renderFooter() string {
-	keys := "↑/↓: navigate  •  Enter: run  •  Esc: clear  •  q: quit"
+	keys := "Type / to list commands  •  ↑/↓: navigate  •  Enter: run  •  Esc: clear  •  q: quit"
 	return lipgloss.NewStyle().
 		Foreground(lipgloss.Color("244")).
 		Italic(true).
@@ -256,7 +254,14 @@ func (m *Model) viewResults() string {
 func (m *Model) viewHelp() string {
 	header := m.renderHeader()
 
-	helpText := `COMMANDS:
+	helpText := `GETTING STARTED:
+
+  Type / to list all available commands
+  Use arrow keys (↑/↓) to navigate through the list
+  Press Enter to run the selected command
+  Type to search for specific commands
+
+AVAILABLE COMMANDS:
 
   analyze          Analyze Gemfile.lock for risks and dependency conflicts
   deps             Show which parent gems are using a specific gem
@@ -267,6 +272,7 @@ func (m *Model) viewHelp() string {
 
 KEYBOARD SHORTCUTS:
 
+  /               List all commands
   ↑/↓, Tab        Navigate commands
   Enter           Run selected command
   Esc             Clear search / return to menu
