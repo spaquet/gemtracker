@@ -1,58 +1,80 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"os"
+
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/spaquet/gemtracker/internal/ui"
+)
+
+var (
+	version = "dev"
+	commit  = "none"
+	date    = "unknown"
 )
 
 func main() {
-	if len(os.Args) < 2 {
-		printUsage()
-		os.Exit(1)
+	// Parse command line flags
+	helpFlag := flag.Bool("help", false, "Show help message")
+	versionFlag := flag.Bool("version", false, "Show version information")
+	flag.Parse()
+
+	if *helpFlag {
+		printHelp()
+		return
 	}
 
-	command := os.Args[1]
+	if *versionFlag {
+		printVersion()
+		return
+	}
 
-	switch command {
-	case "analyze":
-		// TODO: Implement analyze command
-		fmt.Println("Analyze command - coming soon")
-	case "deps":
-		// TODO: Implement deps command
-		fmt.Println("Deps command - coming soon")
-	case "vulnerabilities":
-		// TODO: Implement vulnerabilities command
-		fmt.Println("Vulnerabilities command - coming soon")
-	case "licenses":
-		// TODO: Implement licenses command
-		fmt.Println("Licenses command - coming soon")
-	case "--help", "-h":
-		printUsage()
-	default:
-		fmt.Printf("Unknown command: %s\n\n", command)
-		printUsage()
+	// Start the TUI
+	model := ui.NewModel(version, commit, date)
+	p := tea.NewProgram(model, tea.WithAltScreen())
+
+	if _, err := p.Run(); err != nil {
+		fmt.Fprintf(os.Stderr, "Error running program: %v\n", err)
 		os.Exit(1)
 	}
 }
 
-func printUsage() {
-	usage := `gemtracker - Analyze Ruby gem dependencies and identify risks
+func printVersion() {
+	fmt.Printf("gemtracker %s\n", version)
+	if commit != "none" {
+		fmt.Printf("commit: %s\n", commit)
+	}
+	if date != "unknown" {
+		fmt.Printf("date: %s\n", date)
+	}
+}
 
-Usage:
-  gemtracker <command> [options]
+func printHelp() {
+	help := `gemtracker - Analyze Ruby gem dependencies and identify risks
 
-Commands:
-  analyze <gemfile.lock>           Analyze a Gemfile.lock for risks and conflicts
-  deps <gem-name>                  Show dependency tree for a specific gem
-  vulnerabilities <gemfile.lock>   Check for known vulnerabilities
-  licenses <gemfile.lock>          Generate license compliance report
-  --help, -h                       Show this help message
+USAGE:
+  gemtracker [options]
 
-Examples:
-  gemtracker analyze ./Gemfile.lock
-  gemtracker deps rails
-  gemtracker vulnerabilities ./Gemfile.lock
-  gemtracker licenses ./Gemfile.lock
+OPTIONS:
+  --help, -h        Show this help message
+  --version, -v     Show version information
+
+INTERACTIVE MODE:
+  When run without arguments, gemtracker starts an interactive session
+  where you can run multiple analysis commands on your Ruby projects.
+
+KEYBOARD SHORTCUTS:
+  ↑/↓, Tab          Navigate commands
+  Enter             Run selected command
+  Esc               Clear search / return to menu
+  q, Ctrl+C         Quit gemtracker
+
+EXAMPLES:
+  $ gemtracker           # Start interactive mode
+  $ gemtracker --help    # Show help
+  $ gemtracker --version # Show version
 `
-	fmt.Print(usage)
+	fmt.Print(help)
 }
