@@ -5,13 +5,14 @@ import (
 )
 
 var (
-	// Color definitions
-	ColorPrimary   = lipgloss.Color("5")   // Magenta
+	// Color definitions - Emerald Green Theme
+	ColorPrimary   = lipgloss.Color("48")  // Emerald green
 	ColorSecondary = lipgloss.Color("8")   // Bright black
 	ColorSuccess   = lipgloss.Color("10")  // Green
 	ColorWarning   = lipgloss.Color("11")  // Yellow
 	ColorError     = lipgloss.Color("9")   // Red
 	ColorInfo      = lipgloss.Color("6")   // Cyan
+	ColorBg        = lipgloss.Color("235") // Dark gray background
 
 	// Header styles
 	HeaderStyle = lipgloss.NewStyle().

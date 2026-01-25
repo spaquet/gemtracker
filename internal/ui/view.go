@@ -46,44 +46,140 @@ func (m *Model) viewMain() string {
 }
 
 func (m *Model) renderHeader() string {
-	title := "💎 gemtracker"
-	version := fmt.Sprintf("v%s", m.Version)
-	subtitle := "Ruby Gem Dependency Analyzer"
+	// Top bar with title and version
+	topBar := lipgloss.NewStyle().
+		Foreground(ColorPrimary).
+		Bold(true).
+		PaddingTop(0).
+		PaddingBottom(0).
+		PaddingLeft(2).
+		PaddingRight(2).
+		Render(fmt.Sprintf("— gemtracker  v%s —", m.Version))
 
-	titleLine := lipgloss.JoinHorizontal(
-		lipgloss.Center,
-		TitleStyle.Render(title),
-		lipgloss.NewStyle().Margin(0, 1).Render(version),
+	// Left column content
+	leftColumn := m.renderHeaderLeft()
+
+	// Right column content
+	rightColumn := m.renderHeaderRight()
+
+	// Combine columns with proper spacing
+	contentLine := lipgloss.JoinHorizontal(
+		lipgloss.Top,
+		leftColumn,
+		"  ",
+		rightColumn,
 	)
 
-	projectInfo := ""
+	// Full header with top bar
+	header := lipgloss.JoinVertical(
+		lipgloss.Top,
+		topBar,
+		contentLine,
+	)
+
+	// Add border around entire header
+	headerStyled := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(ColorPrimary).
+		Padding(1, 2).
+		Render(header)
+
+	return headerStyled
+}
+
+func (m *Model) renderHeaderLeft() string {
+	// ASCII gem art
+	gemArt := `
+    ◆
+   ◆ ◆
+  ◆ ◆ ◆
+ ◆ ◆ ◆ ◆
+  ◆ ◆ ◆
+   ◆ ◆
+    ◆`
+
+	gemStyled := lipgloss.NewStyle().
+		Foreground(ColorPrimary).
+		Align(lipgloss.Center).
+		Render(gemArt)
+
+	// Welcome message
+	welcome := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color("255")).
+		MarginTop(1).
+		Render("Welcome to gemtracker!")
+
+	// Project info
+	projectPath := "No Gemfile.lock found"
 	if m.GemfileLockPath != "" {
-		stats := fmt.Sprintf(
-			"📁 Project: %s  |  📦 Gems: %d  |  ⚠️  Outdated: %d  |  🔒 Vulnerable: %d",
-			m.ProjectPath,
+		projectPath = m.ProjectPath
+	}
+
+	projectInfo := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("250")).
+		MarginTop(1).
+		Render(projectPath)
+
+	// Stats line
+	statsLine := ""
+	if m.GemfileLockPath != "" {
+		statsLine = fmt.Sprintf("📦 %d gems  |  ⚠️  %d outdated  |  🔒 %d vulnerable",
 			m.GemCount,
 			m.OutdatedCount,
 			m.VulnerableCount,
 		)
-		lastScan := ""
-		if m.LastScanTime != nil {
-			lastScan = fmt.Sprintf("  |  🕐 Last scan: %s ago", timeAgo(*m.LastScanTime))
-		}
-
-		projectInfo = StatusStyle.Render(stats + lastScan)
-	} else {
-		projectInfo = StatusStyle.Render("📁 No Gemfile.lock found in current directory")
 	}
 
-	header := lipgloss.JoinVertical(
-		lipgloss.Top,
-		titleLine,
-		SubtitleStyle.Render(subtitle),
-		"",
+	statsStyled := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("250")).
+		MarginTop(1).
+		Render(statsLine)
+
+	leftContent := lipgloss.JoinVertical(
+		lipgloss.Center,
+		gemStyled,
+		welcome,
 		projectInfo,
+		statsStyled,
 	)
 
-	return HeaderStyle.Render(header)
+	return lipgloss.NewStyle().
+		Width(35).
+		MaxHeight(12).
+		Render(leftContent)
+}
+
+func (m *Model) renderHeaderRight() string {
+	// Tips section
+	tipsHeader := lipgloss.NewStyle().
+		Foreground(ColorPrimary).
+		Bold(true).
+		MarginBottom(1).
+		Render("Tips for getting started")
+
+	tips := `Use arrow keys to navigate
+Press Enter to run commands
+Type 'q' to quit anytime
+
+Try 'analyze' to scan your
+gems for vulnerabilities and
+outdated versions!`
+
+	tipsContent := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("250")).
+		Render(tips)
+
+	rightContent := lipgloss.JoinVertical(
+		lipgloss.Top,
+		tipsHeader,
+		tipsContent,
+	)
+
+	return lipgloss.NewStyle().
+		Width(40).
+		MaxHeight(12).
+		Render(rightContent)
 }
 
 func (m *Model) renderCommandList() string {
@@ -100,12 +196,21 @@ func (m *Model) renderCommandList() string {
 
 func (m *Model) renderSearchInput() string {
 	inputView := m.SearchInput.View()
-	return SearchInputStyle.Render("Search: " + inputView)
+	searchBox := lipgloss.NewStyle().
+		Padding(1, 2).
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(ColorPrimary).
+		Render("🔍 " + inputView)
+	return searchBox
 }
 
 func (m *Model) renderFooter() string {
 	keys := "↑/↓: navigate  •  Enter: run  •  Esc: clear  •  q: quit"
-	return HelpStyle.Render(keys)
+	return lipgloss.NewStyle().
+		Foreground(lipgloss.Color("240")).
+		Italic(true).
+		MarginTop(1).
+		Render(keys)
 }
 
 func (m *Model) viewAnalyzing() string {
