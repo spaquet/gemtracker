@@ -24,6 +24,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.AnalysisResult = msg.Result
 			m.populateGemsList(msg.Result)
 			m.CurrentView = ViewResultsList
+			m.ResultsFilter.Focus()
 		}
 		return m, nil
 	}
@@ -159,6 +160,13 @@ func (m *Model) handleWindowSize(msg tea.WindowSizeMsg) (*Model, tea.Cmd) {
 	}
 
 	m.CommandList.SetSize(m.Width-4, commandListHeight)
+
+	// Also update gems list size
+	listHeight := m.Height - 16
+	if listHeight < 5 {
+		listHeight = 5
+	}
+	m.GemsList.SetSize(m.Width-4, listHeight)
 
 	return m, nil
 }
