@@ -4,11 +4,12 @@ A Go CLI tool to analyze Ruby gem dependencies and quickly identify risks in you
 
 ## Features
 
+- **Interactive Terminal UI**: Beautiful, intuitive command palette interface for all analysis functions
 - **Dependency Visualization**: See which gems are using a specific gem and what versions
 - **Vulnerability Detection**: Identify outdated and potentially vulnerable gem versions
 - **License Compliance**: Scan and report on gem licenses for compliance requirements
 - **Conflict Detection**: Automatically detect version conflicts and compatibility issues
-- **Terminal Reports**: Beautiful, formatted terminal output for quick analysis
+- **Version Display**: Version info and project stats shown in the terminal header
 
 ## Installation
 
@@ -23,37 +24,31 @@ Installation instructions coming soon.
 
 ## Usage
 
-### Basic Analysis
+### Interactive Mode (Default)
+Simply run gemtracker to launch the interactive terminal UI:
+
 ```bash
-gemtracker analyze ./Gemfile.lock
+gemtracker
 ```
 
-### Show Dependency Tree
-```bash
-gemtracker deps <gem-name>
-```
+The interactive interface provides:
+- **Analyze**: Scan your Gemfile.lock for risks, outdated gems, and conflicts
+- **Deps**: Show which parent gems are using a specific gem and their versions
+- **Vulnerabilities**: Check for known vulnerabilities in your gems
+- **Licenses**: Generate a license compliance report
+- **Help**: View keyboard shortcuts and detailed help
 
-### Export Report
-```bash
-gemtracker analyze ./Gemfile.lock --format json
-gemtracker analyze ./Gemfile.lock --format csv
-```
-
-### Check for Vulnerabilities
-```bash
-gemtracker vulnerabilities ./Gemfile.lock
-```
-
-### License Compliance Report
-```bash
-gemtracker licenses ./Gemfile.lock
-```
+### Navigation
+- **Arrow Keys / Tab**: Navigate through available commands
+- **Enter**: Execute selected command
+- **Esc**: Clear search or return to main menu
+- **q**: Quit gemtracker
 
 ## Quick Start
 
-1. Navigate to a Ruby project with a `Gemfile.lock`
-2. Run `gemtracker analyze ./Gemfile.lock`
-3. Review the dependency risks and conflicts
+1. Navigate to a Ruby project directory with a `Gemfile.lock`
+2. Run `gemtracker`
+3. Use the interactive menu to analyze your dependencies
 
 ## Project Goals
 
