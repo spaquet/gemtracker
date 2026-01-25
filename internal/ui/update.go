@@ -83,6 +83,11 @@ func (m *Model) handleKeypress(msg tea.KeyMsg) (*Model, tea.Cmd) {
 			} else {
 				m.FilteredIndex = len(m.Commands) - 1
 			}
+		} else if m.CurrentView == ViewResultsList {
+			// Navigate gem list
+			if m.GemsList.Index() > 0 {
+				m.GemsList.CursorUp()
+			}
 		}
 
 	case "down", "tab":
@@ -91,6 +96,11 @@ func (m *Model) handleKeypress(msg tea.KeyMsg) (*Model, tea.Cmd) {
 				m.FilteredIndex++
 			} else {
 				m.FilteredIndex = 0
+			}
+		} else if m.CurrentView == ViewResultsList {
+			// Navigate gem list
+			if m.GemsList.Index() < len(m.FilteredGems)-1 {
+				m.GemsList.CursorDown()
 			}
 		}
 

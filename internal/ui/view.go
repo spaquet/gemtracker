@@ -263,7 +263,8 @@ func (m *Model) viewResultsList() string {
 	summary := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("244")).
 		Padding(1, 2).
-		Render(result.Summary)
+		Render(fmt.Sprintf("Total: %d gems  |  Outdated: %d  |  Vulnerable: %d",
+			result.TotalGems, len(result.OutdatedGems), len(result.VulnerableGems)))
 
 	// Search filter
 	filterInput := m.ResultsFilter.View()
@@ -277,9 +278,19 @@ func (m *Model) viewResultsList() string {
 		MarginBottom(1).
 		Render(filterInput)
 
-	// Gems list
-	m.GemsList.SetSize(m.Width-4, m.Height-20)
-	gemsList := m.renderGemsListItems()
+	// Gems list - use actual list component
+	listHeight := m.Height - 16
+	if listHeight < 5 {
+		listHeight = 5
+	}
+	m.GemsList.SetSize(m.Width-4, listHeight)
+	gemsList := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(ColorSecondary).
+		Padding(0, 1).
+		MarginLeft(2).
+		MarginRight(2).
+		Render(m.GemsList.View())
 
 	// Instructions
 	instructions := lipgloss.NewStyle().
@@ -296,27 +307,6 @@ func (m *Model) viewResultsList() string {
 		gemsList,
 		instructions,
 	)
-}
-
-func (m *Model) renderGemsListItems() string {
-	var items []string
-	for _, gem := range m.FilteredGems {
-		item := lipgloss.NewStyle().
-			Foreground(lipgloss.Color("244")).
-			Padding(0, 1).
-			Render(fmt.Sprintf("%s %-30s  v%s", gem.Status, gem.Name, gem.Version))
-		items = append(items, item)
-	}
-
-	content := lipgloss.JoinVertical(lipgloss.Top, items...)
-
-	return lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(ColorSecondary).
-		Padding(0, 2).
-		MarginLeft(2).
-		MarginRight(2).
-		Render(content)
 }
 
 func (m *Model) viewHelp() string {
