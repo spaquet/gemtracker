@@ -11,6 +11,44 @@ import (
 func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
+		// If we're in ResultsList view, always route input to the filter first
+		if m.CurrentView == ViewResultsList {
+			switch msg.String() {
+			case "esc":
+				// Handle escape specially
+				if m.ResultsFilter.Value() != "" {
+					m.ResultsFilter.Reset()
+					m.filterGems("")
+					return m, nil
+				} else {
+					m.CurrentView = ViewMain
+					m.ResultsFilter.Reset()
+					return m, nil
+				}
+			case "enter":
+				// Return to main menu
+				m.CurrentView = ViewMain
+				m.ResultsFilter.Reset()
+				return m, nil
+			case "up", "down":
+				// Navigation should go to list, not filter
+				m2, cmd := m.handleKeypress(msg)
+				return m2, cmd
+			default:
+				// All other input goes to the filter
+				oldValue := m.ResultsFilter.Value()
+				updatedFilter, cmd := m.ResultsFilter.Update(msg)
+				m.ResultsFilter = updatedFilter
+				newValue := m.ResultsFilter.Value()
+
+				if newValue != oldValue {
+					m.filterGems(newValue)
+				}
+
+				return m, cmd
+			}
+		}
+
 		m2, cmd := m.handleKeypress(msg)
 		return m2, cmd
 	case tea.WindowSizeMsg:
@@ -24,8 +62,6 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.AnalysisResult = msg.Result
 			m.populateGemsList(msg.Result)
 			m.CurrentView = ViewResultsList
-			// Don't call Focus() as it can cause nil pointer panic
-			// Input will accept keystrokes naturally when view is active
 		}
 		return m, nil
 	}
