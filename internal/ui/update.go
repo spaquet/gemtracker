@@ -13,6 +13,16 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m2, cmd := m.handleWindowSize(msg)
 		return m2, cmd
+	case AnalysisCompleteMsg:
+		if msg.Error != nil {
+			m.CurrentView = ViewError
+			m.ErrorMessage = msg.Error.Error()
+		} else {
+			m.AnalysisResult = msg.Result
+			m.CurrentView = ViewResults
+			m.CurrentMessage = msg.Result.Summary + "\n" + msg.Result.Details
+		}
+		return m, nil
 	}
 	return m, nil
 }

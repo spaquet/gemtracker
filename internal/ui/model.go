@@ -8,7 +8,13 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/spaquet/gemtracker/internal/gemfile"
 )
+
+type AnalysisCompleteMsg struct {
+	Result *gemfile.AnalysisResult
+	Error  error
+}
 
 type ViewMode string
 
@@ -53,6 +59,7 @@ type Model struct {
 	LastScanTime     *time.Time
 	CurrentMessage   string
 	ErrorMessage     string
+	AnalysisResult   interface{} // Will hold *gemfile.AnalysisResult
 
 	// App metadata
 	Version string
@@ -123,6 +130,24 @@ func (m *Model) loadProject(path string) {
 	}
 }
 
+func performAnalysis(gemfilePath string) tea.Cmd {
+	return func() tea.Msg {
+		gf, err := gemfile.Parse(gemfilePath)
+		if err != nil {
+			return AnalysisCompleteMsg{
+				Result: nil,
+				Error:  err,
+			}
+		}
+
+		result := gemfile.Analyze(gf)
+		return AnalysisCompleteMsg{
+			Result: result,
+			Error:  nil,
+		}
+	}
+}
+
 func (m *Model) initializeCommands() {
 	m.Commands = []Command{
 		{
@@ -139,9 +164,9 @@ func (m *Model) initializeCommands() {
 			Name:        "analyze",
 			Description: "Analyze Gemfile.lock for risks and conflicts",
 			Execute: func(m *Model) tea.Cmd {
-				m.CurrentMessage = "Analyzing Gemfile.lock..."
 				m.CurrentView = ViewAnalyzing
-				return nil
+				m.CurrentMessage = "Analyzing Gemfile.lock..."
+				return performAnalysis(m.GemfileLockPath)
 			},
 		},
 		{
