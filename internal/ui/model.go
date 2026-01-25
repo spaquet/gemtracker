@@ -137,11 +137,12 @@ func NewModel(version, commit, date string) *Model {
 	m.PathInput.TextStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("255"))
 	m.PathInput.Cursor.Style = lipgloss.NewStyle().Foreground(ColorPrimary).Bold(true)
 
-	m.ResultsFilter.Placeholder = "Search gems..."
+	m.ResultsFilter.Placeholder = "Type gem name to search..."
 	m.ResultsFilter.PlaceholderStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
 	m.ResultsFilter.PromptStyle = lipgloss.NewStyle().Foreground(ColorPrimary).Bold(true)
 	m.ResultsFilter.TextStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("255"))
 	m.ResultsFilter.Cursor.Style = lipgloss.NewStyle().Foreground(ColorPrimary).Bold(true)
+	m.ResultsFilter.CharLimit = 50
 
 	// Initialize gems list with custom delegate
 	m.GemsList = list.New([]list.Item{}, gemDelegate{}, 0, 0)
