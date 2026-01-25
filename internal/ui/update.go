@@ -26,7 +26,9 @@ func (m *Model) handleKeypress(msg tea.KeyMsg) (*Model, tea.Cmd) {
 	case "enter":
 		switch m.CurrentView {
 		case ViewMain:
-			return m.executeSelectedCommand()
+			if m.ShowDropdown && m.FilteredIndex >= 0 && m.FilteredIndex < len(m.Commands) {
+				return m.executeSelectedCommand()
+			}
 		case ViewResults, ViewHelp, ViewError:
 			m.CurrentView = ViewMain
 			m.CurrentMessage = "Ready"
@@ -34,36 +36,53 @@ func (m *Model) handleKeypress(msg tea.KeyMsg) (*Model, tea.Cmd) {
 		}
 
 	case "esc":
-		m.SearchInput.Reset()
-		if m.CurrentView != ViewMain {
+		if m.ShowDropdown {
+			m.ShowDropdown = false
+			m.SearchInput.Reset()
+		} else if m.CurrentView != ViewMain {
 			m.CurrentView = ViewMain
 		}
 
 	case "up", "shift+tab":
-		if m.CurrentView == ViewMain {
-			if m.Cursor > 0 {
-				m.Cursor--
+		if m.CurrentView == ViewMain && m.ShowDropdown {
+			if m.FilteredIndex > 0 {
+				m.FilteredIndex--
 			} else {
-				m.Cursor = len(m.Commands) - 1
+				m.FilteredIndex = len(m.Commands) - 1
 			}
-			m.updateCommandList()
 		}
 
 	case "down", "tab":
-		if m.CurrentView == ViewMain {
-			if m.Cursor < len(m.Commands)-1 {
-				m.Cursor++
+		if m.CurrentView == ViewMain && m.ShowDropdown {
+			if m.FilteredIndex < len(m.Commands)-1 {
+				m.FilteredIndex++
 			} else {
-				m.Cursor = 0
+				m.FilteredIndex = 0
 			}
-			m.updateCommandList()
 		}
 
 	default:
 		if m.CurrentView == ViewMain {
+			oldValue := m.SearchInput.Value()
 			var cmd tea.Cmd
 			m.SearchInput, cmd = m.SearchInput.Update(msg)
-			m.filterCommands(m.SearchInput.Value())
+			newValue := m.SearchInput.Value()
+
+			// Show dropdown when user starts typing
+			if newValue != "" && !m.ShowDropdown {
+				m.ShowDropdown = true
+				m.FilteredIndex = 0
+			}
+
+			// Hide dropdown when input is cleared
+			if newValue == "" && m.ShowDropdown {
+				m.ShowDropdown = false
+			}
+
+			if newValue != oldValue {
+				m.filterCommands(newValue)
+			}
+
 			return m, cmd
 		}
 	}
@@ -111,10 +130,13 @@ func (m *Model) filterCommands(query string) {
 }
 
 func (m *Model) executeSelectedCommand() (*Model, tea.Cmd) {
-	if m.Cursor < 0 || m.Cursor >= len(m.Commands) {
+	if m.FilteredIndex < 0 || m.FilteredIndex >= len(m.Commands) {
 		return m, nil
 	}
 
-	cmd := m.Commands[m.Cursor]
+	m.ShowDropdown = false
+	m.SearchInput.Reset()
+
+	cmd := m.Commands[m.FilteredIndex]
 	return m, cmd.Execute(m)
 }

@@ -5,8 +5,8 @@ import (
 )
 
 var (
-	// Color definitions - Emerald Green Theme
-	ColorPrimary   = lipgloss.Color("48")  // Emerald green
+	// Color definitions - Medium Forest Green Theme
+	ColorPrimary   = lipgloss.Color("35")  // Medium forest green (balanced, visible)
 	ColorSecondary = lipgloss.Color("8")   // Bright black
 	ColorSuccess   = lipgloss.Color("10")  // Green
 	ColorWarning   = lipgloss.Color("11")  // Yellow

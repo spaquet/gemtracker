@@ -31,10 +31,12 @@ type Model struct {
 	Height int
 
 	// UI state
-	CurrentView ViewMode
-	Commands    []Command
-	CommandList list.Model
-	SearchInput textinput.Model
+	CurrentView    ViewMode
+	Commands       []Command
+	CommandList    list.Model
+	SearchInput    textinput.Model
+	ShowDropdown   bool
+	FilteredIndex  int
 
 	// Navigation
 	Cursor int
@@ -71,9 +73,12 @@ func NewModel(version, commit, date string) *Model {
 		CurrentMessage: "Ready",
 	}
 
-	m.SearchInput.Placeholder = "Type to search commands..."
-	m.SearchInput.PromptStyle = lipgloss.NewStyle().Foreground(ColorPrimary)
-	m.SearchInput.TextStyle = lipgloss.NewStyle().Foreground(ColorPrimary)
+	m.SearchInput.Placeholder = "Search commands..."
+	m.SearchInput.PlaceholderStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+	m.SearchInput.PromptStyle = lipgloss.NewStyle().Foreground(ColorPrimary).Bold(true)
+	m.SearchInput.TextStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("255"))
+	m.SearchInput.Cursor.Style = lipgloss.NewStyle().Foreground(ColorPrimary).Bold(true)
+	m.SearchInput.Focus()
 
 	m.initializeCommands()
 	m.setupCommandList()
