@@ -1,8 +1,6 @@
 package ui
 
 import (
-	"fmt"
-	"io"
 	"os"
 	"time"
 
@@ -21,47 +19,15 @@ type AnalysisCompleteMsg struct {
 type ViewMode string
 
 const (
-	ViewMain       ViewMode = "main"
-	ViewAnalyzing  ViewMode = "analyzing"
-	ViewResults    ViewMode = "results"
-	ViewResultsList ViewMode = "results_list"
-	ViewHelp       ViewMode = "help"
-	ViewError      ViewMode = "error"
-	ViewSelectPath ViewMode = "select_path"
+	ViewMain        ViewMode = "main"
+	ViewAnalyzing   ViewMode = "analyzing"
+	ViewResults     ViewMode = "results"
+	ViewFilterInput ViewMode = "filter_input"
+	ViewHelp        ViewMode = "help"
+	ViewError       ViewMode = "error"
+	ViewSelectPath  ViewMode = "select_path"
 )
 
-type gemItem struct {
-	Name    string
-	Version string
-	Status  string
-}
-
-func (g gemItem) FilterValue() string { return g.Name }
-
-type gemDelegate struct{}
-
-func (d gemDelegate) Height() int                             { return 1 }
-func (d gemDelegate) Spacing() int                            { return 0 }
-func (d gemDelegate) Update(_ tea.Msg, _ *list.Model) tea.Cmd { return nil }
-func (d gemDelegate) Render(w io.Writer, m list.Model, index int, item list.Item) {
-	i := item.(gemItem)
-	str := fmt.Sprintf("%s %-30s  v%s", i.Status, i.Name, i.Version)
-
-	var output string
-	if index == m.Index() {
-		output = lipgloss.NewStyle().
-			Foreground(ColorPrimary).
-			Bold(true).
-			Background(lipgloss.Color("237")).
-			Render("> " + str)
-	} else {
-		output = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("244")).
-			Render("  " + str)
-	}
-
-	fmt.Fprint(w, output)
-}
 
 type Command struct {
 	Name        string
@@ -80,10 +46,7 @@ type Model struct {
 	CommandList    list.Model
 	SearchInput    textinput.Model
 	PathInput      textinput.Model
-	ResultsFilter  textinput.Model
-	GemsList       list.Model
-	AllGems        []gemItem
-	FilteredGems   []gemItem
+	FilterInput    textinput.Model
 	ShowDropdown   bool
 	FilteredIndex  int
 
@@ -137,17 +100,12 @@ func NewModel(version, commit, date string) *Model {
 	m.PathInput.TextStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("255"))
 	m.PathInput.Cursor.Style = lipgloss.NewStyle().Foreground(ColorPrimary).Bold(true)
 
-	m.ResultsFilter.Placeholder = "Type gem name to search..."
-	m.ResultsFilter.PlaceholderStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
-	m.ResultsFilter.PromptStyle = lipgloss.NewStyle().Foreground(ColorPrimary).Bold(true)
-	m.ResultsFilter.TextStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("255"))
-	m.ResultsFilter.Cursor.Style = lipgloss.NewStyle().Foreground(ColorPrimary).Bold(true)
-	m.ResultsFilter.CharLimit = 50
-
-	// Initialize gems list with custom delegate
-	m.GemsList = list.New([]list.Item{}, gemDelegate{}, 0, 0)
-	m.GemsList.SetShowTitle(false)
-	m.GemsList.SetShowHelp(false)
+	m.FilterInput.Placeholder = "gem name (or press Enter to skip)"
+	m.FilterInput.PlaceholderStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+	m.FilterInput.PromptStyle = lipgloss.NewStyle().Foreground(ColorPrimary).Bold(true)
+	m.FilterInput.TextStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("255"))
+	m.FilterInput.Cursor.Style = lipgloss.NewStyle().Foreground(ColorPrimary).Bold(true)
+	m.FilterInput.CharLimit = 50
 
 	m.initializeCommands()
 	m.setupCommandList()

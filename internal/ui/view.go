@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/charmbracelet/lipgloss"
-	"github.com/spaquet/gemtracker/internal/gemfile"
 )
 
 func (m *Model) View() string {
@@ -20,8 +19,8 @@ func (m *Model) View() string {
 		return m.viewAnalyzing()
 	case ViewResults:
 		return m.viewResults()
-	case ViewResultsList:
-		return m.viewResultsList()
+	case ViewFilterInput:
+		return m.viewFilterInput()
 	case ViewHelp:
 		return m.viewHelp()
 	case ViewError:
@@ -251,60 +250,38 @@ func (m *Model) viewResults() string {
 	)
 }
 
-func (m *Model) viewResultsList() string {
+func (m *Model) viewFilterInput() string {
 	header := m.renderHeader()
 
-	// Analysis result summary
-	result, ok := m.AnalysisResult.(*gemfile.AnalysisResult)
-	if !ok {
-		return "Error: Invalid analysis result"
-	}
+	// Simple message showing gems list
+	resultsBox := lipgloss.NewStyle().
+		PaddingLeft(2).
+		PaddingRight(2).
+		MarginTop(1).
+		Render(m.CurrentMessage)
 
-	summary := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("244")).
-		Padding(1, 2).
-		Render(fmt.Sprintf("Total: %d gems  |  Outdated: %d  |  Vulnerable: %d",
-			result.TotalGems, len(result.OutdatedGems), len(result.VulnerableGems)))
-
-	// Search filter
-	filterInput := m.ResultsFilter.View()
+	// Simple input field
+	filterInput := m.FilterInput.View()
 	filterBox := lipgloss.NewStyle().
 		Width(m.Width - 6).
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(ColorPrimary).
-		Padding(0, 1).
-		MarginLeft(2).
-		MarginRight(2).
-		MarginBottom(1).
+		PaddingLeft(2).
+		PaddingRight(2).
+		MarginTop(1).
 		Render(filterInput)
-
-	// Gems list - use actual list component
-	listHeight := m.Height - 16
-	if listHeight < 5 {
-		listHeight = 5
-	}
-	m.GemsList.SetSize(m.Width-4, listHeight)
-	gemsList := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(ColorSecondary).
-		Padding(0, 1).
-		MarginLeft(2).
-		MarginRight(2).
-		Render(m.GemsList.View())
 
 	// Instructions
 	instructions := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("240")).
 		Italic(true).
+		PaddingLeft(2).
 		MarginTop(1).
-		Render("Type to search  •  ↑/↓: navigate  •  Esc: clear search  •  Enter: back to menu")
+		Render("Type to filter gems  •  Esc to go back to menu")
 
 	return lipgloss.JoinVertical(
 		lipgloss.Top,
 		header,
-		summary,
+		resultsBox,
 		filterBox,
-		gemsList,
 		instructions,
 	)
 }
