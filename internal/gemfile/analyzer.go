@@ -5,21 +5,67 @@ import (
 	"strings"
 )
 
+// GemStatus represents the status information for a gem
+type GemStatus struct {
+	Name              string
+	Version           string
+	IsOutdated        bool
+	LatestVersion     string // Latest available version
+	IsVulnerable      bool
+	VulnerabilityInfo string // Detailed vulnerability info
+}
+
 type AnalysisResult struct {
 	TotalGems      int
 	OutdatedGems   []string
 	VulnerableGems []string
 	AllGems        []*Gem
+	GemStatuses    []*GemStatus
 	Summary        string
 	Details        string
 }
 
 func Analyze(gemfile *Gemfile) *AnalysisResult {
+	outdatedChecker := NewOutdatedChecker()
+	vulnChecker := NewVulnerabilityChecker()
+
+	allGems := gemfile.GetGemsAsList()
+	outdatedList := []string{}
+	vulnerableList := []string{}
+	gemStatuses := make([]*GemStatus, 0, len(allGems))
+
+	// Check each gem for outdated and vulnerable status
+	for _, gem := range allGems {
+		status := &GemStatus{
+			Name:    gem.Name,
+			Version: gem.Version,
+		}
+
+		// Check if outdated
+		isOutdated, latestVersion := outdatedChecker.IsOutdated(gem.Name, gem.Version)
+		if isOutdated {
+			status.IsOutdated = true
+			status.LatestVersion = latestVersion
+			outdatedList = append(outdatedList, gem.Name)
+		}
+
+		// Check if vulnerable
+		hasVuln, cveID, vulnDesc := vulnChecker.HasVulnerability(gem.Name, gem.Version)
+		if hasVuln {
+			status.IsVulnerable = true
+			status.VulnerabilityInfo = fmt.Sprintf("%s: %s", cveID, vulnDesc)
+			vulnerableList = append(vulnerableList, gem.Name)
+		}
+
+		gemStatuses = append(gemStatuses, status)
+	}
+
 	result := &AnalysisResult{
 		TotalGems:      gemfile.GetGemCount(),
-		OutdatedGems:   []string{},
-		VulnerableGems: []string{},
-		AllGems:        gemfile.GetGemsAsList(),
+		OutdatedGems:   outdatedList,
+		VulnerableGems: vulnerableList,
+		AllGems:        allGems,
+		GemStatuses:    gemStatuses,
 	}
 
 	// Generate summary
@@ -32,58 +78,33 @@ func Analyze(gemfile *Gemfile) *AnalysisResult {
 }
 
 func generateSummary(result *AnalysisResult) string {
-	summary := fmt.Sprintf(`
-═══════════════════════════════════════════════════════════════
-  GEM ANALYSIS SUMMARY
-═══════════════════════════════════════════════════════════════
+	summary := fmt.Sprintf(`Total Gems: %d  |  Outdated: %d  |  Vulnerable: %d
 
-Total Gems:              %d
-Outdated Gems:          %d
-Vulnerable Gems:        %d
-
-Status: ✓ Project analyzed
-
-`, result.TotalGems, len(result.OutdatedGems), len(result.VulnerableGems))
+Status: ✓ Project analyzed`,
+		result.TotalGems, len(result.OutdatedGems), len(result.VulnerableGems))
 
 	return summary
 }
 
 func generateDetails(result *AnalysisResult) string {
-	if len(result.AllGems) == 0 {
+	if len(result.GemStatuses) == 0 {
 		return "No gems found in Gemfile.lock"
 	}
 
 	var sb strings.Builder
-	sb.WriteString("\n═══════════════════════════════════════════════════════════════\n")
-	sb.WriteString("  INSTALLED GEMS\n")
-	sb.WriteString("═══════════════════════════════════════════════════════════════\n\n")
 
-	for i, gem := range result.AllGems {
+	for _, gemStatus := range result.GemStatuses {
 		status := "✓"
 
-		// Mark some gems as potentially outdated (stub implementation)
-		if isStubOutdated(gem.Name) {
+		// Mark gems with issues
+		if gemStatus.IsVulnerable {
+			status = "🔒"
+		} else if gemStatus.IsOutdated {
 			status = "⚠"
 		}
 
-		sb.WriteString(fmt.Sprintf("%2d. %s %-30s v%s\n", i+1, status, gem.Name, gem.Version))
+		sb.WriteString(fmt.Sprintf("%s %-30s v%s\n", status, gemStatus.Name, gemStatus.Version))
 	}
-
-	sb.WriteString("\n✓ = Current  |  ⚠ = Potentially Outdated\n")
-	sb.WriteString("(Detailed vulnerability data coming soon)\n")
 
 	return sb.String()
-}
-
-// isStubOutdated marks certain gems as potentially outdated for demo purposes
-func isStubOutdated(gemName string) bool {
-	// Stub: mark common gems that are often outdated in demo projects
-	outdatedStubs := map[string]bool{
-		"rails":        true,
-		"bundler":      true,
-		"devise":       true,
-		"rack":         true,
-		"rubocop":      true,
-	}
-	return outdatedStubs[gemName]
 }

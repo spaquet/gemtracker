@@ -50,6 +50,11 @@ type Model struct {
 	ShowDropdown   bool
 	FilteredIndex  int
 
+	// Gem display state
+	FilteredGems   []*gemfile.GemStatus
+	SelectedGemIdx int // For navigation
+	ScrollOffset   int // For viewport scrolling
+
 	// Navigation
 	Cursor int
 
@@ -84,6 +89,7 @@ func NewModel(version, commit, date string) *Model {
 		Cursor:         0,
 		SearchInput:    textinput.New(),
 		PathInput:      textinput.New(),
+		FilterInput:    textinput.New(),
 		CurrentMessage: "Ready",
 	}
 
@@ -100,7 +106,8 @@ func NewModel(version, commit, date string) *Model {
 	m.PathInput.TextStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("255"))
 	m.PathInput.Cursor.Style = lipgloss.NewStyle().Foreground(ColorPrimary).Bold(true)
 
-	m.FilterInput.Placeholder = "gem name (or press Enter to skip)"
+	m.FilterInput.Prompt = "> "
+	m.FilterInput.Placeholder = "type gem name to filter"
 	m.FilterInput.PlaceholderStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
 	m.FilterInput.PromptStyle = lipgloss.NewStyle().Foreground(ColorPrimary).Bold(true)
 	m.FilterInput.TextStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("255"))

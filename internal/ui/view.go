@@ -2,9 +2,11 @@ package ui
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/spaquet/gemtracker/internal/gemfile"
 )
 
 func (m *Model) View() string {
@@ -253,20 +255,23 @@ func (m *Model) viewResults() string {
 func (m *Model) viewFilterInput() string {
 	header := m.renderHeader()
 
-	// Simple message showing gems list
-	resultsBox := lipgloss.NewStyle().
+	// Summary line
+	summary := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("244")).
 		PaddingLeft(2).
 		PaddingRight(2).
 		MarginTop(1).
 		Render(m.CurrentMessage)
 
-	// Simple input field
+	// Gem list display - viewport style
+	listContent := m.renderGemListViewport()
+
+	// Search input
 	filterInput := m.FilterInput.View()
-	filterBox := lipgloss.NewStyle().
+	filterInputBox := lipgloss.NewStyle().
 		Width(m.Width - 6).
 		PaddingLeft(2).
 		PaddingRight(2).
-		MarginTop(1).
 		Render(filterInput)
 
 	// Instructions
@@ -275,15 +280,87 @@ func (m *Model) viewFilterInput() string {
 		Italic(true).
 		PaddingLeft(2).
 		MarginTop(1).
-		Render("Type to filter gems  •  Esc to go back to menu")
+		Render("↑/↓: navigate  •  Type to search  •  Esc: back")
 
 	return lipgloss.JoinVertical(
 		lipgloss.Top,
 		header,
-		resultsBox,
-		filterBox,
+		summary,
+		listContent,
+		filterInputBox,
 		instructions,
 	)
+}
+
+func (m *Model) renderGemListViewport() string {
+	if m.FilteredGems == nil || len(m.FilteredGems) == 0 {
+		return lipgloss.NewStyle().
+			PaddingLeft(2).
+			PaddingRight(2).
+			MarginTop(1).
+			Render("(no gems match filter)")
+	}
+
+	// Calculate visible lines
+	headerHeight := 10
+	footerHeight := 5
+	availableHeight := m.Height - headerHeight - footerHeight
+	if availableHeight < 5 {
+		availableHeight = 5
+	}
+
+	// Build viewport
+	var lines []string
+	endIdx := m.ScrollOffset + availableHeight
+	if endIdx > len(m.FilteredGems) {
+		endIdx = len(m.FilteredGems)
+	}
+
+	for i := m.ScrollOffset; i < endIdx; i++ {
+		gemStatus := m.FilteredGems[i]
+		line := m.formatGemLine(gemStatus, i == m.SelectedGemIdx)
+		lines = append(lines, line)
+	}
+
+	// Join lines and add padding
+	content := strings.Join(lines, "\n")
+	return lipgloss.NewStyle().
+		PaddingLeft(2).
+		PaddingRight(2).
+		MarginTop(1).
+		Render(content)
+}
+
+func (m *Model) formatGemLine(gemStatus *gemfile.GemStatus, isSelected bool) string {
+	// Determine status icon
+	statusIcon := "✓"
+	if gemStatus.IsVulnerable {
+		statusIcon = "🔒"
+	} else if gemStatus.IsOutdated {
+		statusIcon = "⚠"
+	}
+
+	// Build the main line: status, name, version
+	line := fmt.Sprintf("%s %-30s v%-8s", statusIcon, gemStatus.Name, gemStatus.Version)
+
+	// Add additional info
+	if gemStatus.IsVulnerable {
+		line += fmt.Sprintf("  %s", gemStatus.VulnerabilityInfo)
+	} else if gemStatus.IsOutdated && gemStatus.LatestVersion != "" {
+		line += fmt.Sprintf("  → v%s", gemStatus.LatestVersion)
+	}
+
+	// Apply styling based on selection
+	if isSelected {
+		// Selected: green background with dark text
+		return lipgloss.NewStyle().
+			Background(ColorPrimary).
+			Foreground(lipgloss.Color("0")).
+			Render(line)
+	}
+
+	// Normal line: just show the text
+	return line
 }
 
 func (m *Model) viewHelp() string {

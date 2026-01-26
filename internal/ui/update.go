@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"fmt"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/list"
@@ -17,11 +16,36 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "esc":
 				m.CurrentView = ViewMain
 				m.FilterInput.Reset()
+				m.FilteredGems = nil
+				m.SelectedGemIdx = 0
+				m.ScrollOffset = 0
+				return m, nil
+			case "up":
+				// Move selection up
+				if m.SelectedGemIdx > 0 {
+					m.SelectedGemIdx--
+					// Scroll viewport if needed
+					if m.SelectedGemIdx < m.ScrollOffset {
+						m.ScrollOffset = m.SelectedGemIdx
+					}
+				}
+				return m, nil
+			case "down":
+				// Move selection down
+				if m.SelectedGemIdx < len(m.FilteredGems)-1 {
+					m.SelectedGemIdx++
+					// Scroll viewport if needed
+					visibleLines := m.Height - 12 // Approximate lines for gem list
+					if m.SelectedGemIdx >= m.ScrollOffset+visibleLines {
+						m.ScrollOffset = m.SelectedGemIdx - visibleLines + 1
+					}
+				}
 				return m, nil
 			default:
+				// Update filter input for typing
 				var cmd tea.Cmd
 				m.FilterInput, cmd = m.FilterInput.Update(msg)
-				m.filterAndUpdateResults()
+				m.updateGemListFilter()
 				return m, cmd
 			}
 		}
@@ -38,58 +62,40 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		} else {
 			m.AnalysisResult = msg.Result
 			m.CurrentView = ViewFilterInput
-			m.buildGemsList()
+			m.FilterInput.Reset()
+			m.SelectedGemIdx = 0
+			m.ScrollOffset = 0
+			m.updateGemListFilter()
 		}
 		return m, nil
 	}
 	return m, nil
 }
 
-func (m *Model) buildGemsList() {
+func (m *Model) updateGemListFilter() {
 	result, ok := m.AnalysisResult.(*gemfile.AnalysisResult)
 	if !ok {
 		return
 	}
-	m.CurrentMessage = result.Summary
-}
 
-func (m *Model) filterAndUpdateResults() {
-	result, ok := m.AnalysisResult.(*gemfile.AnalysisResult)
-	if !ok {
-		return
-	}
+	m.CurrentMessage = result.Summary
 
 	filterTerm := strings.ToLower(m.FilterInput.Value())
-	var output strings.Builder
+	filtered := make([]*gemfile.GemStatus, 0)
 
-	output.WriteString(result.Summary)
-	output.WriteString("\nFiltered Gems:\n")
-	output.WriteString("──────────────────────────────────────────────────\n\n")
-
-	count := 0
-	for _, gem := range result.AllGems {
-		if filterTerm != "" && !strings.Contains(strings.ToLower(gem.Name), filterTerm) {
+	for _, gemStatus := range result.GemStatuses {
+		// Filter by search term
+		if filterTerm != "" && !strings.Contains(strings.ToLower(gemStatus.Name), filterTerm) {
 			continue
 		}
-
-		status := "✓"
-		for _, outdated := range result.OutdatedGems {
-			if outdated == gem.Name {
-				status = "⚠"
-				break
-			}
-		}
-
-		count++
-		output.WriteString(fmt.Sprintf("%3d. %s %-30s  v%s\n", count, status, gem.Name, gem.Version))
+		filtered = append(filtered, gemStatus)
 	}
 
-	if count == 0 && filterTerm != "" {
-		output.WriteString("  (no gems match filter)\n")
-	}
-
-	m.CurrentMessage = output.String()
+	m.FilteredGems = filtered
+	m.SelectedGemIdx = 0
+	m.ScrollOffset = 0
 }
+
 
 func (m *Model) handleKeypress(msg tea.KeyMsg) (*Model, tea.Cmd) {
 	switch msg.String() {
@@ -217,52 +223,6 @@ func (m *Model) filterCommands(query string) {
 	m.CommandList.SetItems(items)
 }
 
-func (m *Model) formatResultsWithFilter(filterTerm string) string {
-	result, ok := m.AnalysisResult.(*gemfile.AnalysisResult)
-	if !ok {
-		return "Error: Invalid analysis result"
-	}
-
-	// Build the output
-	var output strings.Builder
-	output.WriteString("\n═══════════════════════════════════════════════════════════════\n")
-	output.WriteString("  GEM ANALYSIS RESULTS\n")
-	output.WriteString("═══════════════════════════════════════════════════════════════\n\n")
-
-	output.WriteString(fmt.Sprintf("Total Gems: %d  |  Outdated: %d  |  Vulnerable: %d\n\n",
-		result.TotalGems, len(result.OutdatedGems), len(result.VulnerableGems)))
-
-	output.WriteString("Installed Gems:\n")
-	output.WriteString("───────────────────────────────────────────────────────────────\n\n")
-
-	count := 0
-	for _, gem := range result.AllGems {
-		// Filter if search term provided
-		if filterTerm != "" && !strings.Contains(strings.ToLower(gem.Name), strings.ToLower(filterTerm)) {
-			continue
-		}
-
-		status := "✓"
-		// Mark as outdated if in the list
-		for _, outdated := range result.OutdatedGems {
-			if outdated == gem.Name {
-				status = "⚠"
-				break
-			}
-		}
-
-		count++
-		output.WriteString(fmt.Sprintf("%2d. %s %-30s  v%s\n", count, status, gem.Name, gem.Version))
-	}
-
-	if count == 0 {
-		output.WriteString("  (no gems match the filter)\n")
-	}
-
-	output.WriteString("\n✓ = Current  |  ⚠ = Potentially Outdated\n")
-
-	return output.String()
-}
 
 func (m *Model) executeSelectedCommand() (*Model, tea.Cmd) {
 	if m.FilteredIndex < 0 || m.FilteredIndex >= len(m.Commands) {
