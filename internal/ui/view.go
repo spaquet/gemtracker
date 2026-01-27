@@ -283,6 +283,12 @@ func (m *Model) viewFilterInput() string {
 		BorderForeground(ColorPrimary).
 		Render(filterInput)
 
+	// Debug: Show what's in the search field
+	debugInfo := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("240")).
+		PaddingLeft(2).
+		Render(fmt.Sprintf("[Input: '%s'] [Gems: %d]", m.FilterInput.Value(), len(m.FilteredGems)))
+
 	// Instructions
 	instructions := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("240")).
@@ -297,6 +303,7 @@ func (m *Model) viewFilterInput() string {
 		summary,
 		listContent,
 		filterInputBox,
+		debugInfo,
 		instructions,
 	)
 }
@@ -310,19 +317,17 @@ func (m *Model) renderGemListViewport() string {
 			Render("(no gems match filter)")
 	}
 
-	// Calculate visible lines
-	// Reserve space for: header (10) + summary (2) + search box (4) + instructions (2) + margins (4)
-	headerHeight := 10
-	summaryHeight := 2
-	searchBoxHeight := 4
-	instructionsHeight := 2
-	margins := 4
-	totalReserved := headerHeight + summaryHeight + searchBoxHeight + instructionsHeight + margins
-
-	availableHeight := m.Height - totalReserved
-	if availableHeight < 3 {
-		availableHeight = 3
+	// Calculate visible lines - be conservative to avoid overlap
+	// Reserve space for: header (10) + summary (2) + search box (5) + debug (1) + instructions (1) = 19
+	// This ensures list never overlaps with search box
+	maxGemsHeight := m.Height - 19
+	if maxGemsHeight < 3 {
+		maxGemsHeight = 3
 	}
+	if maxGemsHeight > 10 { // Cap at 10 lines to prevent overlap
+		maxGemsHeight = 10
+	}
+	availableHeight := maxGemsHeight
 
 	// Build viewport
 	var lines []string

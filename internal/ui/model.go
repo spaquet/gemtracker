@@ -118,6 +118,7 @@ func NewModel(version, commit, date string) *Model {
 	m.FilterInput.PlaceholderStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
 	m.FilterInput.TextStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("255"))
 	m.FilterInput.Cursor.Style = lipgloss.NewStyle().Foreground(ColorPrimary).Bold(true)
+	m.FilterInput.Focus() // Focus so it can receive input
 
 	m.initializeCommands()
 	m.setupCommandList()
