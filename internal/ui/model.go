@@ -11,10 +11,15 @@ import (
 	"github.com/spaquet/gemtracker/internal/gemfile"
 )
 
+// Spinner frames for loading animation
+var spinnerFrames = []string{"⠋", "⠙", "⠹", "⠸"}
+
 type AnalysisCompleteMsg struct {
 	Result *gemfile.AnalysisResult
 	Error  error
 }
+
+type AnimationTickMsg struct{}
 
 type ViewMode string
 
@@ -54,6 +59,9 @@ type Model struct {
 	FilteredGems   []*gemfile.GemStatus
 	SelectedGemIdx int // For navigation
 	ScrollOffset   int // For viewport scrolling
+
+	// Animation state
+	AnimationFrame int // For loading spinner
 
 	// Navigation
 	Cursor int
@@ -106,13 +114,10 @@ func NewModel(version, commit, date string) *Model {
 	m.PathInput.TextStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("255"))
 	m.PathInput.Cursor.Style = lipgloss.NewStyle().Foreground(ColorPrimary).Bold(true)
 
-	m.FilterInput.Prompt = "> "
-	m.FilterInput.Placeholder = "type gem name to filter"
+	m.FilterInput.Placeholder = "Search gems..."
 	m.FilterInput.PlaceholderStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
-	m.FilterInput.PromptStyle = lipgloss.NewStyle().Foreground(ColorPrimary).Bold(true)
 	m.FilterInput.TextStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("255"))
 	m.FilterInput.Cursor.Style = lipgloss.NewStyle().Foreground(ColorPrimary).Bold(true)
-	m.FilterInput.CharLimit = 50
 
 	m.initializeCommands()
 	m.setupCommandList()
@@ -183,7 +188,14 @@ func (m *Model) initializeCommands() {
 			Execute: func(m *Model) tea.Cmd {
 				m.CurrentView = ViewAnalyzing
 				m.CurrentMessage = "Analyzing Gemfile.lock..."
-				return performAnalysis(m.GemfileLockPath)
+				m.AnimationFrame = 0
+				// Return batch of commands: start animation ticker + perform analysis
+				return tea.Batch(
+					tea.Tick(time.Millisecond*200, func(time.Time) tea.Msg {
+						return AnimationTickMsg{}
+					}),
+					performAnalysis(m.GemfileLockPath),
+				)
 			},
 		},
 		{

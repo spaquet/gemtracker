@@ -2,6 +2,7 @@ package ui
 
 import (
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
@@ -10,6 +11,13 @@ import (
 
 func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case AnimationTickMsg:
+		// Update animation frame for spinner
+		m.AnimationFrame = (m.AnimationFrame + 1) % 4
+		// Return a command to send the next tick
+		return m, tea.Tick(time.Millisecond*200, func(time.Time) tea.Msg {
+			return AnimationTickMsg{}
+		})
 	case tea.KeyMsg:
 		if m.CurrentView == ViewFilterInput {
 			switch msg.String() {

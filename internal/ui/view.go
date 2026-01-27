@@ -208,13 +208,18 @@ func (m *Model) renderFooter() string {
 
 func (m *Model) viewAnalyzing() string {
 	header := m.renderHeader()
+
+	// Get spinner frame
+	spinnerFrames := []string{"⠋", "⠙", "⠹", "⠸"}
+	spinnerFrame := spinnerFrames[m.AnimationFrame%len(spinnerFrames)]
+
 	message := lipgloss.NewStyle().
 		Bold(true).
 		Foreground(ColorPrimary).
 		Align(lipgloss.Center).
 		Width(m.Width - 4).
 		Padding(3, 0).
-		Render("🔄 " + m.CurrentMessage)
+		Render(spinnerFrame + " " + m.CurrentMessage)
 
 	backPrompt := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("244")).
@@ -266,12 +271,16 @@ func (m *Model) viewFilterInput() string {
 	// Gem list display - viewport style
 	listContent := m.renderGemListViewport()
 
-	// Search input
+	// Search input with clear separation
 	filterInput := m.FilterInput.View()
 	filterInputBox := lipgloss.NewStyle().
 		Width(m.Width - 6).
 		PaddingLeft(2).
 		PaddingRight(2).
+		PaddingTop(1).
+		MarginTop(1).
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(ColorPrimary).
 		Render(filterInput)
 
 	// Instructions
@@ -302,11 +311,17 @@ func (m *Model) renderGemListViewport() string {
 	}
 
 	// Calculate visible lines
+	// Reserve space for: header (10) + summary (2) + search box (4) + instructions (2) + margins (4)
 	headerHeight := 10
-	footerHeight := 5
-	availableHeight := m.Height - headerHeight - footerHeight
-	if availableHeight < 5 {
-		availableHeight = 5
+	summaryHeight := 2
+	searchBoxHeight := 4
+	instructionsHeight := 2
+	margins := 4
+	totalReserved := headerHeight + summaryHeight + searchBoxHeight + instructionsHeight + margins
+
+	availableHeight := m.Height - totalReserved
+	if availableHeight < 3 {
+		availableHeight = 3
 	}
 
 	// Build viewport
