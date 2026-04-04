@@ -137,27 +137,80 @@ When clicking a gem:
 - Go 1.24.0 or later
 - A Ruby project with `Gemfile.lock` in the current directory
 
-### Build
+### Build Targets (Makefile)
+
+**`make build`** - Build development binary
 ```bash
 make build
-# or
-go build -o gemtracker ./cmd/gemtracker
+# Output: ./gemtracker (with git commit/tag info embedded)
+```
+
+**`make build-dev`** - Build development binary (explicit)
+```bash
+make build-dev
+# Same as `make build`
+```
+
+**`make build-release`** - Build release binaries for macOS
+```bash
+make build-release
+# Creates:
+# - dist/gemtracker-darwin-amd64.tar.gz (Intel Mac)
+# - dist/gemtracker-darwin-arm64.tar.gz (Apple Silicon)
+```
+
+**`make test`** - Run all tests
+```bash
+make test
+# Runs: go test -v ./...
+```
+
+**`make clean`** - Clean build artifacts
+```bash
+make clean
+# Removes: ./gemtracker, ./dist/, go build cache
+```
+
+**`make help`** - Show all available targets
+```bash
+make help
+```
+
+### Version Information
+
+Build version info is automatically injected at compile time:
+- `VERSION` - Git tag or "dev" (override with `VERSION=1.0.0 make build`)
+- `COMMIT` - Short git commit hash (override with `COMMIT=abc123 make build`)
+- `DATE` - Build date in ISO format (override with `DATE=... make build`)
+
+Example with custom version:
+```bash
+VERSION=1.0.0 COMMIT=abc123 DATE="2026-04-04T00:00:00Z" make build
 ```
 
 ### Run
 ```bash
-./gemtracker
-# or from anywhere after installation
-gemtracker
+./gemtracker [path-to-gemfile-lock-or-directory]
+
+# Examples:
+./gemtracker                    # Uses ./Gemfile.lock
+./gemtracker /path/to/project   # Uses /path/to/project/Gemfile.lock
+./gemtracker Gemfile.lock       # Explicit Gemfile.lock path
 ```
 
-### Development
+### Development Workflow
 ```bash
-# Build with dev version info
-go run ./cmd/gemtracker -ldflags "-X main.version=dev -X main.commit=$(git rev-parse --short HEAD) -X main.date=$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+# Quick dev build and run
+make build && ./gemtracker
 
-# Or simply
+# Run directly without building
 go run ./cmd/gemtracker
+
+# Run tests
+make test
+
+# Clean everything and rebuild
+make clean && make build
 ```
 
 ## UI State Flow
