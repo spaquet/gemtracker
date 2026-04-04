@@ -401,8 +401,8 @@ func (m *Model) renderDependencyTree(node *gemfile.DependencyNode, maxLines int,
 	return lines
 }
 
-func (m *Model) renderTreeNode(node *gemfile.DependencyNode, depth int, lines *[]string, gemNames *[]string, remaining int, lineIdx int) int {
-	if remaining <= 0 || node == nil {
+func (m *Model) renderTreeNode(node *gemfile.DependencyNode, depth int, lines *[]string, gemNames *[]string, maxLines int, lineIdx int) int {
+	if node == nil || len(*lines) >= maxLines {
 		return lineIdx
 	}
 
@@ -433,12 +433,13 @@ func (m *Model) renderTreeNode(node *gemfile.DependencyNode, depth int, lines *[
 	*lines = append(*lines, line)
 	*gemNames = append(*gemNames, name)
 	lineIdx++
-	remaining--
 
-	// Render all children
+	// Render all children (stop if we hit maxLines)
 	for _, child := range node.Children {
-		lineIdx = m.renderTreeNode(child, depth+1, lines, gemNames, remaining, lineIdx)
-		remaining = len(*lines) - 1
+		if len(*lines) >= maxLines {
+			break
+		}
+		lineIdx = m.renderTreeNode(child, depth+1, lines, gemNames, maxLines, lineIdx)
 	}
 
 	return lineIdx
