@@ -187,7 +187,7 @@ func (m *Model) handleGemDetailKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 
 		if selectedGemName != "" {
-			// Find the gem status for this name
+			// Try to find the gem status for this name
 			var targetGem *gemfile.GemStatus
 			for _, gem := range m.AnalysisResult.GemStatuses {
 				if gem.Name == selectedGemName {
@@ -195,14 +195,22 @@ func (m *Model) handleGemDetailKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 					break
 				}
 			}
+			// Update SelectedGem if found, otherwise use the name anyway
 			if targetGem != nil {
 				m.SelectedGem = targetGem
-				m.DetailTreeCursor = 0
-				m.DetailForwardOffset = 0
-				m.DetailReverseOffset = 0
-				// Load dependency analysis for this gem
-				return m, performDependencyAnalysis(m.GemfileLockPath, selectedGemName)
 			}
+			// Always load dependency analysis for the selected gem, even if not in AnalysisResult
+			m.DetailTreeCursor = 0
+			m.DetailForwardOffset = 0
+			m.DetailReverseOffset = 0
+			m.Loading = true
+			m.LoadingMessage = "Loading dependencies..."
+			return m, tea.Batch(
+				tea.Tick(time.Millisecond*100, func(time.Time) tea.Msg {
+					return SpinnerTickMsg{}
+				}),
+				performDependencyAnalysis(m.GemfileLockPath, selectedGemName),
+			)
 		}
 		return m, nil
 
