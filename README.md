@@ -265,6 +265,14 @@ gemtracker --version
 - CVE database is static (not real-time updated)
 - No support for Gemfile global options or git/path sources yet
 
+## Documentation
+
+- **[CHANGELOG.md](CHANGELOG.md)** — Version history and what's new in each release
+- **[RELEASE_GUIDE.md](RELEASE_GUIDE.md)** — How to make releases and manage the distribution pipeline
+- **[DISTRIBUTION_SETUP.md](DISTRIBUTION_SETUP.md)** — GitHub setup instructions for distribution
+- **[SECURITY.md](SECURITY.md)** — Security policy and vulnerability reporting
+- **[CLAUDE.md](CLAUDE.md)** — Development guidelines for contributors
+
 ## Security
 
 Please report security vulnerabilities privately using [GitHub Security Advisory](https://github.com/spaquet/gemtracker/security/advisories). See [SECURITY.md](SECURITY.md) for details.
@@ -276,6 +284,12 @@ See [LICENSE](LICENSE) file for details.
 ## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
+
+## Support
+
+- **Questions?** Open a [discussion](https://github.com/spaquet/gemtracker/discussions)
+- **Found a bug?** Open an [issue](https://github.com/spaquet/gemtracker/issues)
+- **Want to help?** Check [contributing guidelines](CLAUDE.md)
 
 ## Troubleshooting
 
