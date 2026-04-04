@@ -56,8 +56,8 @@ func Parse(path string) (*Gemfile, error) {
 	scanner := bufio.NewScanner(file)
 	inGemSection := false
 
-	gemLineRegex := regexp.MustCompile(`^\s{4}([a-z0-9_-]+)\s+\(([^)]+)\)`)
-	dependencyRegex := regexp.MustCompile(`^\s{6}([a-z0-9_-]+)`)
+	gemLineRegex := regexp.MustCompile(`(?i)^\s{4}([a-z0-9_-]+)\s+\(([^)]+)\)`)
+	dependencyRegex := regexp.MustCompile(`(?i)^\s{6}([a-z0-9_-]+)`)
 
 	var currentGem *Gem
 
@@ -83,7 +83,7 @@ func Parse(path string) (*Gemfile, error) {
 		// Parse gem lines (4-space indent)
 		matches := gemLineRegex.FindStringSubmatch(line)
 		if len(matches) > 0 {
-			name := matches[1]
+			name := strings.ToLower(matches[1])
 			version := matches[2]
 
 			currentGem = &Gem{
@@ -100,7 +100,7 @@ func Parse(path string) (*Gemfile, error) {
 		if currentGem != nil {
 			depMatches := dependencyRegex.FindStringSubmatch(line)
 			if len(depMatches) > 0 {
-				depName := depMatches[1]
+				depName := strings.ToLower(depMatches[1])
 				currentGem.Dependencies = append(currentGem.Dependencies, depName)
 			}
 		}
