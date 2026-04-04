@@ -308,15 +308,15 @@ func TestGetReverseDependencies(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := GetReverseDependencies(tt.gemName, gf)
-			
+
 			// Sort for comparison
 			sort.Strings(result)
 			sort.Strings(tt.expected)
-			
+
 			if len(result) != len(tt.expected) {
 				t.Errorf("got %d reverse dependencies, want %d", len(result), len(tt.expected))
 			}
-			
+
 			for i, dep := range result {
 				if i >= len(tt.expected) || dep != tt.expected[i] {
 					t.Errorf("got %v, want %v", result, tt.expected)

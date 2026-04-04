@@ -6,10 +6,10 @@ import (
 
 // Vulnerability represents a known vulnerability
 type Vulnerability struct {
-	GemName      string
+	GemName          string
 	AffectedVersions []string // e.g., "< 6.1.4", ">= 6.0.0, < 6.0.5"
-	Description  string
-	CVE          string
+	Description      string
+	CVE              string
 }
 
 // VulnerabilityChecker checks if gems have known vulnerabilities
@@ -23,37 +23,37 @@ func NewVulnerabilityChecker() *VulnerabilityChecker {
 		vulnerabilities: []Vulnerability{
 			// Rails vulnerabilities
 			{
-				GemName:      "rails",
+				GemName:          "rails",
 				AffectedVersions: []string{"< 6.1.4"},
-				Description: "SQL injection vulnerability in Rails",
-				CVE:         "CVE-2021-22942",
+				Description:      "SQL injection vulnerability in Rails",
+				CVE:              "CVE-2021-22942",
 			},
 			{
-				GemName:      "rails",
+				GemName:          "rails",
 				AffectedVersions: []string{"< 7.0.0"},
-				Description: "Potential code execution in Rails",
-				CVE:         "CVE-2022-27777",
+				Description:      "Potential code execution in Rails",
+				CVE:              "CVE-2022-27777",
 			},
 			// Devise vulnerabilities
 			{
-				GemName:      "devise",
+				GemName:          "devise",
 				AffectedVersions: []string{"< 4.8.0"},
-				Description: "Authentication bypass in Devise",
-				CVE:         "CVE-2021-41113",
+				Description:      "Authentication bypass in Devise",
+				CVE:              "CVE-2021-41113",
 			},
 			// Rack vulnerabilities
 			{
-				GemName:      "rack",
+				GemName:          "rack",
 				AffectedVersions: []string{"< 2.1.4", ">= 2.2.0, < 2.2.3"},
-				Description: "DoS vulnerability in Rack",
-				CVE:         "CVE-2022-24834",
+				Description:      "DoS vulnerability in Rack",
+				CVE:              "CVE-2022-24834",
 			},
 			// Actionpack vulnerabilities
 			{
-				GemName:      "actionpack",
+				GemName:          "actionpack",
 				AffectedVersions: []string{"< 6.1.5"},
-				Description: "XSS vulnerability in Action Pack",
-				CVE:         "CVE-2022-22719",
+				Description:      "XSS vulnerability in Action Pack",
+				CVE:              "CVE-2022-22719",
 			},
 		},
 	}

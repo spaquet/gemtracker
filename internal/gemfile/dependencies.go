@@ -8,15 +8,15 @@ type DependencyNode struct {
 }
 
 type DependencyInfo struct {
-	GemName           string
-	Version           string
-	ForwardDeps       []string // What this gem depends on
-	ReverseDeps       []string // What depends on this gem
-	ForwardDepsCount  int
-	ReverseDepsCount  int
+	GemName          string
+	Version          string
+	ForwardDeps      []string // What this gem depends on
+	ReverseDeps      []string // What depends on this gem
+	ForwardDepsCount int
+	ReverseDepsCount int
 	// Tree structures
-	ForwardTree       *DependencyNode // Tree of what this gem depends on
-	ReverseTree       *DependencyNode // Tree of what depends on this gem
+	ForwardTree *DependencyNode // Tree of what this gem depends on
+	ReverseTree *DependencyNode // Tree of what depends on this gem
 }
 
 type DependencyResult struct {

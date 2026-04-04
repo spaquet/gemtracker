@@ -59,7 +59,7 @@ type Model struct {
 	ActiveTab   ViewMode // Persists across ViewLoading/ViewGemDetail
 
 	// Data
-	AnalysisResult  *gemfile.AnalysisResult
+	AnalysisResult   *gemfile.AnalysisResult
 	DependencyResult *gemfile.DependencyResult
 
 	// Gem List screen state
@@ -72,10 +72,10 @@ type Model struct {
 	DetailSection           int // 0 = forward deps, 1 = reverse deps
 	DetailForwardOffset     int
 	DetailReverseOffset     int
-	DetailTreeCursor        int        // Selected line in current tree panel
-	DetailForwardLines      []string   // Gem names at each line in forward tree
-	DetailReverseLines      []string   // Gem names at each line in reverse tree
-	DetailCurrentlyViewing  *gemfile.GemStatus // The gem currently being viewed in detail (may differ from SelectedGem)
+	DetailTreeCursor        int                     // Selected line in current tree panel
+	DetailForwardLines      []string                // Gem names at each line in forward tree
+	DetailReverseLines      []string                // Gem names at each line in reverse tree
+	DetailCurrentlyViewing  *gemfile.GemStatus      // The gem currently being viewed in detail (may differ from SelectedGem)
 	DetailCurrentReverseDep *gemfile.DependencyInfo // Current gem's reverse dependencies
 
 	// Search screen state
