@@ -116,6 +116,11 @@ func (m *Model) handleGemListKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.CurrentView = ViewGemDetail
 			m.Loading = true
 			m.LoadingMessage = "Loading dependencies..."
+			// Reset navigation state for new detail view
+			m.DetailSection = 0
+			m.DetailTreeCursor = 0
+			m.DetailForwardOffset = 0
+			m.DetailReverseOffset = 0
 			return m, tea.Batch(
 				tea.Tick(time.Millisecond*100, func(time.Time) tea.Msg {
 					return SpinnerTickMsg{}
