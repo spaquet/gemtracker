@@ -452,20 +452,22 @@ func (m *Model) renderReverseDepsList(height int) string {
 		lines = append(lines, nameLine)
 		m.DetailReverseLines = append(m.DetailReverseLines, depName)
 
-		// Description from analysis result
+		// Description from AnalysisResult
+		desc := ""
 		if m.AnalysisResult != nil {
 			for _, gemStatus := range m.AnalysisResult.GemStatuses {
 				if gemStatus.Name == depName {
-					if gemStatus.Description != "" {
-						descLine := "    " + truncateStr(gemStatus.Description, 50)
-						descStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(ColorTextMuted))
-						lines = append(lines, descStyle.Render(descLine))
-						// Repeat gem name in DetailReverseLines for description line
-						m.DetailReverseLines = append(m.DetailReverseLines, depName)
-					}
+					desc = gemStatus.Description
 					break
 				}
 			}
+		}
+		if desc != "" {
+			descLine := "    " + truncateStr(desc, 50)
+			descStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(ColorTextMuted))
+			lines = append(lines, descStyle.Render(descLine))
+			// Repeat gem name in DetailReverseLines for description line
+			m.DetailReverseLines = append(m.DetailReverseLines, depName)
 		}
 	}
 
