@@ -19,6 +19,45 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return AnimationTickMsg{}
 		})
 	case tea.KeyMsg:
+		if m.CurrentView == ViewDependencySearch {
+			switch msg.String() {
+			case "esc":
+				m.CurrentView = ViewMain
+				m.FilterInput.Reset()
+				m.FilteredGems = nil
+				m.SelectedGemIdx = 0
+				m.ScrollOffset = 0
+				return m, nil
+			case "up":
+				// Move selection up
+				if m.SelectedGemIdx > 0 {
+					m.SelectedGemIdx--
+					// Scroll viewport if needed
+					if m.SelectedGemIdx < m.ScrollOffset {
+						m.ScrollOffset = m.SelectedGemIdx
+					}
+				}
+				return m, nil
+			case "down":
+				// Move selection down
+				if m.SelectedGemIdx < len(m.FilteredGems)-1 {
+					m.SelectedGemIdx++
+					// Scroll viewport if needed using consistent height calculation
+					visibleLines := m.calculateDepsViewportHeight()
+					if m.SelectedGemIdx >= m.ScrollOffset+visibleLines {
+						m.ScrollOffset = m.SelectedGemIdx - visibleLines + 1
+					}
+				}
+				return m, nil
+			default:
+				// Update filter input for typing
+				var cmd tea.Cmd
+				m.FilterInput, cmd = m.FilterInput.Update(msg)
+				m.updateGemListFilter()
+				return m, cmd
+			}
+		}
+
 		if m.CurrentView == ViewFilterInput {
 			switch msg.String() {
 			case "esc":
@@ -69,11 +108,29 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.ErrorMessage = msg.Error.Error()
 		} else {
 			m.AnalysisResult = msg.Result
-			m.CurrentView = ViewFilterInput
+
+			// Route based on which command initiated this
+			if m.CurrentCommand == "deps" {
+				m.CurrentView = ViewDependencySearch
+				m.CurrentCommand = ""
+			} else {
+				m.CurrentView = ViewFilterInput
+			}
+
 			m.FilterInput.Reset()
+			m.FilterInput.Focus()
 			m.SelectedGemIdx = 0
 			m.ScrollOffset = 0
 			m.updateGemListFilter()
+		}
+		return m, nil
+	case DependencyCompleteMsg:
+		if msg.Error != nil {
+			m.CurrentView = ViewError
+			m.ErrorMessage = msg.Error.Error()
+		} else {
+			m.DependencyResult = msg.Result
+			m.CurrentView = ViewDependencyTree
 		}
 		return m, nil
 	}
@@ -99,9 +156,23 @@ func (m *Model) updateGemListFilter() {
 		filtered = append(filtered, gemStatus)
 	}
 
+	// Sort alphabetically
+	m.sortGemStatuses(filtered)
+
 	m.FilteredGems = filtered
 	m.SelectedGemIdx = 0
 	m.ScrollOffset = 0
+}
+
+func (m *Model) sortGemStatuses(gems []*gemfile.GemStatus) {
+	// Simple bubble sort for gem statuses (small enough list)
+	for i := 0; i < len(gems); i++ {
+		for j := i + 1; j < len(gems); j++ {
+			if strings.ToLower(gems[i].Name) > strings.ToLower(gems[j].Name) {
+				gems[i], gems[j] = gems[j], gems[i]
+			}
+		}
+	}
 }
 
 
@@ -117,10 +188,40 @@ func (m *Model) handleKeypress(msg tea.KeyMsg) (*Model, tea.Cmd) {
 			if m.ShowDropdown && m.FilteredIndex >= 0 && m.FilteredIndex < len(m.Commands) {
 				return m.executeSelectedCommand()
 			}
-		case ViewResults, ViewHelp, ViewError:
+		case ViewDependencySearch:
+			if len(m.FilteredGems) > 0 && m.SelectedGemIdx >= 0 && m.SelectedGemIdx < len(m.FilteredGems) {
+				// User selected a gem for dependency analysis
+				selectedGem := m.FilteredGems[m.SelectedGemIdx]
+				m.CurrentView = ViewAnalyzing
+				m.CurrentMessage = "Analyzing dependencies..."
+				m.AnimationFrame = 0
+				return m, tea.Batch(
+					tea.Tick(time.Millisecond*200, func(time.Time) tea.Msg {
+						return AnimationTickMsg{}
+					}),
+					performDependencyAnalysis(m.GemfileLockPath, selectedGem.Name),
+				)
+			}
+		case ViewFilterInput:
+			if m.CurrentCommand == "deps" && len(m.FilteredGems) > 0 && m.SelectedGemIdx >= 0 && m.SelectedGemIdx < len(m.FilteredGems) {
+				// User selected a gem for dependency analysis
+				selectedGem := m.FilteredGems[m.SelectedGemIdx]
+				m.CurrentCommand = ""
+				m.CurrentView = ViewAnalyzing
+				m.CurrentMessage = "Analyzing dependencies..."
+				m.AnimationFrame = 0
+				return m, tea.Batch(
+					tea.Tick(time.Millisecond*200, func(time.Time) tea.Msg {
+						return AnimationTickMsg{}
+					}),
+					performDependencyAnalysis(m.GemfileLockPath, selectedGem.Name),
+				)
+			}
+		case ViewResults, ViewHelp, ViewError, ViewDependencyTree:
 			m.CurrentView = ViewMain
 			m.CurrentMessage = "Ready"
 			m.ErrorMessage = ""
+			m.DependencyResult = nil
 		case ViewSelectPath:
 			path := m.PathInput.Value()
 			if path != "" {

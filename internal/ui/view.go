@@ -23,6 +23,10 @@ func (m *Model) View() string {
 		return m.viewResults()
 	case ViewFilterInput:
 		return m.viewFilterInput()
+	case ViewDependencySearch:
+		return m.viewDependencySearch()
+	case ViewDependencyTree:
+		return m.viewDependencyTree()
 	case ViewHelp:
 		return m.viewHelp()
 	case ViewError:
@@ -269,7 +273,7 @@ func (m *Model) viewFilterInput() string {
 		Render(m.CurrentMessage)
 
 	// Gem list display - viewport style
-	listContent := m.renderGemListViewport()
+	listContent := m.renderGemListViewport(10) // Fixed height of 10 for analyze view
 
 	// Search input with clear separation
 	filterInput := m.FilterInput.View()
@@ -308,7 +312,7 @@ func (m *Model) viewFilterInput() string {
 	)
 }
 
-func (m *Model) renderGemListViewport() string {
+func (m *Model) renderGemListViewport(maxHeight int) string {
 	if m.FilteredGems == nil || len(m.FilteredGems) == 0 {
 		return lipgloss.NewStyle().
 			PaddingLeft(2).
@@ -317,17 +321,11 @@ func (m *Model) renderGemListViewport() string {
 			Render("(no gems match filter)")
 	}
 
-	// Calculate visible lines - be conservative to avoid overlap
-	// Reserve space for: header (10) + summary (2) + search box (5) + debug (1) + instructions (1) = 19
-	// This ensures list never overlaps with search box
-	maxGemsHeight := m.Height - 19
-	if maxGemsHeight < 3 {
-		maxGemsHeight = 3
+	// Use provided max height
+	availableHeight := maxHeight
+	if availableHeight < 3 {
+		availableHeight = 3
 	}
-	if maxGemsHeight > 10 { // Cap at 10 lines to prevent overlap
-		maxGemsHeight = 10
-	}
-	availableHeight := maxGemsHeight
 
 	// Build viewport
 	var lines []string
@@ -363,7 +361,13 @@ func (m *Model) formatGemLine(gemStatus *gemfile.GemStatus, isSelected bool) str
 	// Build the main line: status, name, version
 	line := fmt.Sprintf("%s %-30s v%-8s", statusIcon, gemStatus.Name, gemStatus.Version)
 
-	// Add additional info
+	// Add groups if present
+	if len(gemStatus.Groups) > 0 {
+		groupStr := strings.Join(gemStatus.Groups, ", ")
+		line += fmt.Sprintf("  [%s]", groupStr)
+	}
+
+	// Add additional info (vulnerabilities or outdated)
 	if gemStatus.IsVulnerable {
 		line += fmt.Sprintf("  %s", gemStatus.VulnerabilityInfo)
 	} else if gemStatus.IsOutdated && gemStatus.LatestVersion != "" {
@@ -381,6 +385,159 @@ func (m *Model) formatGemLine(gemStatus *gemfile.GemStatus, isSelected bool) str
 
 	// Normal line: just show the text
 	return line
+}
+
+func (m *Model) viewDependencyTree() string {
+	header := m.renderHeader()
+
+	if m.DependencyResult == nil {
+		return lipgloss.JoinVertical(
+			lipgloss.Top,
+			header,
+			lipgloss.NewStyle().
+				Foreground(ColorError).
+				Padding(2, 2).
+				Render("No dependency result available"),
+		)
+	}
+
+	depInfo := m.DependencyResult.DependencyInfo
+	if depInfo == nil {
+		return lipgloss.JoinVertical(
+			lipgloss.Top,
+			header,
+			lipgloss.NewStyle().
+				Foreground(ColorError).
+				Padding(2, 2).
+				Render("Gem not found"),
+		)
+	}
+
+	// Title
+	titleText := fmt.Sprintf("Dependencies for: %s (v%s)", depInfo.GemName, depInfo.Version)
+	title := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(ColorPrimary).
+		PaddingLeft(2).
+		PaddingRight(2).
+		MarginTop(1).
+		Render(titleText)
+
+	// Forward dependencies tree (what this gem depends on)
+	forwardSection := m.renderDependencyTreeSection("Dependencies This Gem Needs", depInfo.ForwardTree)
+
+	// Reverse dependencies tree (what depends on this gem)
+	reverseSection := m.renderDependencyTreeSection("Gems That Depend On This", depInfo.ReverseTree)
+
+	// Instructions
+	instructions := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("240")).
+		Italic(true).
+		PaddingLeft(2).
+		MarginTop(2).
+		Render("Press Enter to return to main menu")
+
+	return lipgloss.JoinVertical(
+		lipgloss.Top,
+		header,
+		title,
+		forwardSection,
+		"",
+		reverseSection,
+		"",
+		instructions,
+	)
+}
+
+func (m *Model) renderDependencyTreeSection(title string, root *gemfile.DependencyNode) string {
+	sectionTitle := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(ColorSecondary).
+		PaddingLeft(2).
+		PaddingRight(2).
+		MarginTop(1).
+		Render(title)
+
+	if root == nil || len(root.Children) == 0 {
+		emptyMsg := lipgloss.NewStyle().
+			Foreground(lipgloss.Color("244")).
+			PaddingLeft(4).
+			Render("(none)")
+		return lipgloss.JoinVertical(lipgloss.Top, sectionTitle, emptyMsg)
+	}
+
+	// Smart rendering: show direct children + their direct children (limited depth)
+	var lines []string
+	seen := make(map[string]bool)
+
+	for i, child := range root.Children {
+		isLast := i == len(root.Children)-1
+		lines = append(lines, m.renderSmartDependencyNode(child, "", isLast, seen, 0)...)
+	}
+
+	depContent := strings.Join(lines, "\n")
+	depBox := lipgloss.NewStyle().
+		PaddingLeft(3).
+		PaddingRight(2).
+		Render(depContent)
+
+	return lipgloss.JoinVertical(lipgloss.Top, sectionTitle, depBox)
+}
+
+// renderSmartDependencyNode renders a dependency node with smart depth limiting
+// Shows up to 2 levels: direct deps and their children, with context
+func (m *Model) renderSmartDependencyNode(node *gemfile.DependencyNode, prefix string, isLast bool, seen map[string]bool, depth int) []string {
+	var lines []string
+
+	// Current node line
+	connector := "├── "
+	if isLast {
+		connector = "└── "
+	}
+
+	// Mark if this gem was already seen (circular reference)
+	circularMark := ""
+	if seen[node.Name] && depth > 0 {
+		circularMark = " ↩"
+	}
+	seen[node.Name] = true
+
+	nodeLine := fmt.Sprintf("%s%s (v%s)%s", connector, node.Name, node.Version, circularMark)
+	lines = append(lines, prefix+nodeLine)
+
+	// Only show children if depth < 2 (limit to 2 levels)
+	if len(node.Children) > 0 && depth < 1 {
+		extension := "│   "
+		if isLast {
+			extension = "    "
+		}
+
+		// Limit to showing first 3 children for readability
+		childrenToShow := len(node.Children)
+		if childrenToShow > 3 {
+			childrenToShow = 3
+		}
+
+		for i := 0; i < childrenToShow; i++ {
+			child := node.Children[i]
+			childIsLast := i == childrenToShow-1 && childrenToShow == len(node.Children)
+			childLines := m.renderSmartDependencyNode(child, prefix+extension, childIsLast, seen, depth+1)
+			lines = append(lines, childLines...)
+		}
+
+		// If there are more children than we showed, indicate that
+		if childrenToShow < len(node.Children) {
+			remainingCount := len(node.Children) - childrenToShow
+			moreMsg := fmt.Sprintf("%s    └─ ... and %d more", prefix, remainingCount)
+			lines = append(lines, moreMsg)
+		}
+	} else if len(node.Children) > 0 && depth >= 1 {
+		// Indicate there are more deps but we're limiting depth
+		moreMsg := fmt.Sprintf("%s└─ → %d more dependencies", prefix, len(node.Children))
+		lines = append(lines, moreMsg)
+	}
+
+	return lines
 }
 
 func (m *Model) viewHelp() string {
@@ -496,6 +653,68 @@ func (m *Model) viewSelectPath() string {
 		hint,
 		instructions,
 	)
+}
+
+func (m *Model) viewDependencySearch() string {
+	header := m.renderHeader()
+
+	// Summary line
+	summary := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("244")).
+		PaddingLeft(2).
+		PaddingRight(2).
+		MarginTop(1).
+		Render(m.CurrentMessage)
+
+	// Search input with clear separation - FIXED AT TOP
+	filterInput := m.FilterInput.View()
+	filterInputBox := lipgloss.NewStyle().
+		Width(m.Width - 6).
+		PaddingLeft(2).
+		PaddingRight(2).
+		PaddingTop(1).
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(ColorPrimary).
+		Render(filterInput)
+
+	// Calculate viewport height using consistent calculation
+	viewportHeight := m.calculateDepsViewportHeight()
+
+	// Gem list display - viewport style with calculated height
+	listContent := m.renderGemListViewport(viewportHeight)
+
+	// Instructions
+	instructions := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("240")).
+		Italic(true).
+		PaddingLeft(2).
+		MarginTop(1).
+		Render("↑/↓: navigate  •  Type to search  •  Enter: select  •  Esc: back")
+
+	return lipgloss.JoinVertical(
+		lipgloss.Top,
+		header,
+		summary,
+		filterInputBox,
+		listContent,
+		instructions,
+	)
+}
+
+func (m *Model) calculateDepsViewportHeight() int {
+	const (
+		headerHeight      = 10
+		summaryHeight     = 2
+		searchBoxHeight   = 3
+		instructionsHeight = 2
+		spacing           = 2
+	)
+
+	viewportHeight := m.Height - (headerHeight + summaryHeight + searchBoxHeight + instructionsHeight + spacing)
+	if viewportHeight < 3 {
+		viewportHeight = 3
+	}
+	return viewportHeight
 }
 
 func timeAgo(t time.Time) string {

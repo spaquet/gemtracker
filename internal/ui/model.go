@@ -2,6 +2,7 @@ package ui
 
 import (
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/charmbracelet/bubbles/list"
@@ -19,18 +20,25 @@ type AnalysisCompleteMsg struct {
 	Error  error
 }
 
+type DependencyCompleteMsg struct {
+	Result *gemfile.DependencyResult
+	Error  error
+}
+
 type AnimationTickMsg struct{}
 
 type ViewMode string
 
 const (
-	ViewMain        ViewMode = "main"
-	ViewAnalyzing   ViewMode = "analyzing"
-	ViewResults     ViewMode = "results"
-	ViewFilterInput ViewMode = "filter_input"
-	ViewHelp        ViewMode = "help"
-	ViewError       ViewMode = "error"
-	ViewSelectPath  ViewMode = "select_path"
+	ViewMain               ViewMode = "main"
+	ViewAnalyzing          ViewMode = "analyzing"
+	ViewResults            ViewMode = "results"
+	ViewFilterInput        ViewMode = "filter_input"
+	ViewDependencySearch   ViewMode = "dependency_search"
+	ViewDependencyTree     ViewMode = "dependency_tree"
+	ViewHelp               ViewMode = "help"
+	ViewError              ViewMode = "error"
+	ViewSelectPath         ViewMode = "select_path"
 )
 
 
@@ -76,6 +84,8 @@ type Model struct {
 	CurrentMessage   string
 	ErrorMessage     string
 	AnalysisResult   interface{} // Will hold *gemfile.AnalysisResult
+	DependencyResult *gemfile.DependencyResult
+	CurrentCommand   string // Track which command initiated filter view
 
 	// App metadata
 	Version string
@@ -163,11 +173,63 @@ func performAnalysis(gemfilePath string) tea.Cmd {
 			}
 		}
 
+		// Load group information from Gemfile
+		dir := filepath.Dir(gemfilePath)
+		gf.LoadGroupsFromGemfile(dir)
+
 		result := gemfile.Analyze(gf)
 		return AnalysisCompleteMsg{
 			Result: result,
 			Error:  nil,
 		}
+	}
+}
+
+func performDependencyLoad(gemfilePath string) tea.Cmd {
+	return func() tea.Msg {
+		gf, err := gemfile.Parse(gemfilePath)
+		if err != nil {
+			return AnalysisCompleteMsg{Error: err}
+		}
+
+		// Load group information from Gemfile
+		dir := filepath.Dir(gemfilePath)
+		gf.LoadGroupsFromGemfile(dir)
+
+		// Convert to AnalysisResult for gem selection
+		result := &gemfile.AnalysisResult{
+			AllGems:     gf.GetGemsAsList(),
+			GemStatuses: convertToStatuses(gf.GetGemsAsList()),
+		}
+		return AnalysisCompleteMsg{Result: result}
+	}
+}
+
+func convertToStatuses(gems []*gemfile.Gem) []*gemfile.GemStatus {
+	statuses := make([]*gemfile.GemStatus, len(gems))
+	for i, gem := range gems {
+		statuses[i] = &gemfile.GemStatus{
+			Name:    gem.Name,
+			Version: gem.Version,
+			Groups:  gem.Groups,
+		}
+	}
+	return statuses
+}
+
+func performDependencyAnalysis(gemfilePath string, gemName string) tea.Cmd {
+	return func() tea.Msg {
+		gf, err := gemfile.Parse(gemfilePath)
+		if err != nil {
+			return DependencyCompleteMsg{Error: err}
+		}
+
+		// Load group information from Gemfile
+		dir := filepath.Dir(gemfilePath)
+		gf.LoadGroupsFromGemfile(dir)
+
+		result := gemfile.AnalyzeDependencies(gf, gemName)
+		return DependencyCompleteMsg{Result: result}
 	}
 }
 
@@ -203,9 +265,17 @@ func (m *Model) initializeCommands() {
 			Name:        "deps",
 			Description: "Show dependency tree for a gem",
 			Execute: func(m *Model) tea.Cmd {
-				m.CurrentMessage = "Show dependency tree (coming soon)"
-				m.CurrentView = ViewResults
-				return nil
+				m.CurrentCommand = "deps"
+				m.CurrentView = ViewAnalyzing
+				m.CurrentMessage = "Loading dependencies..."
+				m.AnimationFrame = 0
+
+				return tea.Batch(
+					tea.Tick(time.Millisecond*200, func(time.Time) tea.Msg {
+						return AnimationTickMsg{}
+					}),
+					performDependencyLoad(m.GemfileLockPath),
+				)
 			},
 		},
 		{

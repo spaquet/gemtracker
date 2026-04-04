@@ -10,9 +10,10 @@ import (
 )
 
 type Gem struct {
-	Name        string
-	Version     string
+	Name         string
+	Version      string
 	Dependencies []string
+	Groups       []string // e.g., "default", "development", "test", "production"
 }
 
 type Gemfile struct {
@@ -56,6 +57,9 @@ func Parse(path string) (*Gemfile, error) {
 	inGemSection := false
 
 	gemLineRegex := regexp.MustCompile(`^\s{4}([a-z0-9_-]+)\s+\(([^)]+)\)`)
+	dependencyRegex := regexp.MustCompile(`^\s{6}([a-z0-9_-]+)`)
+
+	var currentGem *Gem
 
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -76,16 +80,28 @@ func Parse(path string) (*Gemfile, error) {
 			continue
 		}
 
-		// Parse gem lines
+		// Parse gem lines (4-space indent)
 		matches := gemLineRegex.FindStringSubmatch(line)
 		if len(matches) > 0 {
 			name := matches[1]
 			version := matches[2]
 
-			gf.Gems[name] = &Gem{
-				Name:        name,
-				Version:     version,
+			currentGem = &Gem{
+				Name:         name,
+				Version:      version,
 				Dependencies: []string{},
+				Groups:       []string{},
+			}
+			gf.Gems[name] = currentGem
+			continue
+		}
+
+		// Parse dependency lines (6-space indent)
+		if currentGem != nil {
+			depMatches := dependencyRegex.FindStringSubmatch(line)
+			if len(depMatches) > 0 {
+				depName := depMatches[1]
+				currentGem.Dependencies = append(currentGem.Dependencies, depName)
 			}
 		}
 	}
@@ -107,4 +123,94 @@ func (g *Gemfile) GetGemsAsList() []*Gem {
 		gems = append(gems, gem)
 	}
 	return gems
+}
+
+// LoadGroupsFromGemfile parses the Gemfile to extract group information
+// It updates the gems map with group information
+func (g *Gemfile) LoadGroupsFromGemfile(gemfilePath string) error {
+	// Expand ~ if needed
+	if strings.HasPrefix(gemfilePath, "~") {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return fmt.Errorf("failed to get home directory: %w", err)
+		}
+		gemfilePath = filepath.Join(home, gemfilePath[1:])
+	}
+
+	// Check if it's a directory, if so look for Gemfile
+	info, err := os.Stat(gemfilePath)
+	if err != nil {
+		// Gemfile might not exist, which is okay - just return
+		return nil
+	}
+
+	if info.IsDir() {
+		gemfilePath = filepath.Join(gemfilePath, "Gemfile")
+	}
+
+	// Try to read the Gemfile
+	file, err := os.Open(gemfilePath)
+	if err != nil {
+		// Gemfile doesn't exist, which is okay
+		return nil
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	gemRegex := regexp.MustCompile(`^\s*gem\s+["']([a-z0-9_-]+)["']`)
+	groupRegex := regexp.MustCompile(`^\s*group\s+:([a-z_]+)\s+do`)
+	groupEndRegex := regexp.MustCompile(`^\s*end\s*$`)
+
+	currentGroups := []string{"default"} // Gems outside groups are in "default"
+	inGroup := false
+	groupStack := []string{}
+
+	for scanner.Scan() {
+		line := scanner.Text()
+
+		// Check for group start
+		matches := groupRegex.FindStringSubmatch(line)
+		if len(matches) > 0 {
+			groupName := matches[1]
+			groupStack = append(groupStack, groupName)
+			currentGroups = []string{groupName}
+			inGroup = true
+			continue
+		}
+
+		// Check for group end
+		if inGroup && groupEndRegex.MatchString(line) {
+			if len(groupStack) > 0 {
+				groupStack = groupStack[:len(groupStack)-1]
+			}
+			if len(groupStack) == 0 {
+				currentGroups = []string{"default"}
+				inGroup = false
+			}
+			continue
+		}
+
+		// Check for gem declaration
+		gemMatches := gemRegex.FindStringSubmatch(line)
+		if len(gemMatches) > 0 {
+			gemName := gemMatches[1]
+			if gem, ok := g.Gems[gemName]; ok {
+				// Add groups to this gem (avoid duplicates)
+				for _, group := range currentGroups {
+					found := false
+					for _, existingGroup := range gem.Groups {
+						if existingGroup == group {
+							found = true
+							break
+						}
+					}
+					if !found {
+						gem.Groups = append(gem.Groups, group)
+					}
+				}
+			}
+		}
+	}
+
+	return nil
 }

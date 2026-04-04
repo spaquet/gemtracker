@@ -9,6 +9,7 @@ import (
 type GemStatus struct {
 	Name              string
 	Version           string
+	Groups            []string // e.g., "default", "development", "test"
 	IsOutdated        bool
 	LatestVersion     string // Latest available version
 	IsVulnerable      bool
@@ -39,6 +40,7 @@ func Analyze(gemfile *Gemfile) *AnalysisResult {
 		status := &GemStatus{
 			Name:    gem.Name,
 			Version: gem.Version,
+			Groups:  gem.Groups, // Copy group information
 		}
 
 		// Check if outdated
