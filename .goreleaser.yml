@@ -54,7 +54,7 @@ release:
   mode: append
 
 changelog:
-  use: conventional
+  use: git
   groups:
     - title: Features
       regexp: '^feat(\(.+\))?!?:.+$'
