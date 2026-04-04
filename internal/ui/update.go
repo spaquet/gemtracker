@@ -559,6 +559,10 @@ func (m *Model) ensureDetailCursorVisible() {
 		*offset = m.DetailTreeCursor - panelHeight + 1
 	} else if m.DetailTreeCursor < 0 {
 		m.DetailTreeCursor = 0
+		*offset = 0
+	} else {
+		// Cursor is within visible area - reset offset to show from top if possible
+		*offset = 0
 	}
 
 	// Ensure offset doesn't go past the end
