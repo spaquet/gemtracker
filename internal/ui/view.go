@@ -307,19 +307,6 @@ func (m *Model) viewGemDetail() string {
 	// Two panels: forward deps and reverse deps (side by side)
 	panelHeight := contentHeight - len(gemInfoLines) - 1
 
-	forwardTitle := "Dependencies (what this gem needs)"
-	reverseTitle := "Used By (what depends on this gem)"
-
-	// If navigating forward dependencies with cursor, show the selected gem
-	if m.DetailSection == 0 && m.DetailTreeCursor < len(m.DetailForwardLines) {
-		currentGem := m.DetailForwardLines[m.DetailTreeCursor]
-		reverseTitle = fmt.Sprintf("Used By %s (what depends on it)", currentGem)
-	} else if m.DetailSection == 1 && m.DetailTreeCursor < len(m.DetailReverseLines) {
-		// If navigating reverse dependencies, show a hint
-		currentGem := m.DetailReverseLines[m.DetailTreeCursor]
-		forwardTitle = fmt.Sprintf("Dependencies of %s", currentGem)
-	}
-
 	// Calculate panel widths (split screen)
 	panelWidth := (m.Width - 4) / 2
 	if panelWidth < 20 {
@@ -335,6 +322,20 @@ func (m *Model) viewGemDetail() string {
 	} else {
 		forwardContent = strings.Repeat(" \n", panelHeight)
 		reverseContent = strings.Repeat(" \n", panelHeight)
+	}
+
+	// Calculate titles AFTER rendering panels so DetailForwardLines/DetailReverseLines are populated
+	forwardTitle := "Dependencies (what this gem needs)"
+	reverseTitle := "Used By (what depends on this gem)"
+
+	// If navigating forward dependencies with cursor, show the selected gem
+	if m.DetailSection == 0 && m.DetailTreeCursor < len(m.DetailForwardLines) {
+		currentGem := m.DetailForwardLines[m.DetailTreeCursor]
+		reverseTitle = fmt.Sprintf("Used By %s (what depends on it)", currentGem)
+	} else if m.DetailSection == 1 && m.DetailTreeCursor < len(m.DetailReverseLines) {
+		// If navigating reverse dependencies, show a hint
+		currentGem := m.DetailReverseLines[m.DetailTreeCursor]
+		forwardTitle = fmt.Sprintf("Dependencies of %s", currentGem)
 	}
 
 	// Format titles with width constraint
