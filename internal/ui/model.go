@@ -115,11 +115,11 @@ type Model struct {
 	GemfileLockPath string
 
 	// App metadata
-	Version              string
-	Commit               string
-	Date                 string
-	NewVersionAvailable  string // empty = no update, otherwise holds latest version tag
-	Quitting             bool
+	Version             string
+	Commit              string
+	Date                string
+	NewVersionAvailable string // empty = no update, otherwise holds latest version tag
+	Quitting            bool
 }
 
 // ============================================================================
