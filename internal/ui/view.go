@@ -331,7 +331,7 @@ func (m *Model) viewGemDetail() string {
 
 	if m.DependencyResult != nil {
 		forwardContent = m.renderDependencyPanel(m.DependencyResult.DependencyInfo.ForwardTree, panelHeight, true)
-		reverseContent = m.renderDependencyPanel(m.DependencyResult.DependencyInfo.ReverseTree, panelHeight, false)
+		reverseContent = m.renderReverseDepsList(panelHeight)
 	} else {
 		forwardContent = strings.Repeat(" \n", panelHeight)
 		reverseContent = strings.Repeat(" \n", panelHeight)
@@ -426,6 +426,62 @@ func (m *Model) renderDependencyTree(node *gemfile.DependencyNode, maxLines int,
 	}
 
 	return lines
+}
+
+func (m *Model) renderReverseDepsList(height int) string {
+	if m.DependencyResult == nil || m.DependencyResult.DependencyInfo == nil {
+		return strings.Repeat(" \n", height)
+	}
+
+	reverseDeps := m.DependencyResult.DependencyInfo.ReverseDeps
+
+	// Clear DetailReverseLines for navigation tracking
+	m.DetailReverseLines = []string{}
+
+	if len(reverseDeps) == 0 {
+		noMatch := "  No gems depend on this gem"
+		noMatchStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(ColorTextMuted))
+		return noMatchStyle.Render(noMatch)
+	}
+
+	var lines []string
+
+	for _, depName := range reverseDeps {
+		// Bold gem name
+		nameLine := "  " + lipgloss.NewStyle().Bold(true).Render(depName)
+		lines = append(lines, nameLine)
+		m.DetailReverseLines = append(m.DetailReverseLines, depName)
+
+		// Description from analysis result
+		if m.AnalysisResult != nil {
+			for _, gemStatus := range m.AnalysisResult.GemStatuses {
+				if gemStatus.Name == depName {
+					if gemStatus.Description != "" {
+						descLine := "    " + truncateStr(gemStatus.Description, 50)
+						descStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(ColorTextMuted))
+						lines = append(lines, descStyle.Render(descLine))
+						// Repeat gem name in DetailReverseLines for description line
+						m.DetailReverseLines = append(m.DetailReverseLines, depName)
+					}
+					break
+				}
+			}
+		}
+	}
+
+	// Apply offset
+	offset := m.DetailReverseOffset
+	if offset > len(lines) {
+		offset = len(lines)
+	}
+	visibleLines := lines[offset:]
+
+	// Ensure we have exactly `height` lines
+	for len(visibleLines) < height {
+		visibleLines = append(visibleLines, "")
+	}
+
+	return strings.Join(visibleLines[:height], "\n")
 }
 
 func (m *Model) renderTreeNode(node *gemfile.DependencyNode, depth int, lines *[]string, gemNames *[]string, maxLines int, lineIdx int, offset int) int {
