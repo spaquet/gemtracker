@@ -1,0 +1,12 @@
+GEM
+  remote: https://rubygems.org/
+  specs:
+    simple-gem (1.0.0)
+    another-gem (2.0.0)
+      simple-gem (>= 1.0)
+
+PLATFORMS
+  ruby
+
+DEPENDENCIES
+  another-gem
