@@ -34,7 +34,7 @@ func main() {
 	flag.Parse()
 
 	if *showVersion {
-		fmt.Printf("gemtracker %s (%s, %s)\n", version, commit, date)
+		printVersion()
 		os.Exit(0)
 	}
 
@@ -55,4 +55,27 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Error running program: %v\n", err)
 		os.Exit(1)
 	}
+}
+
+func printVersion() {
+	output := "gemtracker"
+
+	if version != "dev" && version != "" {
+		output += " " + version
+	} else {
+		output += " (development)"
+	}
+
+	// Add commit info if available
+	if commit != "" && commit != "none" {
+		output += fmt.Sprintf(" (%s", commit)
+
+		// Add date if available
+		if date != "" && date != "unknown" {
+			output += fmt.Sprintf(", %s", date)
+		}
+		output += ")"
+	}
+
+	fmt.Println(output)
 }
