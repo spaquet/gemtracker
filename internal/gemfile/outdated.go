@@ -11,13 +11,16 @@ import (
 
 // RubygemeInfo represents gem data from rubygems.org API
 type RubygemeInfo struct {
-	Version string `json:"version"`
+	Version       string `json:"version"`
+	HomepageURI   string `json:"homepage_uri"`
+	SourceCodeURI string `json:"source_code_uri"`
 }
 
 // OutdatedChecker checks if gems are outdated by querying rubygems.org
 type OutdatedChecker struct {
-	client *http.Client
-	cache  map[string]string // gem name -> latest version
+	client    *http.Client
+	cache     map[string]string // gem name -> latest version
+	homepages map[string]string // gem name -> homepage URL
 }
 
 // NewOutdatedChecker creates a new checker with HTTP client
@@ -26,7 +29,8 @@ func NewOutdatedChecker() *OutdatedChecker {
 		client: &http.Client{
 			Timeout: 10 * time.Second,
 		},
-		cache: make(map[string]string),
+		cache:     make(map[string]string),
+		homepages: make(map[string]string),
 	}
 }
 
@@ -76,7 +80,36 @@ func (oc *OutdatedChecker) getLatestVersion(gemName string) (string, error) {
 	// Cache the result
 	oc.cache[gemName] = info.Version
 
+	// Cache homepage URL with fallback chain
+	homepage := info.HomepageURI
+	if homepage == "" {
+		homepage = info.SourceCodeURI
+	}
+	if homepage == "" {
+		homepage = fmt.Sprintf("https://rubygems.org/gems/%s", gemName)
+	}
+	oc.homepages[gemName] = homepage
+
 	return info.Version, nil
+}
+
+// GetHomepage returns the homepage URL for a gem, using cached data or fetching if needed
+func (oc *OutdatedChecker) GetHomepage(gemName string) string {
+	// If we have it cached, return it
+	if url, ok := oc.homepages[gemName]; ok {
+		return url
+	}
+
+	// Fetch it (this will populate the cache as a side effect)
+	oc.getLatestVersion(gemName)
+
+	// Return cached value or fallback
+	if url, ok := oc.homepages[gemName]; ok {
+		return url
+	}
+
+	// Ultimate fallback
+	return fmt.Sprintf("https://rubygems.org/gems/%s", gemName)
 }
 
 // isVersionLess compares two semantic versions

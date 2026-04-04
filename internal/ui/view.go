@@ -3,7 +3,6 @@ package ui
 import (
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/spaquet/gemtracker/internal/gemfile"
@@ -15,719 +14,607 @@ func (m *Model) View() string {
 	}
 
 	switch m.CurrentView {
-	case ViewMain:
-		return m.viewMain()
-	case ViewAnalyzing:
-		return m.viewAnalyzing()
-	case ViewResults:
-		return m.viewResults()
-	case ViewFilterInput:
-		return m.viewFilterInput()
-	case ViewDependencySearch:
-		return m.viewDependencySearch()
-	case ViewDependencyTree:
-		return m.viewDependencyTree()
-	case ViewHelp:
-		return m.viewHelp()
-	case ViewError:
-		return m.viewError()
+	case ViewLoading:
+		return m.viewLoading()
+	case ViewGemList:
+		return m.viewGemList()
+	case ViewGemDetail:
+		return m.viewGemDetail()
+	case ViewSearch:
+		return m.viewSearch()
+	case ViewCVE:
+		return m.viewCVE()
 	case ViewSelectPath:
 		return m.viewSelectPath()
+	case ViewError:
+		return m.viewError()
 	default:
-		return m.viewMain()
+		return m.viewGemList()
 	}
 }
 
-func (m *Model) viewMain() string {
-	header := m.renderHeader()
-	searchInput := m.renderSearchInput()
+// ============================================================================
+// Chrome Components
+// ============================================================================
 
-	var dropdown string
-	if m.ShowDropdown {
-		dropdown = m.renderDropdown()
+func (m *Model) renderAppHeader() string {
+	appName := fmt.Sprintf("gemtracker v%s", m.Version)
+	projectPath := m.ProjectPath
+	if projectPath == "" {
+		projectPath = "(no project)"
 	}
 
-	footer := m.renderFooter()
+	left := AppHeaderStyle.Render(appName)
+	right := ProjectPathStyle.Render(projectPath)
 
-	content := lipgloss.JoinVertical(
-		lipgloss.Top,
-		header,
-		"",
-		searchInput,
-		dropdown,
-		footer,
-	)
+	// Calculate spacing
+	totalLen := lipgloss.Width(left) + lipgloss.Width(right)
+	spacer := strings.Repeat(" ", m.Width-totalLen-4)
 
-	return content
+	return left + spacer + right
 }
 
-func (m *Model) renderHeader() string {
-	// Top bar
-	topBar := lipgloss.NewStyle().
-		Foreground(ColorPrimary).
-		Bold(true).
-		Padding(0, 2).
-		Render(fmt.Sprintf("— gemtracker  v%s —", m.Version))
+func (m *Model) renderTabBar() string {
+	tabLabels := []string{"Gems", "Search", "CVE"}
+	tabModes := []ViewMode{ViewGemList, ViewSearch, ViewCVE}
 
-	// Left column: Diamond + Info
-	diamond := `   _________
-_ /_|_____|_\ _
-  '. \   / .'
-    '.\ /.'
-      '.'`
-
-	diamondStyled := lipgloss.NewStyle().
-		Foreground(ColorPrimary).
-		Align(lipgloss.Center).
-		MarginRight(3).
-		Render(diamond)
-
-	// Project info text
-	welcome := lipgloss.NewStyle().
-		Bold(true).
-		Foreground(lipgloss.Color("255")).
-		Render("Welcome to gemtracker!")
-
-	projectPath := "No Gemfile.lock found"
-	if m.GemfileLockPath != "" {
-		projectPath = m.ProjectPath
-	}
-
-	projectInfo := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("244")).
-		Render(projectPath)
-
-	infoText := lipgloss.JoinVertical(
-		lipgloss.Top,
-		welcome,
-		projectInfo,
-	)
-
-	// Left section: Diamond + Info
-	leftSection := lipgloss.JoinHorizontal(
-		lipgloss.Top,
-		diamondStyled,
-		infoText,
-	)
-
-	// Right section: Tips
-	tipsHeader := lipgloss.NewStyle().
-		Foreground(ColorPrimary).
-		Bold(true).
-		Render("Tips for getting started")
-
-	tips := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("244")).
-		Render(`Type / to list all commands
-Use ↑/↓ arrows to navigate
-Press Enter to run
-Type 'q' to quit anytime`)
-
-	rightSection := lipgloss.JoinVertical(
-		lipgloss.Top,
-		tipsHeader,
-		tips,
-	)
-
-	// Combine left and right
-	headerContent := lipgloss.JoinHorizontal(
-		lipgloss.Top,
-		leftSection,
-		lipgloss.NewStyle().Width(4).Render(""),
-		rightSection,
-	)
-
-	// Full header with border
-	headerBox := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(ColorPrimary).
-		Padding(1, 2).
-		Render(lipgloss.JoinVertical(
-			lipgloss.Top,
-			topBar,
-			headerContent,
-		))
-
-	return headerBox
-}
-
-func (m *Model) renderSearchInput() string {
-	inputView := m.SearchInput.View()
-
-	inputBox := lipgloss.NewStyle().
-		Width(m.Width - 6).
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(ColorPrimary).
-		Padding(0, 1).
-		Render(inputView)
-
-	return lipgloss.NewStyle().
-		PaddingLeft(2).
-		PaddingRight(2).
-		Render(inputBox)
-}
-
-func (m *Model) renderDropdown() string {
-	if !m.ShowDropdown || len(m.Commands) == 0 {
-		return ""
-	}
-
-	var items []string
-	for i, cmd := range m.Commands {
-		if i == m.FilteredIndex {
-			// Selected item
-			item := lipgloss.NewStyle().
-				Foreground(ColorPrimary).
-				Bold(true).
-				Background(lipgloss.Color("237")).
-				Width(m.Width - 8).
-				Padding(0, 1).
-				Render(fmt.Sprintf("> %-18s  %s", cmd.Name, cmd.Description))
-			items = append(items, item)
+	var tabs []string
+	for i, label := range tabLabels {
+		mode := tabModes[i]
+		if mode == m.ActiveTab {
+			tabs = append(tabs, TabActiveStyle.Render(label))
 		} else {
-			// Regular item
-			item := lipgloss.NewStyle().
-				Foreground(lipgloss.Color("244")).
-				Width(m.Width - 8).
-				Padding(0, 1).
-				Render(fmt.Sprintf("  %-18s  %s", cmd.Name, cmd.Description))
-			items = append(items, item)
+			tabs = append(tabs, TabStyle.Render(label))
 		}
 	}
 
-	dropdownContent := lipgloss.JoinVertical(lipgloss.Top, items...)
-
-	return lipgloss.NewStyle().
-		MarginLeft(2).
-		MarginRight(2).
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(ColorSecondary).
-		Padding(0, 1).
-		Render(dropdownContent)
+	return strings.Join(tabs, "")
 }
 
-func (m *Model) renderFooter() string {
-	return ""
+func (m *Model) renderStatusBar() string {
+	var hints []string
+
+	switch m.CurrentView {
+	case ViewGemList:
+		hints = []string{"↑↓ navigate", "enter select", "tab next", "q quit"}
+	case ViewGemDetail:
+		hints = []string{"esc back", "tab section", "↑↓ scroll", "q quit"}
+	case ViewSearch:
+		hints = []string{"type search", "↑↓ navigate", "enter select", "esc clear"}
+	case ViewCVE:
+		hints = []string{"↑↓ navigate", "enter select", "tab next", "q quit"}
+	case ViewSelectPath:
+		hints = []string{"enter confirm", "esc cancel"}
+	default:
+		hints = []string{"type to filter", "q quit"}
+	}
+
+	var rendered []string
+	for _, hint := range hints {
+		parts := strings.SplitN(hint, " ", 2)
+		if len(parts) == 2 {
+			key := KeyHintKeyStyle.Render(parts[0])
+			desc := KeyHintDescStyle.Render(" " + parts[1])
+			rendered = append(rendered, key+desc)
+		}
+	}
+
+	content := strings.Join(rendered, "  ")
+	status := StatusBarStyle.Width(m.Width - 4).Render(content)
+	return status
 }
 
-func (m *Model) viewAnalyzing() string {
-	header := m.renderHeader()
+// ============================================================================
+// View: Loading
+// ============================================================================
 
-	// Get spinner frame
-	spinnerFrames := []string{"⠋", "⠙", "⠹", "⠸"}
-	spinnerFrame := spinnerFrames[m.AnimationFrame%len(spinnerFrames)]
+func (m *Model) viewLoading() string {
+	header := m.renderAppHeader()
+	tabbar := m.renderTabBar()
+	statusbar := m.renderStatusBar()
 
-	message := lipgloss.NewStyle().
-		Bold(true).
-		Foreground(ColorPrimary).
-		Align(lipgloss.Center).
-		Width(m.Width - 4).
-		Padding(3, 0).
-		Render(spinnerFrame + " " + m.CurrentMessage)
+	spinner := spinnerFrames[m.AnimationFrame%len(spinnerFrames)]
+	spinnerText := SpinnerStyle.Render(spinner + " " + m.LoadingMessage)
 
-	backPrompt := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("244")).
-		Italic(true).
-		Render("Press Enter to return to main menu")
+	contentHeight := m.Height - FixedChrome - 2
+	contentLines := (contentHeight - 1) / 2
+	padding := strings.Repeat("\n", contentLines)
+
+	content := lipgloss.JoinVertical(lipgloss.Center, padding, spinnerText)
+	content = lipgloss.NewStyle().Height(contentHeight).Render(content)
 
 	return lipgloss.JoinVertical(
-		lipgloss.Top,
+		lipgloss.Left,
 		header,
-		message,
-		"",
-		backPrompt,
+		tabbar,
+		content,
+		statusbar,
 	)
 }
 
-func (m *Model) viewResults() string {
-	header := m.renderHeader()
-	message := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("244")).
-		Padding(2, 2).
-		Render(m.CurrentMessage)
+// ============================================================================
+// View: Gem List
+// ============================================================================
 
-	backPrompt := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("244")).
-		Italic(true).
-		Render("Press Enter to return to main menu")
+func (m *Model) viewGemList() string {
+	header := m.renderAppHeader()
+	tabbar := m.renderTabBar()
+	statusbar := m.renderStatusBar()
+
+	contentHeight := m.Height - FixedChrome - 2
+	gemListContent := m.renderGemListTable(contentHeight)
 
 	return lipgloss.JoinVertical(
-		lipgloss.Top,
+		lipgloss.Left,
 		header,
-		"",
-		message,
-		"",
-		backPrompt,
+		tabbar,
+		gemListContent,
+		statusbar,
 	)
 }
 
-func (m *Model) viewFilterInput() string {
-	header := m.renderHeader()
+func (m *Model) renderGemListTable(height int) string {
+	// Table header
+	headerRow := fmt.Sprintf("  %-4s %-24s %-11s %-11s %-14s %s",
+		"#", "Gem Name", "Installed", "Latest", "Groups", "Status")
+	header := TableHeaderStyle.Render(headerRow)
 
-	// Summary line
-	summary := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("244")).
-		PaddingLeft(2).
-		PaddingRight(2).
-		MarginTop(1).
-		Render(m.CurrentMessage)
-
-	// Gem list display - viewport style
-	listContent := m.renderGemListViewport(10) // Fixed height of 10 for analyze view
-
-	// Search input with clear separation
-	filterInput := m.FilterInput.View()
-	filterInputBox := lipgloss.NewStyle().
-		Width(m.Width - 6).
-		PaddingLeft(2).
-		PaddingRight(2).
-		PaddingTop(1).
-		MarginTop(1).
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(ColorPrimary).
-		Render(filterInput)
-
-	// Debug: Show what's in the search field
-	debugInfo := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("240")).
-		PaddingLeft(2).
-		Render(fmt.Sprintf("[Input: '%s'] [Gems: %d]", m.FilterInput.Value(), len(m.FilteredGems)))
-
-	// Instructions
-	instructions := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("240")).
-		Italic(true).
-		PaddingLeft(2).
-		MarginTop(1).
-		Render("↑/↓: navigate  •  Type to search  •  Esc: back")
-
-	return lipgloss.JoinVertical(
-		lipgloss.Top,
-		header,
-		summary,
-		listContent,
-		filterInputBox,
-		debugInfo,
-		instructions,
-	)
-}
-
-func (m *Model) renderGemListViewport(maxHeight int) string {
-	if m.FilteredGems == nil || len(m.FilteredGems) == 0 {
-		return lipgloss.NewStyle().
-			PaddingLeft(2).
-			PaddingRight(2).
-			MarginTop(1).
-			Render("(no gems match filter)")
+	// Table rows
+	lines := []string{header}
+	visibleRows := height - 2
+	endIdx := m.GemListOffset + visibleRows
+	if endIdx > len(m.FirstLevelGems) {
+		endIdx = len(m.FirstLevelGems)
 	}
 
-	// Use provided max height
-	availableHeight := maxHeight
-	if availableHeight < 3 {
-		availableHeight = 3
-	}
+	for i := m.GemListOffset; i < endIdx; i++ {
+		if i >= len(m.FirstLevelGems) {
+			break
+		}
 
-	// Build viewport
-	var lines []string
-	endIdx := m.ScrollOffset + availableHeight
-	if endIdx > len(m.FilteredGems) {
-		endIdx = len(m.FilteredGems)
-	}
+		gem := m.FirstLevelGems[i]
+		isSelected := i == m.GemListCursor
 
-	for i := m.ScrollOffset; i < endIdx; i++ {
-		gemStatus := m.FilteredGems[i]
-		line := m.formatGemLine(gemStatus, i == m.SelectedGemIdx)
+		line := m.formatGemListRow(i+1, gem, isSelected)
 		lines = append(lines, line)
 	}
 
-	// Join lines and add padding
-	content := strings.Join(lines, "\n")
-	return lipgloss.NewStyle().
-		PaddingLeft(2).
-		PaddingRight(2).
-		MarginTop(1).
-		Render(content)
+	// Padding
+	for len(lines) < height {
+		lines = append(lines, "")
+	}
+
+	return lipgloss.JoinVertical(lipgloss.Left, lines...)
 }
 
-func (m *Model) formatGemLine(gemStatus *gemfile.GemStatus, isSelected bool) string {
-	// Determine status icon
-	statusIcon := "✓"
-	if gemStatus.IsVulnerable {
-		statusIcon = "🔒"
-	} else if gemStatus.IsOutdated {
-		statusIcon = "⚠"
+func (m *Model) formatGemListRow(idx int, gem *gemfile.GemStatus, selected bool) string {
+	// Status indicator
+	var status string
+	if gem.IsVulnerable {
+		status = BadgeVulnerableStyle.Render("⚠ CVE")
+	} else if gem.IsOutdated {
+		status = BadgeOutdatedStyle.Render("↑ " + gem.LatestVersion)
+	} else {
+		status = BadgeOKStyle.Render("✓")
 	}
 
-	// Build the main line: status, name, version
-	line := fmt.Sprintf("%s %-30s v%-8s", statusIcon, gemStatus.Name, gemStatus.Version)
-
-	// Add groups if present
-	if len(gemStatus.Groups) > 0 {
-		groupStr := strings.Join(gemStatus.Groups, ", ")
-		line += fmt.Sprintf("  [%s]", groupStr)
+	// Latest version display
+	latestDisplay := "latest"
+	if gem.IsOutdated {
+		latestDisplay = gem.LatestVersion
 	}
 
-	// Add additional info (vulnerabilities or outdated)
-	if gemStatus.IsVulnerable {
-		line += fmt.Sprintf("  %s", gemStatus.VulnerabilityInfo)
-	} else if gemStatus.IsOutdated && gemStatus.LatestVersion != "" {
-		line += fmt.Sprintf("  → v%s", gemStatus.LatestVersion)
+	// Groups display
+	groupsDisplay := strings.Join(gem.Groups, ",")
+	if len(groupsDisplay) > 14 {
+		groupsDisplay = groupsDisplay[:11] + "..."
 	}
 
-	// Apply styling based on selection
-	if isSelected {
-		// Selected: green background with dark text
-		return lipgloss.NewStyle().
-			Background(ColorPrimary).
-			Foreground(lipgloss.Color("0")).
-			Render(line)
-	}
+	// Format row
+	row := fmt.Sprintf("  %-4d %-24s %-11s %-11s %-14s %s",
+		idx,
+		truncateStr(gem.Name, 24),
+		gem.Version,
+		latestDisplay,
+		groupsDisplay,
+		status,
+	)
 
-	// Normal line: just show the text
-	return line
+	// Apply selection styling
+	if selected {
+		return RowSelectedStyle.Render(row)
+	}
+	return RowNormalStyle.Render(row)
 }
 
-func (m *Model) viewDependencyTree() string {
-	header := m.renderHeader()
+// ============================================================================
+// View: Gem Detail
+// ============================================================================
 
-	if m.DependencyResult == nil {
-		return lipgloss.JoinVertical(
-			lipgloss.Top,
-			header,
-			lipgloss.NewStyle().
-				Foreground(ColorError).
-				Padding(2, 2).
-				Render("No dependency result available"),
-		)
+func (m *Model) viewGemDetail() string {
+	header := m.renderAppHeader()
+	tabbar := m.renderTabBar()
+	statusbar := m.renderStatusBar()
+
+	if m.SelectedGem == nil {
+		return ""
 	}
 
-	depInfo := m.DependencyResult.DependencyInfo
-	if depInfo == nil {
-		return lipgloss.JoinVertical(
-			lipgloss.Top,
-			header,
-			lipgloss.NewStyle().
-				Foreground(ColorError).
-				Padding(2, 2).
-				Render("Gem not found"),
-		)
+	contentHeight := m.Height - FixedChrome - 4
+	gemInfo := fmt.Sprintf("%s v%s    %s",
+		m.SelectedGem.Name,
+		m.SelectedGem.Version,
+		m.SelectedGem.HomepageURL,
+	)
+	gemInfoFormatted := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(ColorPrimary)).Render(gemInfo)
+
+	// Two panels: forward deps and reverse deps
+	panelHeight := (contentHeight - 2) / 2
+
+	forwardTitle := "  Dependencies (what this gem needs)"
+	reverseTitle := "  Used By (what depends on this gem)"
+
+	var forwardContent string
+	var reverseContent string
+
+	if m.DependencyResult != nil {
+		forwardContent = m.renderDependencyPanel(m.DependencyResult.DependencyInfo.ForwardTree, panelHeight, m.DetailSection == 0)
+		reverseContent = m.renderDependencyPanel(m.DependencyResult.DependencyInfo.ReverseTree, panelHeight, m.DetailSection == 1)
+	} else {
+		forwardContent = strings.Repeat(" \n", panelHeight)
+		reverseContent = strings.Repeat(" \n", panelHeight)
 	}
 
-	// Title
-	titleText := fmt.Sprintf("Dependencies for: %s (v%s)", depInfo.GemName, depInfo.Version)
-	title := lipgloss.NewStyle().
-		Bold(true).
-		Foreground(ColorPrimary).
-		PaddingLeft(2).
-		PaddingRight(2).
-		MarginTop(1).
-		Render(titleText)
+	forwardSection := lipgloss.JoinVertical(lipgloss.Left,
+		forwardTitle,
+		forwardContent,
+	)
 
-	// Forward dependencies tree (what this gem depends on)
-	forwardSection := m.renderDependencyTreeSection("Dependencies This Gem Needs", depInfo.ForwardTree)
+	reverseSection := lipgloss.JoinVertical(lipgloss.Left,
+		reverseTitle,
+		reverseContent,
+	)
 
-	// Reverse dependencies tree (what depends on this gem)
-	reverseSection := m.renderDependencyTreeSection("Gems That Depend On This", depInfo.ReverseTree)
+	// Apply borders
+	borderStyle := PanelBorderStyle
+	if m.DetailSection == 0 {
+		borderStyle = PanelBorderActiveStyle
+	}
 
-	// Instructions
-	instructions := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("240")).
-		Italic(true).
-		PaddingLeft(2).
-		MarginTop(2).
-		Render("Press Enter to return to main menu")
+	forwardPanel := borderStyle.Render(forwardSection)
+	reverseBorderStyle := PanelBorderStyle
+	if m.DetailSection == 1 {
+		reverseBorderStyle = PanelBorderActiveStyle
+	}
+	reversePanel := reverseBorderStyle.Render(reverseSection)
+
+	content := lipgloss.JoinVertical(lipgloss.Left,
+		gemInfoFormatted,
+		forwardPanel,
+		reversePanel,
+	)
 
 	return lipgloss.JoinVertical(
-		lipgloss.Top,
+		lipgloss.Left,
 		header,
-		title,
-		forwardSection,
-		"",
-		reverseSection,
-		"",
-		instructions,
+		tabbar,
+		content,
+		statusbar,
 	)
 }
 
-func (m *Model) renderDependencyTreeSection(title string, root *gemfile.DependencyNode) string {
-	sectionTitle := lipgloss.NewStyle().
-		Bold(true).
-		Foreground(ColorSecondary).
-		PaddingLeft(2).
-		PaddingRight(2).
-		MarginTop(1).
-		Render(title)
-
-	if root == nil || len(root.Children) == 0 {
-		emptyMsg := lipgloss.NewStyle().
-			Foreground(lipgloss.Color("244")).
-			PaddingLeft(4).
-			Render("(none)")
-		return lipgloss.JoinVertical(lipgloss.Top, sectionTitle, emptyMsg)
+func (m *Model) renderDependencyPanel(node *gemfile.DependencyNode, height int, focused bool) string {
+	if node == nil || node.Name == "" {
+		return strings.Repeat(" \n", height)
 	}
 
-	// Smart rendering: show direct children + their direct children (limited depth)
-	var lines []string
-	seen := make(map[string]bool)
+	lines := m.renderDependencyTree(node, height, 0)
 
-	for i, child := range root.Children {
-		isLast := i == len(root.Children)-1
-		lines = append(lines, m.renderSmartDependencyNode(child, "", isLast, seen, 0)...)
+	// Ensure we have exactly `height` lines
+	for len(lines) < height {
+		lines = append(lines, "")
 	}
 
-	depContent := strings.Join(lines, "\n")
-	depBox := lipgloss.NewStyle().
-		PaddingLeft(3).
-		PaddingRight(2).
-		Render(depContent)
-
-	return lipgloss.JoinVertical(lipgloss.Top, sectionTitle, depBox)
+	return strings.Join(lines[:height], "\n")
 }
 
-// renderSmartDependencyNode renders a dependency node with smart depth limiting
-// Shows up to 2 levels: direct deps and their children, with context
-func (m *Model) renderSmartDependencyNode(node *gemfile.DependencyNode, prefix string, isLast bool, seen map[string]bool, depth int) []string {
+func (m *Model) renderDependencyTree(node *gemfile.DependencyNode, maxLines int, depth int) []string {
+	if node == nil || maxLines <= 0 {
+		return []string{}
+	}
+
 	var lines []string
-
-	// Current node line
-	connector := "├── "
-	if isLast {
-		connector = "└── "
-	}
-
-	// Mark if this gem was already seen (circular reference)
-	circularMark := ""
-	if seen[node.Name] && depth > 0 {
-		circularMark = " ↩"
-	}
-	seen[node.Name] = true
-
-	nodeLine := fmt.Sprintf("%s%s (v%s)%s", connector, node.Name, node.Version, circularMark)
-	lines = append(lines, prefix+nodeLine)
-
-	// Only show children if depth < 2 (limit to 2 levels)
-	if len(node.Children) > 0 && depth < 1 {
-		extension := "│   "
-		if isLast {
-			extension = "    "
-		}
-
-		// Limit to showing first 3 children for readability
-		childrenToShow := len(node.Children)
-		if childrenToShow > 3 {
-			childrenToShow = 3
-		}
-
-		for i := 0; i < childrenToShow; i++ {
-			child := node.Children[i]
-			childIsLast := i == childrenToShow-1 && childrenToShow == len(node.Children)
-			childLines := m.renderSmartDependencyNode(child, prefix+extension, childIsLast, seen, depth+1)
-			lines = append(lines, childLines...)
-		}
-
-		// If there are more children than we showed, indicate that
-		if childrenToShow < len(node.Children) {
-			remainingCount := len(node.Children) - childrenToShow
-			moreMsg := fmt.Sprintf("%s    └─ ... and %d more", prefix, remainingCount)
-			lines = append(lines, moreMsg)
-		}
-	} else if len(node.Children) > 0 && depth >= 1 {
-		// Indicate there are more deps but we're limiting depth
-		moreMsg := fmt.Sprintf("%s└─ → %d more dependencies", prefix, len(node.Children))
-		lines = append(lines, moreMsg)
-	}
-
+	m.renderTreeNode(node, depth, &lines, maxLines)
 	return lines
 }
 
-func (m *Model) viewHelp() string {
-	header := m.renderHeader()
+func (m *Model) renderTreeNode(node *gemfile.DependencyNode, depth int, lines *[]string, remaining int) {
+	if remaining <= 0 || node == nil {
+		return
+	}
 
-	helpText := `GETTING STARTED:
+	// Indent based on depth
+	indent := strings.Repeat("  ", depth)
+	connector := "├── "
+	if depth == 0 {
+		connector = ""
+	}
 
-  Type / to list all available commands
-  Use arrow keys (↑/↓) to navigate through the list
-  Press Enter to run the selected command
-  Type to search for specific commands
+	name := node.Name
+	if node.Version != "" {
+		name = fmt.Sprintf("%s (%s)", name, node.Version)
+	}
 
-AVAILABLE COMMANDS:
+	line := indent + connector + TreeGemNameStyle.Render(name)
+	*lines = append(*lines, line)
+	remaining--
 
-  analyze          Analyze Gemfile.lock for risks and dependency conflicts
-  deps             Show which parent gems are using a specific gem
-  vulnerabilities  Check for known vulnerabilities in your gems
-  licenses         Generate license compliance report
-  help             Show this help message
-  quit             Exit gemtracker
+	// Render children (cap at 3 per node for readability)
+	for i, child := range node.Children {
+		if i >= 3 && len(node.Children) > 3 {
+			*lines = append(*lines, strings.Repeat("  ", depth+1)+"... and "+
+				fmt.Sprintf("%d more", len(node.Children)-3))
+			break
+		}
+		m.renderTreeNode(child, depth+1, lines, remaining)
+		remaining = len(*lines) - 1
+	}
+}
 
-KEYBOARD SHORTCUTS:
+// ============================================================================
+// View: Search
+// ============================================================================
 
-  /               List all commands
-  ↑/↓, Tab        Navigate commands
-  Enter           Run selected command
-  Esc             Clear search / return to menu
-  q, Ctrl+C       Quit gemtracker`
+func (m *Model) viewSearch() string {
+	header := m.renderAppHeader()
+	tabbar := m.renderTabBar()
+	statusbar := m.renderStatusBar()
 
-	content := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("244")).
-		Padding(1, 2).
-		Render(helpText)
+	// Search input
+	searchPrompt := SearchPromptStyle.Render("/ ")
+	searchInput := SearchBoxStyle.Width(m.Width - 10).Render(m.SearchInput.View())
+	searchLine := searchPrompt + searchInput
 
-	backPrompt := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("244")).
-		Italic(true).
-		Render("Press Enter to return to main menu")
+	// Search results
+	contentHeight := m.Height - FixedChrome - 4
+	resultContent := m.renderSearchResults(contentHeight)
+
+	content := lipgloss.JoinVertical(lipgloss.Left,
+		searchLine,
+		resultContent,
+	)
 
 	return lipgloss.JoinVertical(
-		lipgloss.Top,
+		lipgloss.Left,
 		header,
-		"",
+		tabbar,
 		content,
-		"",
-		backPrompt,
+		statusbar,
 	)
 }
 
-func (m *Model) viewError() string {
-	header := m.renderHeader()
+func (m *Model) renderSearchResults(height int) string {
+	if m.SearchQuery == "" {
+		return strings.Repeat(" \n", height)
+	}
 
-	message := lipgloss.NewStyle().
-		Foreground(ColorError).
-		Bold(true).
-		Padding(2, 2).
-		Render("❌ " + m.ErrorMessage)
+	title := fmt.Sprintf("Gems matching \"%s\" (%d found)", m.SearchQuery, len(m.SearchResults))
+	title = lipgloss.NewStyle().Bold(true).Render(title)
 
-	backPrompt := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("244")).
-		Italic(true).
-		Render("Press Enter to return to main menu")
+	// Header
+	headerRow := fmt.Sprintf("  %-30s %-11s %s", "Gem Name", "Version", "Groups")
+	header := TableHeaderStyle.Render(headerRow)
+
+	lines := []string{title, header}
+
+	// Result rows
+	visibleRows := height - 4
+	endIdx := m.SearchOffset + visibleRows
+	if endIdx > len(m.SearchResults) {
+		endIdx = len(m.SearchResults)
+	}
+
+	for i := m.SearchOffset; i < endIdx; i++ {
+		if i >= len(m.SearchResults) {
+			break
+		}
+
+		gem := m.SearchResults[i]
+		isSelected := i == m.SearchCursor
+
+		groupsDisplay := strings.Join(gem.Groups, ",")
+		if len(groupsDisplay) > 20 {
+			groupsDisplay = groupsDisplay[:17] + "..."
+		}
+
+		row := fmt.Sprintf("  %-30s %-11s %s",
+			truncateStr(gem.Name, 30),
+			gem.Version,
+			groupsDisplay,
+		)
+
+		if isSelected {
+			row = RowSelectedStyle.Render(row)
+		} else {
+			row = RowNormalStyle.Render(row)
+		}
+		lines = append(lines, row)
+	}
+
+	// Padding
+	for len(lines) < height {
+		lines = append(lines, "")
+	}
+
+	return strings.Join(lines[:height], "\n")
+}
+
+// ============================================================================
+// View: CVE
+// ============================================================================
+
+func (m *Model) viewCVE() string {
+	header := m.renderAppHeader()
+	tabbar := m.renderTabBar()
+	statusbar := m.renderStatusBar()
+
+	contentHeight := m.Height - FixedChrome - 2
+	cveContent := m.renderCVETable(contentHeight)
 
 	return lipgloss.JoinVertical(
-		lipgloss.Top,
+		lipgloss.Left,
 		header,
-		"",
-		message,
-		"",
-		backPrompt,
+		tabbar,
+		cveContent,
+		statusbar,
 	)
 }
+
+func (m *Model) renderCVETable(height int) string {
+	if len(m.VulnerableGems) == 0 {
+		msg := "No vulnerabilities found. Your gems are safe! ✓"
+		return lipgloss.NewStyle().
+			Foreground(lipgloss.Color(ColorSuccess)).
+			Bold(true).
+			Padding(2, 2).
+			Render(msg)
+	}
+
+	title := fmt.Sprintf("Vulnerabilities Found (%d)", len(m.VulnerableGems))
+	title = lipgloss.NewStyle().Bold(true).Render(title)
+
+	headerRow := fmt.Sprintf("  %-20s %-16s %-11s %-30s %s",
+		"CVE ID", "Gem", "Version", "Description", "Status")
+	header := TableHeaderStyle.Render(headerRow)
+
+	lines := []string{title, header}
+
+	visibleRows := height - 3
+	endIdx := m.CVEOffset + visibleRows
+	if endIdx > len(m.VulnerableGems) {
+		endIdx = len(m.VulnerableGems)
+	}
+
+	for i := m.CVEOffset; i < endIdx; i++ {
+		if i >= len(m.VulnerableGems) {
+			break
+		}
+
+		gem := m.VulnerableGems[i]
+		cveID := extractCVEID(gem.VulnerabilityInfo)
+		desc := extractCVEDesc(gem.VulnerabilityInfo)
+
+		row := fmt.Sprintf("  %-20s %-16s %-11s %-30s %s",
+			cveID,
+			truncateStr(gem.Name, 16),
+			gem.Version,
+			truncateStr(desc, 30),
+			"⚠",
+		)
+
+		if i == m.CVECursor {
+			row = RowSelectedStyle.Render(row)
+		} else {
+			row = RowNormalStyle.Render(row)
+		}
+		lines = append(lines, row)
+	}
+
+	// Padding
+	for len(lines) < height {
+		lines = append(lines, "")
+	}
+
+	return strings.Join(lines[:height], "\n")
+}
+
+// ============================================================================
+// View: SelectPath
+// ============================================================================
 
 func (m *Model) viewSelectPath() string {
-	header := m.renderHeader()
+	header := m.renderAppHeader()
+	tabbar := m.renderTabBar()
+	statusbar := m.renderStatusBar()
 
-	title := lipgloss.NewStyle().
-		Bold(true).
-		Foreground(lipgloss.Color("255")).
-		MarginBottom(1).
-		Render("Enter project path:")
+	title := "Select Ruby Project Directory"
+	title = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(ColorPrimary)).Render(title)
 
-	pathInput := m.PathInput.View()
-	pathBox := lipgloss.NewStyle().
-		Width(m.Width - 6).
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(ColorPrimary).
-		Padding(0, 1).
-		MarginLeft(2).
-		MarginRight(2).
-		MarginTop(1).
-		MarginBottom(2).
-		Render(pathInput)
+	prompt := "Path: "
+	input := InputBoxStyle.Width(m.Width - 20).Render(m.PathInput.View())
+	inputLine := prompt + input
 
-	hint := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("240")).
-		Italic(true).
-		MarginLeft(2).
-		Render("Examples: /path/to/project  or  ~/Sites/myapp  or  .")
+	hint := "Examples: . | ~ | /path/to/project | ~/myapp"
+	hintStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(ColorTextMuted))
 
-	instructions := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("244")).
-		MarginLeft(2).
-		MarginTop(1).
-		Render("Press Enter to open project  •  Esc to cancel")
-
-	return lipgloss.JoinVertical(
-		lipgloss.Top,
-		header,
-		"",
+	content := lipgloss.JoinVertical(lipgloss.Left,
 		title,
-		pathBox,
-		hint,
-		instructions,
+		"",
+		inputLine,
+		"",
+		hintStyle.Render(hint),
 	)
-}
-
-func (m *Model) viewDependencySearch() string {
-	header := m.renderHeader()
-
-	// Summary line
-	summary := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("244")).
-		PaddingLeft(2).
-		PaddingRight(2).
-		MarginTop(1).
-		Render(m.CurrentMessage)
-
-	// Search input with clear separation - FIXED AT TOP
-	filterInput := m.FilterInput.View()
-	filterInputBox := lipgloss.NewStyle().
-		Width(m.Width - 6).
-		PaddingLeft(2).
-		PaddingRight(2).
-		PaddingTop(1).
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(ColorPrimary).
-		Render(filterInput)
-
-	// Calculate viewport height using consistent calculation
-	viewportHeight := m.calculateDepsViewportHeight()
-
-	// Gem list display - viewport style with calculated height
-	listContent := m.renderGemListViewport(viewportHeight)
-
-	// Instructions
-	instructions := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("240")).
-		Italic(true).
-		PaddingLeft(2).
-		MarginTop(1).
-		Render("↑/↓: navigate  •  Type to search  •  Enter: select  •  Esc: back")
 
 	return lipgloss.JoinVertical(
-		lipgloss.Top,
+		lipgloss.Left,
 		header,
-		summary,
-		filterInputBox,
-		listContent,
-		instructions,
+		tabbar,
+		content,
+		statusbar,
 	)
 }
 
-func (m *Model) calculateDepsViewportHeight() int {
-	const (
-		headerHeight      = 10
-		summaryHeight     = 2
-		searchBoxHeight   = 3
-		instructionsHeight = 2
-		spacing           = 2
+// ============================================================================
+// View: Error
+// ============================================================================
+
+func (m *Model) viewError() string {
+	header := m.renderAppHeader()
+	tabbar := m.renderTabBar()
+	statusbar := m.renderStatusBar()
+
+	errorBox := ErrorBoxStyle.Render("ERROR\n\n" + m.ErrorMessage)
+
+	content := lipgloss.JoinVertical(
+		lipgloss.Center,
+		"",
+		errorBox,
+		"",
+		"Press Enter or Esc to continue",
 	)
 
-	viewportHeight := m.Height - (headerHeight + summaryHeight + searchBoxHeight + instructionsHeight + spacing)
-	if viewportHeight < 3 {
-		viewportHeight = 3
-	}
-	return viewportHeight
+	return lipgloss.JoinVertical(
+		lipgloss.Left,
+		header,
+		tabbar,
+		content,
+		statusbar,
+	)
 }
 
-func timeAgo(t time.Time) string {
-	duration := time.Since(t)
+// ============================================================================
+// Helper Functions
+// ============================================================================
 
-	if duration.Seconds() < 60 {
-		return fmt.Sprintf("%.0f seconds", duration.Seconds())
+func truncateStr(s string, maxLen int) string {
+	if len(s) > maxLen {
+		return s[:maxLen-3] + "..."
 	}
-	if duration.Minutes() < 60 {
-		return fmt.Sprintf("%.0f minutes", duration.Minutes())
+	return s
+}
+
+func extractCVEID(vulnInfo string) string {
+	parts := strings.Split(vulnInfo, ":")
+	if len(parts) > 0 {
+		return strings.TrimSpace(parts[0])
 	}
-	if duration.Hours() < 24 {
-		return fmt.Sprintf("%.0f hours", duration.Hours())
+	return "Unknown"
+}
+
+func extractCVEDesc(vulnInfo string) string {
+	parts := strings.Split(vulnInfo, ":")
+	if len(parts) > 1 {
+		return strings.TrimSpace(parts[1])
 	}
-	return fmt.Sprintf("%.0f days", duration.Hours()/24)
+	return vulnInfo
 }

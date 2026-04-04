@@ -14,12 +14,14 @@ type GemStatus struct {
 	LatestVersion     string // Latest available version
 	IsVulnerable      bool
 	VulnerabilityInfo string // Detailed vulnerability info
+	HomepageURL       string // Homepage or source code URL
 }
 
 type AnalysisResult struct {
 	TotalGems      int
 	OutdatedGems   []string
 	VulnerableGems []string
+	FirstLevelGems []string // Names of directly installed gems (from Gemfile, not transitive)
 	AllGems        []*Gem
 	GemStatuses    []*GemStatus
 	Summary        string
@@ -33,6 +35,7 @@ func Analyze(gemfile *Gemfile) *AnalysisResult {
 	allGems := gemfile.GetGemsAsList()
 	outdatedList := []string{}
 	vulnerableList := []string{}
+	firstLevelList := []string{}
 	gemStatuses := make([]*GemStatus, 0, len(allGems))
 
 	// Check each gem for outdated and vulnerable status
@@ -59,6 +62,14 @@ func Analyze(gemfile *Gemfile) *AnalysisResult {
 			vulnerableList = append(vulnerableList, gem.Name)
 		}
 
+		// Get homepage URL
+		status.HomepageURL = outdatedChecker.GetHomepage(gem.Name)
+
+		// Track first-level gems (those with groups from Gemfile, not transitive deps)
+		if len(gem.Groups) > 0 {
+			firstLevelList = append(firstLevelList, gem.Name)
+		}
+
 		gemStatuses = append(gemStatuses, status)
 	}
 
@@ -66,6 +77,7 @@ func Analyze(gemfile *Gemfile) *AnalysisResult {
 		TotalGems:      gemfile.GetGemCount(),
 		OutdatedGems:   outdatedList,
 		VulnerableGems: vulnerableList,
+		FirstLevelGems: firstLevelList,
 		AllGems:        allGems,
 		GemStatuses:    gemStatuses,
 	}

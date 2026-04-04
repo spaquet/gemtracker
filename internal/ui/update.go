@@ -1,346 +1,463 @@
 package ui
 
 import (
+	"fmt"
 	"strings"
 	"time"
 
-	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spaquet/gemtracker/internal/gemfile"
 )
 
 func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
-	case AnimationTickMsg:
-		// Update animation frame for spinner
-		m.AnimationFrame = (m.AnimationFrame + 1) % 4
-		// Return a command to send the next tick
-		return m, tea.Tick(time.Millisecond*200, func(time.Time) tea.Msg {
-			return AnimationTickMsg{}
-		})
-	case tea.KeyMsg:
-		if m.CurrentView == ViewDependencySearch {
-			switch msg.String() {
-			case "esc":
-				m.CurrentView = ViewMain
-				m.FilterInput.Reset()
-				m.FilteredGems = nil
-				m.SelectedGemIdx = 0
-				m.ScrollOffset = 0
-				return m, nil
-			case "up":
-				// Move selection up
-				if m.SelectedGemIdx > 0 {
-					m.SelectedGemIdx--
-					// Scroll viewport if needed
-					if m.SelectedGemIdx < m.ScrollOffset {
-						m.ScrollOffset = m.SelectedGemIdx
-					}
-				}
-				return m, nil
-			case "down":
-				// Move selection down
-				if m.SelectedGemIdx < len(m.FilteredGems)-1 {
-					m.SelectedGemIdx++
-					// Scroll viewport if needed using consistent height calculation
-					visibleLines := m.calculateDepsViewportHeight()
-					if m.SelectedGemIdx >= m.ScrollOffset+visibleLines {
-						m.ScrollOffset = m.SelectedGemIdx - visibleLines + 1
-					}
-				}
-				return m, nil
-			default:
-				// Update filter input for typing
-				var cmd tea.Cmd
-				m.FilterInput, cmd = m.FilterInput.Update(msg)
-				m.updateGemListFilter()
-				return m, cmd
-			}
-		}
-
-		if m.CurrentView == ViewFilterInput {
-			switch msg.String() {
-			case "esc":
-				m.CurrentView = ViewMain
-				m.FilterInput.Reset()
-				m.FilteredGems = nil
-				m.SelectedGemIdx = 0
-				m.ScrollOffset = 0
-				return m, nil
-			case "up":
-				// Move selection up
-				if m.SelectedGemIdx > 0 {
-					m.SelectedGemIdx--
-					// Scroll viewport if needed
-					if m.SelectedGemIdx < m.ScrollOffset {
-						m.ScrollOffset = m.SelectedGemIdx
-					}
-				}
-				return m, nil
-			case "down":
-				// Move selection down
-				if m.SelectedGemIdx < len(m.FilteredGems)-1 {
-					m.SelectedGemIdx++
-					// Scroll viewport if needed
-					visibleLines := m.Height - 12 // Approximate lines for gem list
-					if m.SelectedGemIdx >= m.ScrollOffset+visibleLines {
-						m.ScrollOffset = m.SelectedGemIdx - visibleLines + 1
-					}
-				}
-				return m, nil
-			default:
-				// Update filter input for typing
-				var cmd tea.Cmd
-				m.FilterInput, cmd = m.FilterInput.Update(msg)
-				m.updateGemListFilter()
-				return m, cmd
-			}
-		}
-
-		m2, cmd := m.handleKeypress(msg)
-		return m2, cmd
 	case tea.WindowSizeMsg:
-		m2, cmd := m.handleWindowSize(msg)
-		return m2, cmd
+		m.Width = msg.Width
+		m.Height = msg.Height
+		// Clamp scroll offsets if needed
+		m.clampScrollOffsets()
+		return m, nil
+
+	case SpinnerTickMsg:
+		if m.Loading {
+			m.AnimationFrame = (m.AnimationFrame + 1) % len(spinnerFrames)
+			return m, tea.Tick(time.Millisecond*100, func(time.Time) tea.Msg {
+				return SpinnerTickMsg{}
+			})
+		}
+		return m, nil
+
+	case tea.KeyMsg:
+		return m.handleKeyPress(msg)
+
 	case AnalysisCompleteMsg:
-		if msg.Error != nil {
-			m.CurrentView = ViewError
-			m.ErrorMessage = msg.Error.Error()
-		} else {
-			m.AnalysisResult = msg.Result
+		return m.handleAnalysisComplete(msg)
 
-			// Route based on which command initiated this
-			if m.CurrentCommand == "deps" {
-				m.CurrentView = ViewDependencySearch
-				m.CurrentCommand = ""
-			} else {
-				m.CurrentView = ViewFilterInput
-			}
-
-			m.FilterInput.Reset()
-			m.FilterInput.Focus()
-			m.SelectedGemIdx = 0
-			m.ScrollOffset = 0
-			m.updateGemListFilter()
-		}
-		return m, nil
 	case DependencyCompleteMsg:
-		if msg.Error != nil {
-			m.CurrentView = ViewError
-			m.ErrorMessage = msg.Error.Error()
-		} else {
-			m.DependencyResult = msg.Result
-			m.CurrentView = ViewDependencyTree
-		}
-		return m, nil
+		return m.handleDependencyComplete(msg)
 	}
+
 	return m, nil
 }
 
-func (m *Model) updateGemListFilter() {
-	result, ok := m.AnalysisResult.(*gemfile.AnalysisResult)
-	if !ok {
+// ============================================================================
+// Key Handling
+// ============================================================================
+
+func (m *Model) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// Global keys
+	if msg.String() == "ctrl+c" || msg.String() == "q" {
+		m.Quitting = true
+		return m, tea.Quit
+	}
+
+	// / key jumps to search
+	if msg.String() == "/" && m.CurrentView != ViewLoading {
+		m.CurrentView = ViewSearch
+		m.ActiveTab = ViewSearch
+		m.SearchInput.Focus()
+		return m, nil
+	}
+
+	// View-specific handling
+	switch m.CurrentView {
+	case ViewLoading:
+		// No keys allowed during loading
+		return m, nil
+
+	case ViewGemList:
+		return m.handleGemListKeys(msg)
+
+	case ViewGemDetail:
+		return m.handleGemDetailKeys(msg)
+
+	case ViewSearch:
+		return m.handleSearchKeys(msg)
+
+	case ViewCVE:
+		return m.handleCVEKeys(msg)
+
+	case ViewSelectPath:
+		return m.handlePathInputKeys(msg)
+
+	case ViewError:
+		if msg.String() == "enter" || msg.String() == "esc" {
+			m.CurrentView = m.ActiveTab
+			m.ErrorMessage = ""
+		}
+		return m, nil
+	}
+
+	return m, nil
+}
+
+func (m *Model) handleGemListKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "up":
+		if m.GemListCursor > 0 {
+			m.GemListCursor--
+			m.ensureGemListCursorVisible()
+		}
+		return m, nil
+
+	case "down":
+		if m.GemListCursor < len(m.FirstLevelGems)-1 {
+			m.GemListCursor++
+			m.ensureGemListCursorVisible()
+		}
+		return m, nil
+
+	case "enter":
+		if len(m.FirstLevelGems) > 0 && m.GemListCursor < len(m.FirstLevelGems) {
+			m.SelectedGem = m.FirstLevelGems[m.GemListCursor]
+			m.CurrentView = ViewGemDetail
+			m.Loading = true
+			m.LoadingMessage = "Loading dependencies..."
+			return m, tea.Batch(
+				tea.Tick(time.Millisecond*100, func(time.Time) tea.Msg {
+					return SpinnerTickMsg{}
+				}),
+				performDependencyAnalysis(m.GemfileLockPath, m.SelectedGem.Name),
+			)
+		}
+		return m, nil
+
+	case "tab":
+		m.CurrentView = ViewSearch
+		m.ActiveTab = ViewSearch
+		m.SearchInput.Focus()
+		return m, nil
+
+	case "shift+tab":
+		m.CurrentView = ViewCVE
+		m.ActiveTab = ViewCVE
+		return m, nil
+	}
+
+	return m, nil
+}
+
+func (m *Model) handleGemDetailKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "esc":
+		m.CurrentView = m.ActiveTab
+		return m, nil
+
+	case "tab":
+		m.DetailSection = (m.DetailSection + 1) % 2
+		m.DetailOffset = 0
+		return m, nil
+
+	case "up":
+		if m.DetailOffset > 0 {
+			m.DetailOffset--
+		}
+		return m, nil
+
+	case "down":
+		m.DetailOffset++
+		// Clamp to max based on section
+		m.clampDetailOffset()
+		return m, nil
+	}
+
+	return m, nil
+}
+
+func (m *Model) handleSearchKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "tab":
+		m.CurrentView = ViewCVE
+		m.ActiveTab = ViewCVE
+		return m, nil
+
+	case "shift+tab":
+		m.CurrentView = ViewGemList
+		m.ActiveTab = ViewGemList
+		return m, nil
+
+	case "esc":
+		m.SearchQuery = ""
+		m.SearchResults = nil
+		m.SearchCursor = 0
+		m.SearchOffset = 0
+		m.SearchInput.SetValue("")
+		m.SearchInput.Focus()
+		return m, nil
+
+	case "up":
+		if m.SearchCursor > 0 {
+			m.SearchCursor--
+			m.ensureSearchCursorVisible()
+		}
+		return m, nil
+
+	case "down":
+		if m.SearchCursor < len(m.SearchResults)-1 {
+			m.SearchCursor++
+			m.ensureSearchCursorVisible()
+		}
+		return m, nil
+
+	case "enter":
+		if len(m.SearchResults) > 0 && m.SearchCursor < len(m.SearchResults) {
+			m.SelectedGem = m.SearchResults[m.SearchCursor]
+			m.CurrentView = ViewGemDetail
+			m.Loading = true
+			m.LoadingMessage = "Loading dependencies..."
+			return m, tea.Batch(
+				tea.Tick(time.Millisecond*100, func(time.Time) tea.Msg {
+					return SpinnerTickMsg{}
+				}),
+				performDependencyAnalysis(m.GemfileLockPath, m.SelectedGem.Name),
+			)
+		}
+		return m, nil
+
+	default:
+		// Pass to text input
+		var cmd tea.Cmd
+		m.SearchInput, cmd = m.SearchInput.Update(msg)
+		m.SearchQuery = m.SearchInput.Value()
+		m.updateSearchResults()
+		m.SearchCursor = 0
+		m.SearchOffset = 0
+		return m, cmd
+	}
+}
+
+func (m *Model) handleCVEKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "tab":
+		m.CurrentView = ViewGemList
+		m.ActiveTab = ViewGemList
+		return m, nil
+
+	case "shift+tab":
+		m.CurrentView = ViewSearch
+		m.ActiveTab = ViewSearch
+		return m, nil
+
+	case "up":
+		if m.CVECursor > 0 {
+			m.CVECursor--
+			m.ensureCVECursorVisible()
+		}
+		return m, nil
+
+	case "down":
+		if m.CVECursor < len(m.VulnerableGems)-1 {
+			m.CVECursor++
+			m.ensureCVECursorVisible()
+		}
+		return m, nil
+
+	case "enter":
+		if len(m.VulnerableGems) > 0 && m.CVECursor < len(m.VulnerableGems) {
+			m.SelectedGem = m.VulnerableGems[m.CVECursor]
+			m.CurrentView = ViewGemDetail
+			m.ActiveTab = ViewCVE
+			m.Loading = true
+			m.LoadingMessage = "Loading dependencies..."
+			return m, tea.Batch(
+				tea.Tick(time.Millisecond*100, func(time.Time) tea.Msg {
+					return SpinnerTickMsg{}
+				}),
+				performDependencyAnalysis(m.GemfileLockPath, m.SelectedGem.Name),
+			)
+		}
+		return m, nil
+	}
+
+	return m, nil
+}
+
+func (m *Model) handlePathInputKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "enter":
+		path := m.PathInput.Value()
+		if path != "" {
+			m.loadProject(path)
+			m.PathInput.Reset()
+			m.CurrentView = ViewLoading
+			m.Loading = true
+			m.LoadingMessage = "Analyzing Gemfile.lock..."
+			m.AnimationFrame = 0
+			return m, tea.Batch(
+				tea.Tick(time.Millisecond*100, func(time.Time) tea.Msg {
+					return SpinnerTickMsg{}
+				}),
+				performAnalysis(m.GemfileLockPath),
+			)
+		}
+		return m, nil
+
+	case "esc":
+		m.PathInput.Reset()
+		m.CurrentView = m.ActiveTab
+		return m, nil
+
+	default:
+		var cmd tea.Cmd
+		m.PathInput, cmd = m.PathInput.Update(msg)
+		return m, cmd
+	}
+}
+
+// ============================================================================
+// Message Handlers
+// ============================================================================
+
+func (m *Model) handleAnalysisComplete(msg AnalysisCompleteMsg) (tea.Model, tea.Cmd) {
+	m.Loading = false
+
+	if msg.Error != nil {
+		m.ErrorMessage = fmt.Sprintf("Error analyzing Gemfile.lock: %v", msg.Error)
+		m.CurrentView = ViewError
+		return m, nil
+	}
+
+	if msg.Result == nil {
+		m.ErrorMessage = "No analysis result returned"
+		m.CurrentView = ViewError
+		return m, nil
+	}
+
+	m.AnalysisResult = msg.Result
+
+	// Extract first-level gems
+	m.FirstLevelGems = make([]*gemfile.GemStatus, 0)
+	firstLevelSet := make(map[string]bool)
+	for _, name := range msg.Result.FirstLevelGems {
+		firstLevelSet[name] = true
+	}
+
+	for _, gs := range msg.Result.GemStatuses {
+		if firstLevelSet[gs.Name] {
+			m.FirstLevelGems = append(m.FirstLevelGems, gs)
+		}
+	}
+
+	// Extract vulnerable gems
+	m.VulnerableGems = make([]*gemfile.GemStatus, 0)
+	for _, gs := range msg.Result.GemStatuses {
+		if gs.IsVulnerable {
+			m.VulnerableGems = append(m.VulnerableGems, gs)
+		}
+	}
+
+	m.GemListCursor = 0
+	m.GemListOffset = 0
+	m.CurrentView = m.ActiveTab
+
+	return m, nil
+}
+
+func (m *Model) handleDependencyComplete(msg DependencyCompleteMsg) (tea.Model, tea.Cmd) {
+	m.Loading = false
+
+	if msg.Error != nil {
+		m.ErrorMessage = fmt.Sprintf("Error loading dependencies: %v", msg.Error)
+		m.CurrentView = ViewError
+		return m, nil
+	}
+
+	if msg.Result == nil {
+		m.ErrorMessage = "No dependency result returned"
+		m.CurrentView = ViewError
+		return m, nil
+	}
+
+	m.DependencyResult = msg.Result
+	m.DetailSection = 0
+	m.DetailOffset = 0
+	m.CurrentView = ViewGemDetail
+
+	return m, nil
+}
+
+// ============================================================================
+// Helper Methods
+// ============================================================================
+
+func (m *Model) updateSearchResults() {
+	if m.AnalysisResult == nil || m.SearchQuery == "" {
+		m.SearchResults = nil
 		return
 	}
 
-	m.CurrentMessage = result.Summary
+	m.SearchResults = make([]*gemfile.GemStatus, 0)
+	query := strings.ToLower(m.SearchQuery)
 
-	filterTerm := strings.ToLower(m.FilterInput.Value())
-	filtered := make([]*gemfile.GemStatus, 0)
-
-	for _, gemStatus := range result.GemStatuses {
-		// Filter by search term
-		if filterTerm != "" && !strings.Contains(strings.ToLower(gemStatus.Name), filterTerm) {
-			continue
-		}
-		filtered = append(filtered, gemStatus)
-	}
-
-	// Sort alphabetically
-	m.sortGemStatuses(filtered)
-
-	m.FilteredGems = filtered
-	m.SelectedGemIdx = 0
-	m.ScrollOffset = 0
-}
-
-func (m *Model) sortGemStatuses(gems []*gemfile.GemStatus) {
-	// Simple bubble sort for gem statuses (small enough list)
-	for i := 0; i < len(gems); i++ {
-		for j := i + 1; j < len(gems); j++ {
-			if strings.ToLower(gems[i].Name) > strings.ToLower(gems[j].Name) {
-				gems[i], gems[j] = gems[j], gems[i]
-			}
+	for _, gs := range m.AnalysisResult.GemStatuses {
+		if strings.Contains(strings.ToLower(gs.Name), query) {
+			m.SearchResults = append(m.SearchResults, gs)
 		}
 	}
 }
 
+func (m *Model) clampScrollOffsets() {
+	contentHeight := m.Height - FixedChrome
 
-func (m *Model) handleKeypress(msg tea.KeyMsg) (*Model, tea.Cmd) {
-	switch msg.String() {
-	case "ctrl+c", "q":
-		m.Quitting = true
-		return m, tea.Quit
-
-	case "enter":
-		switch m.CurrentView {
-		case ViewMain:
-			if m.ShowDropdown && m.FilteredIndex >= 0 && m.FilteredIndex < len(m.Commands) {
-				return m.executeSelectedCommand()
-			}
-		case ViewDependencySearch:
-			if len(m.FilteredGems) > 0 && m.SelectedGemIdx >= 0 && m.SelectedGemIdx < len(m.FilteredGems) {
-				// User selected a gem for dependency analysis
-				selectedGem := m.FilteredGems[m.SelectedGemIdx]
-				m.CurrentView = ViewAnalyzing
-				m.CurrentMessage = "Analyzing dependencies..."
-				m.AnimationFrame = 0
-				return m, tea.Batch(
-					tea.Tick(time.Millisecond*200, func(time.Time) tea.Msg {
-						return AnimationTickMsg{}
-					}),
-					performDependencyAnalysis(m.GemfileLockPath, selectedGem.Name),
-				)
-			}
-		case ViewFilterInput:
-			if m.CurrentCommand == "deps" && len(m.FilteredGems) > 0 && m.SelectedGemIdx >= 0 && m.SelectedGemIdx < len(m.FilteredGems) {
-				// User selected a gem for dependency analysis
-				selectedGem := m.FilteredGems[m.SelectedGemIdx]
-				m.CurrentCommand = ""
-				m.CurrentView = ViewAnalyzing
-				m.CurrentMessage = "Analyzing dependencies..."
-				m.AnimationFrame = 0
-				return m, tea.Batch(
-					tea.Tick(time.Millisecond*200, func(time.Time) tea.Msg {
-						return AnimationTickMsg{}
-					}),
-					performDependencyAnalysis(m.GemfileLockPath, selectedGem.Name),
-				)
-			}
-		case ViewResults, ViewHelp, ViewError, ViewDependencyTree:
-			m.CurrentView = ViewMain
-			m.CurrentMessage = "Ready"
-			m.ErrorMessage = ""
-			m.DependencyResult = nil
-		case ViewSelectPath:
-			path := m.PathInput.Value()
-			if path != "" {
-				m.loadProject(path)
-				m.CurrentView = ViewMain
-				m.PathInput.Reset()
-			}
-		}
-
-	case "esc":
-		if m.ShowDropdown {
-			m.ShowDropdown = false
-			m.SearchInput.Reset()
-		} else if m.CurrentView == ViewSelectPath {
-			m.CurrentView = ViewMain
-			m.PathInput.Reset()
-		} else if m.CurrentView != ViewMain {
-			m.CurrentView = ViewMain
-		}
-
-	case "up", "shift+tab":
-		if m.CurrentView == ViewMain && m.ShowDropdown {
-			if m.FilteredIndex > 0 {
-				m.FilteredIndex--
-			} else {
-				m.FilteredIndex = len(m.Commands) - 1
-			}
-		}
-
-	case "down", "tab":
-		if m.CurrentView == ViewMain && m.ShowDropdown {
-			if m.FilteredIndex < len(m.Commands)-1 {
-				m.FilteredIndex++
-			} else {
-				m.FilteredIndex = 0
-			}
-		}
-
-	default:
-		if m.CurrentView == ViewMain {
-			oldValue := m.SearchInput.Value()
-			var cmd tea.Cmd
-			m.SearchInput, cmd = m.SearchInput.Update(msg)
-			newValue := m.SearchInput.Value()
-
-			// Show dropdown when user starts typing
-			if newValue != "" && !m.ShowDropdown {
-				m.ShowDropdown = true
-				m.FilteredIndex = 0
-			}
-
-			// Hide dropdown when input is cleared
-			if newValue == "" && m.ShowDropdown {
-				m.ShowDropdown = false
-			}
-
-			if newValue != oldValue {
-				m.filterCommands(newValue)
-			}
-
-			return m, cmd
-		} else if m.CurrentView == ViewSelectPath {
-			var cmd tea.Cmd
-			m.PathInput, cmd = m.PathInput.Update(msg)
-			return m, cmd
-		}
+	// Clamp gem list offset
+	maxOffset := len(m.FirstLevelGems) - contentHeight + 2
+	if maxOffset < 0 {
+		maxOffset = 0
+	}
+	if m.GemListOffset > maxOffset {
+		m.GemListOffset = maxOffset
 	}
 
-	return m, nil
+	// Clamp search offset
+	maxSearchOffset := len(m.SearchResults) - contentHeight + 2
+	if maxSearchOffset < 0 {
+		maxSearchOffset = 0
+	}
+	if m.SearchOffset > maxSearchOffset {
+		m.SearchOffset = maxSearchOffset
+	}
+
+	// Clamp CVE offset
+	maxCVEOffset := len(m.VulnerableGems) - contentHeight + 2
+	if maxCVEOffset < 0 {
+		maxCVEOffset = 0
+	}
+	if m.CVEOffset > maxCVEOffset {
+		m.CVEOffset = maxCVEOffset
+	}
 }
 
-func (m *Model) handleWindowSize(msg tea.WindowSizeMsg) (*Model, tea.Cmd) {
-	m.Width = msg.Width
-	m.Height = msg.Height
-
-	headerHeight := 8
-	commandListHeight := (m.Height - headerHeight) / 2
-	if commandListHeight < 3 {
-		commandListHeight = 3
+func (m *Model) ensureGemListCursorVisible() {
+	contentHeight := m.Height - FixedChrome - 2
+	if m.GemListCursor < m.GemListOffset {
+		m.GemListOffset = m.GemListCursor
+	} else if m.GemListCursor >= m.GemListOffset+contentHeight {
+		m.GemListOffset = m.GemListCursor - contentHeight + 1
 	}
-
-	m.CommandList.SetSize(m.Width-4, commandListHeight)
-
-	return m, nil
 }
 
-func (m *Model) updateCommandList() {
-	items := make([]list.Item, 0, len(m.Commands))
-	for _, cmd := range m.Commands {
-		items = append(items, commandItem{
-			name:        cmd.Name,
-			description: cmd.Description,
-		})
+func (m *Model) ensureSearchCursorVisible() {
+	contentHeight := m.Height - FixedChrome - 2
+	if m.SearchCursor < m.SearchOffset {
+		m.SearchOffset = m.SearchCursor
+	} else if m.SearchCursor >= m.SearchOffset+contentHeight {
+		m.SearchOffset = m.SearchCursor - contentHeight + 1
 	}
-	m.CommandList.SetItems(items)
 }
 
-func (m *Model) filterCommands(query string) {
-	// For now, just keep all commands visible
-	// TODO: Implement search filtering
-	items := make([]list.Item, 0, len(m.Commands))
-	for _, cmd := range m.Commands {
-		items = append(items, commandItem{
-			name:        cmd.Name,
-			description: cmd.Description,
-		})
+func (m *Model) ensureCVECursorVisible() {
+	contentHeight := m.Height - FixedChrome - 2
+	if m.CVECursor < m.CVEOffset {
+		m.CVEOffset = m.CVECursor
+	} else if m.CVECursor >= m.CVEOffset+contentHeight {
+		m.CVEOffset = m.CVECursor - contentHeight + 1
 	}
-	m.CommandList.SetItems(items)
 }
 
-
-func (m *Model) executeSelectedCommand() (*Model, tea.Cmd) {
-	if m.FilteredIndex < 0 || m.FilteredIndex >= len(m.Commands) {
-		return m, nil
+func (m *Model) clampDetailOffset() {
+	// Rough estimate - clamp to prevent too much scrolling
+	maxDepth := 20
+	if m.DetailOffset > maxDepth {
+		m.DetailOffset = maxDepth
 	}
-
-	m.ShowDropdown = false
-	m.SearchInput.Reset()
-
-	cmd := m.Commands[m.FilteredIndex]
-	return m, cmd.Execute(m)
 }

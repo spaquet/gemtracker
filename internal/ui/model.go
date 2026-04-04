@@ -3,17 +3,34 @@ package ui
 import (
 	"os"
 	"path/filepath"
-	"time"
 
-	"github.com/charmbracelet/bubbles/list"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 	"github.com/spaquet/gemtracker/internal/gemfile"
 )
 
-// Spinner frames for loading animation
-var spinnerFrames = []string{"⠋", "⠙", "⠹", "⠸"}
+// Spinner frames for loading animation (8-frame braille sequence)
+var spinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧"}
+
+// ============================================================================
+// View Modes
+// ============================================================================
+
+type ViewMode int
+
+const (
+	ViewLoading ViewMode = iota
+	ViewGemList
+	ViewGemDetail
+	ViewSearch
+	ViewCVE
+	ViewSelectPath
+	ViewError
+)
+
+// ============================================================================
+// Messages
+// ============================================================================
 
 type AnalysisCompleteMsg struct {
 	Result *gemfile.AnalysisResult
@@ -25,130 +42,121 @@ type DependencyCompleteMsg struct {
 	Error  error
 }
 
-type AnimationTickMsg struct{}
+type SpinnerTickMsg struct{}
 
-type ViewMode string
-
-const (
-	ViewMain               ViewMode = "main"
-	ViewAnalyzing          ViewMode = "analyzing"
-	ViewResults            ViewMode = "results"
-	ViewFilterInput        ViewMode = "filter_input"
-	ViewDependencySearch   ViewMode = "dependency_search"
-	ViewDependencyTree     ViewMode = "dependency_tree"
-	ViewHelp               ViewMode = "help"
-	ViewError              ViewMode = "error"
-	ViewSelectPath         ViewMode = "select_path"
-)
-
-
-type Command struct {
-	Name        string
-	Description string
-	Execute     func(*Model) tea.Cmd
-}
+// ============================================================================
+// Model
+// ============================================================================
 
 type Model struct {
 	// Window dimensions
 	Width  int
 	Height int
 
-	// UI state
-	CurrentView    ViewMode
-	Commands       []Command
-	CommandList    list.Model
-	SearchInput    textinput.Model
-	PathInput      textinput.Model
-	FilterInput    textinput.Model
-	ShowDropdown   bool
-	FilteredIndex  int
+	// Current view and navigation
+	CurrentView ViewMode
+	ActiveTab   ViewMode // Persists across ViewLoading/ViewGemDetail
 
-	// Gem display state
-	FilteredGems   []*gemfile.GemStatus
-	SelectedGemIdx int // For navigation
-	ScrollOffset   int // For viewport scrolling
+	// Data
+	AnalysisResult  *gemfile.AnalysisResult
+	DependencyResult *gemfile.DependencyResult
 
-	// Animation state
-	AnimationFrame int // For loading spinner
+	// Gem List screen state
+	FirstLevelGems []*gemfile.GemStatus
+	GemListCursor  int
+	GemListOffset  int
 
-	// Navigation
-	Cursor int
+	// Gem Detail screen state
+	SelectedGem   *gemfile.GemStatus
+	DetailSection int // 0 = forward deps, 1 = reverse deps
+	DetailOffset  int
+
+	// Search screen state
+	SearchInput   textinput.Model
+	SearchQuery   string
+	SearchResults []*gemfile.GemStatus
+	SearchCursor  int
+	SearchOffset  int
+
+	// CVE screen state
+	VulnerableGems []*gemfile.GemStatus
+	CVECursor      int
+	CVEOffset      int
+
+	// Path selection modal
+	PathInput textinput.Model
+
+	// Loading state
+	Loading        bool
+	LoadingMessage string
+	AnimationFrame int
+
+	// Error state
+	ErrorMessage string
 
 	// Project state
-	ProjectPath      string
-	GemfileLockPath  string
-	GemCount         int
-	OutdatedCount    int
-	VulnerableCount  int
-	LastScanTime     *time.Time
-	CurrentMessage   string
-	ErrorMessage     string
-	AnalysisResult   interface{} // Will hold *gemfile.AnalysisResult
-	DependencyResult *gemfile.DependencyResult
-	CurrentCommand   string // Track which command initiated filter view
+	ProjectPath     string
+	GemfileLockPath string
 
 	// App metadata
-	Version string
-	Commit  string
-	Date    string
-
-	// Flag parsing
-	ShowHelp    bool
-	ShowVersion bool
-	Quitting    bool
+	Version  string
+	Commit   string
+	Date     string
+	Quitting bool
 }
+
+// ============================================================================
+// Initialization
+// ============================================================================
 
 func NewModel(version, commit, date string) *Model {
 	m := &Model{
 		Version:        version,
 		Commit:         commit,
 		Date:           date,
-		CurrentView:    ViewMain,
-		Cursor:         0,
+		CurrentView:    ViewGemList,
+		ActiveTab:      ViewGemList,
+		ProjectPath:    "./",
+		GemfileLockPath: "./Gemfile.lock",
 		SearchInput:    textinput.New(),
 		PathInput:      textinput.New(),
-		FilterInput:    textinput.New(),
-		CurrentMessage: "Ready",
 	}
 
-	m.SearchInput.Placeholder = "Search commands..."
-	m.SearchInput.PlaceholderStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
-	m.SearchInput.PromptStyle = lipgloss.NewStyle().Foreground(ColorPrimary).Bold(true)
-	m.SearchInput.TextStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("255"))
-	m.SearchInput.Cursor.Style = lipgloss.NewStyle().Foreground(ColorPrimary).Bold(true)
-	m.SearchInput.Focus()
+	// Configure search input
+	m.SearchInput.Placeholder = "Search gems..."
+	m.SearchInput.PlaceholderStyle = textinput.NewModel().PlaceholderStyle
+	m.SearchInput.PromptStyle = textinput.NewModel().PromptStyle
+	m.SearchInput.TextStyle = textinput.NewModel().TextStyle
+	m.SearchInput.Cursor.Style = textinput.NewModel().Cursor.Style
 
+	// Configure path input
 	m.PathInput.Placeholder = "/path/to/project"
-	m.PathInput.PlaceholderStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
-	m.PathInput.PromptStyle = lipgloss.NewStyle().Foreground(ColorPrimary).Bold(true)
-	m.PathInput.TextStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("255"))
-	m.PathInput.Cursor.Style = lipgloss.NewStyle().Foreground(ColorPrimary).Bold(true)
-
-	m.FilterInput.Placeholder = "Search gems..."
-	m.FilterInput.PlaceholderStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
-	m.FilterInput.TextStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("255"))
-	m.FilterInput.Cursor.Style = lipgloss.NewStyle().Foreground(ColorPrimary).Bold(true)
-	m.FilterInput.Focus() // Focus so it can receive input
-
-	m.initializeCommands()
-	m.setupCommandList()
+	m.PathInput.PlaceholderStyle = textinput.NewModel().PlaceholderStyle
+	m.PathInput.PromptStyle = textinput.NewModel().PromptStyle
+	m.PathInput.TextStyle = textinput.NewModel().TextStyle
+	m.PathInput.Cursor.Style = textinput.NewModel().Cursor.Style
 
 	return m
 }
 
 func (m *Model) Init() tea.Cmd {
+	// Start by showing path selection if needed
+	if m.ProjectPath == "./" {
+		return nil
+	}
 	return nil
 }
 
+// ============================================================================
+// Project Loading
+// ============================================================================
+
 func (m *Model) loadProject(path string) {
-	// Expand ~ to home directory
 	if path == "~" || path == "." {
 		if path == "." {
-			// Current directory
 			m.ProjectPath = "./"
 			m.GemfileLockPath = "./Gemfile.lock"
 		} else {
-			// Home directory
 			m.ProjectPath = "~/"
 			m.GemfileLockPath = "~/Gemfile.lock"
 		}
@@ -162,6 +170,10 @@ func (m *Model) loadProject(path string) {
 		m.GemfileLockPath = path + "/Gemfile.lock"
 	}
 }
+
+// ============================================================================
+// Async Tasks
+// ============================================================================
 
 func performAnalysis(gemfilePath string) tea.Cmd {
 	return func() tea.Msg {
@@ -185,38 +197,6 @@ func performAnalysis(gemfilePath string) tea.Cmd {
 	}
 }
 
-func performDependencyLoad(gemfilePath string) tea.Cmd {
-	return func() tea.Msg {
-		gf, err := gemfile.Parse(gemfilePath)
-		if err != nil {
-			return AnalysisCompleteMsg{Error: err}
-		}
-
-		// Load group information from Gemfile
-		dir := filepath.Dir(gemfilePath)
-		gf.LoadGroupsFromGemfile(dir)
-
-		// Convert to AnalysisResult for gem selection
-		result := &gemfile.AnalysisResult{
-			AllGems:     gf.GetGemsAsList(),
-			GemStatuses: convertToStatuses(gf.GetGemsAsList()),
-		}
-		return AnalysisCompleteMsg{Result: result}
-	}
-}
-
-func convertToStatuses(gems []*gemfile.Gem) []*gemfile.GemStatus {
-	statuses := make([]*gemfile.GemStatus, len(gems))
-	for i, gem := range gems {
-		statuses[i] = &gemfile.GemStatus{
-			Name:    gem.Name,
-			Version: gem.Version,
-			Groups:  gem.Groups,
-		}
-	}
-	return statuses
-}
-
 func performDependencyAnalysis(gemfilePath string, gemName string) tea.Cmd {
 	return func() tea.Msg {
 		gf, err := gemfile.Parse(gemfilePath)
@@ -232,109 +212,3 @@ func performDependencyAnalysis(gemfilePath string, gemName string) tea.Cmd {
 		return DependencyCompleteMsg{Result: result}
 	}
 }
-
-func (m *Model) initializeCommands() {
-	m.Commands = []Command{
-		{
-			Name:        "open",
-			Description: "Open a different Ruby project",
-			Execute: func(m *Model) tea.Cmd {
-				m.CurrentView = ViewSelectPath
-				m.PathInput.Reset()
-				m.PathInput.Focus()
-				return nil
-			},
-		},
-		{
-			Name:        "analyze",
-			Description: "Analyze Gemfile.lock for risks and conflicts",
-			Execute: func(m *Model) tea.Cmd {
-				m.CurrentView = ViewAnalyzing
-				m.CurrentMessage = "Analyzing Gemfile.lock..."
-				m.AnimationFrame = 0
-				// Return batch of commands: start animation ticker + perform analysis
-				return tea.Batch(
-					tea.Tick(time.Millisecond*200, func(time.Time) tea.Msg {
-						return AnimationTickMsg{}
-					}),
-					performAnalysis(m.GemfileLockPath),
-				)
-			},
-		},
-		{
-			Name:        "deps",
-			Description: "Show dependency tree for a gem",
-			Execute: func(m *Model) tea.Cmd {
-				m.CurrentCommand = "deps"
-				m.CurrentView = ViewAnalyzing
-				m.CurrentMessage = "Loading dependencies..."
-				m.AnimationFrame = 0
-
-				return tea.Batch(
-					tea.Tick(time.Millisecond*200, func(time.Time) tea.Msg {
-						return AnimationTickMsg{}
-					}),
-					performDependencyLoad(m.GemfileLockPath),
-				)
-			},
-		},
-		{
-			Name:        "vulnerabilities",
-			Description: "Check for known vulnerabilities",
-			Execute: func(m *Model) tea.Cmd {
-				m.CurrentMessage = "Checking for vulnerabilities (coming soon)"
-				m.CurrentView = ViewResults
-				return nil
-			},
-		},
-		{
-			Name:        "licenses",
-			Description: "Generate license compliance report",
-			Execute: func(m *Model) tea.Cmd {
-				m.CurrentMessage = "Generating license report (coming soon)"
-				m.CurrentView = ViewResults
-				return nil
-			},
-		},
-		{
-			Name:        "help",
-			Description: "Show detailed help",
-			Execute: func(m *Model) tea.Cmd {
-				m.CurrentView = ViewHelp
-				return nil
-			},
-		},
-		{
-			Name:        "quit",
-			Description: "Exit gemtracker",
-			Execute: func(m *Model) tea.Cmd {
-				m.Quitting = true
-				return tea.Quit
-			},
-		},
-	}
-}
-
-func (m *Model) setupCommandList() {
-	items := make([]list.Item, 0, len(m.Commands))
-	for _, cmd := range m.Commands {
-		items = append(items, commandItem{
-			name:        cmd.Name,
-			description: cmd.Description,
-		})
-	}
-
-	delegate := list.NewDefaultDelegate()
-	delegate.ShowDescription = true
-	m.CommandList = list.New(items, delegate, 0, 0)
-	m.CommandList.SetShowTitle(false)
-	m.CommandList.SetShowHelp(false)
-}
-
-type commandItem struct {
-	name        string
-	description string
-}
-
-func (i commandItem) FilterValue() string { return i.name }
-
