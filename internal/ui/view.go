@@ -49,7 +49,11 @@ func (m *Model) renderAppHeader() string {
 
 	// Calculate spacing
 	totalLen := lipgloss.Width(left) + lipgloss.Width(right)
-	spacer := strings.Repeat(" ", m.Width-totalLen-4)
+	spacerCount := m.Width - totalLen - 4
+	if spacerCount < 0 {
+		spacerCount = 0
+	}
+	spacer := strings.Repeat(" ", spacerCount)
 
 	return left + spacer + right
 }
