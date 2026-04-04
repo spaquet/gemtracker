@@ -1,0 +1,96 @@
+version: 2
+
+project_name: gemtracker
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: gemtracker
+    main: ./cmd/gemtracker
+    binary: gemtracker
+    mod_timestamp: "{{ .CommitTimestamp }}"
+    flags:
+      - -trimpath
+    ldflags:
+      - -X main.version={{ .Version }}
+      - -X main.commit={{ .ShortCommit }}
+      - -X main.date={{ .CommitDate }}
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+
+archives:
+  - format: tar.gz
+    format_overrides:
+      - goos: windows
+        format: zip
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - README.md
+      - LICENSE
+
+checksums:
+  name_template: "{{ .ProjectName }}_{{ .Version }}_checksums.txt"
+  algorithm: sha256
+
+snapshot:
+  name_template: "{{ .Version }}-snapshot-{{ .ShortCommit }}"
+
+release:
+  github:
+    owner: spaquet
+    name: gemtracker
+  draft: false
+  prerelease: false
+  name_template: "{{ .ProjectName }} {{ .Version }}"
+  mode: append
+
+changelog:
+  use: conventional
+  groups:
+    - title: Features
+      regexp: '^feat(\(.+\))?!?:.+$'
+      order: 0
+    - title: Bug fixes
+      regexp: '^fix(\(.+\))?!?:.+$'
+      order: 1
+    - title: Enhancements
+      regexp: '^(perf|refactor)(\(.+\))?!?:.+$'
+      order: 2
+    - title: Other work
+      order: 999
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+      - typo
+
+brews:
+  - repository:
+      owner: spaquet
+      name: homebrew-gemtracker
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+    commit_msg_template: "chore(brew): update gemtracker formula to {{ .Version }}"
+    homepage: "https://github.com/spaquet/gemtracker"
+    description: "An interactive TUI for analyzing Ruby gem dependencies and security risks"
+    license: MIT
+    dependencies:
+      - name: go
+        type: build
+    caveats: |
+      gemtracker analyzes Gemfile.lock files in Ruby projects.
+
+      To use it:
+        gemtracker
+        gemtracker /path/to/project
+    test: |
+      system "#{bin}/gemtracker", "--version"
+    skip_upload: false

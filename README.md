@@ -18,21 +18,62 @@ A beautiful, interactive Terminal UI for analyzing Ruby gem dependencies and qui
 
 ## Installation
 
-### macOS (Homebrew)
+### macOS (Homebrew) — Recommended
 ```bash
-brew tap spaquet/gemtracker
-brew install gemtracker
+brew install spaquet/gemtracker/gemtracker
 ```
 
-### From Source
+To upgrade:
+```bash
+brew upgrade gemtracker
+```
+
+### Linux
+
+Download the latest release:
+```bash
+# For x86-64
+curl -L https://github.com/spaquet/gemtracker/releases/download/v1.0.0/gemtracker_linux_amd64.tar.gz | tar xz
+
+# For ARM64
+curl -L https://github.com/spaquet/gemtracker/releases/download/v1.0.0/gemtracker_linux_arm64.tar.gz | tar xz
+```
+
+Or build from source:
 ```bash
 git clone https://github.com/spaquet/gemtracker
 cd gemtracker
 make build
 ```
 
-### Linux & Windows
-Build from source using `make build` (requires Go 1.24+)
+### Windows
+
+Download the latest release from [GitHub Releases](https://github.com/spaquet/gemtracker/releases):
+- `gemtracker_windows_amd64.zip` for x86-64
+- `gemtracker_windows_arm64.zip` for ARM64
+
+Extract the ZIP file and add the directory to your PATH, or place `gemtracker.exe` in a directory already in your PATH.
+
+### macOS (Direct Download)
+
+If you prefer not to use Homebrew:
+```bash
+# For Intel (x86-64)
+curl -L https://github.com/spaquet/gemtracker/releases/download/v1.0.0/gemtracker_darwin_amd64.tar.gz | tar xz
+
+# For Apple Silicon (ARM64)
+curl -L https://github.com/spaquet/gemtracker/releases/download/v1.0.0/gemtracker_darwin_arm64.tar.gz | tar xz
+```
+
+### From Source (All Platforms)
+
+Requires Go 1.24 or later:
+```bash
+git clone https://github.com/spaquet/gemtracker
+cd gemtracker
+make build
+./gemtracker
+```
 
 ## Usage
 
@@ -203,12 +244,30 @@ gemtracker/
 └── Makefile                 # Build & test
 ```
 
+## Releases & Updates
+
+gemtracker follows [semantic versioning](https://semver.org/). New versions are released when features are added or bugs are fixed. Check the [releases page](https://github.com/spaquet/gemtracker/releases) for the latest version.
+
+To check your installed version:
+```bash
+gemtracker --version
+```
+
+### Staying Updated
+
+- **Homebrew users**: `brew upgrade gemtracker`
+- **Direct download users**: Check [releases](https://github.com/spaquet/gemtracker/releases) page and re-download the latest binary
+
 ## Known Limitations
 
 - Only parses standard Gemfile.lock format
 - Outdated version checking requires network access
 - CVE database is static (not real-time updated)
 - No support for Gemfile global options or git/path sources yet
+
+## Security
+
+Please report security vulnerabilities privately using [GitHub Security Advisory](https://github.com/spaquet/gemtracker/security/advisories). See [SECURITY.md](SECURITY.md) for details.
 
 ## License
 

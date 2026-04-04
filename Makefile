@@ -29,16 +29,32 @@ build-dev:
 	go build $(LDFLAGS) -o gemtracker ./cmd/gemtracker
 
 build-release:
-	@echo "Building release binaries..."
+	@echo "Building release binaries for all platforms..."
 	mkdir -p dist
 	# macOS Intel (amd64)
 	GOOS=darwin GOARCH=amd64 go build $(LDFLAGS) -o dist/gemtracker-darwin-amd64 ./cmd/gemtracker
-	tar -C dist -czf dist/gemtracker-darwin-amd64.tar.gz gemtracker-darwin-amd64
+	tar -C dist -czf dist/gemtracker_darwin_amd64.tar.gz gemtracker-darwin-amd64
+	rm dist/gemtracker-darwin-amd64
 	# macOS Apple Silicon (arm64)
 	GOOS=darwin GOARCH=arm64 go build $(LDFLAGS) -o dist/gemtracker-darwin-arm64 ./cmd/gemtracker
-	tar -C dist -czf dist/gemtracker-darwin-arm64.tar.gz gemtracker-darwin-arm64
+	tar -C dist -czf dist/gemtracker_darwin_arm64.tar.gz gemtracker-darwin-arm64
+	rm dist/gemtracker-darwin-arm64
+	# Linux x86-64 (amd64)
+	GOOS=linux GOARCH=amd64 go build $(LDFLAGS) -o dist/gemtracker-linux-amd64 ./cmd/gemtracker
+	tar -C dist -czf dist/gemtracker_linux_amd64.tar.gz gemtracker-linux-amd64
+	rm dist/gemtracker-linux-amd64
+	# Linux ARM64
+	GOOS=linux GOARCH=arm64 go build $(LDFLAGS) -o dist/gemtracker-linux-arm64 ./cmd/gemtracker
+	tar -C dist -czf dist/gemtracker_linux_arm64.tar.gz gemtracker-linux-arm64
+	rm dist/gemtracker-linux-arm64
+	# Windows x86-64 (amd64)
+	GOOS=windows GOARCH=amd64 go build $(LDFLAGS) -o dist/gemtracker-windows-amd64.exe ./cmd/gemtracker
+	cd dist && zip -q gemtracker_windows_amd64.zip gemtracker-windows-amd64.exe && rm gemtracker-windows-amd64.exe
+	# Windows ARM64
+	GOOS=windows GOARCH=arm64 go build $(LDFLAGS) -o dist/gemtracker-windows-arm64.exe ./cmd/gemtracker
+	cd dist && zip -q gemtracker_windows_arm64.zip gemtracker-windows-arm64.exe && rm gemtracker-windows-arm64.exe
 	@echo "Release binaries created:"
-	@ls -lh dist/gemtracker-darwin-*.tar.gz
+	@ls -lh dist/
 
 test:
 	go test -v ./...
