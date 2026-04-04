@@ -51,15 +51,15 @@ var AppVersionStyle = lipgloss.NewStyle().
 
 var TabStyle = lipgloss.NewStyle().
 	Foreground(lipgloss.Color(ColorTabInactive)).
-	Padding(0, 2)
+	Padding(0, 2).
+	Background(lipgloss.Color(ColorSurface))
 
 var TabActiveStyle = lipgloss.NewStyle().
 	Foreground(lipgloss.Color(ColorTabActive)).
 	Bold(true).
 	Padding(0, 2).
-	BorderBottom(true).
-	BorderStyle(lipgloss.NormalBorder()).
-	BorderForeground(lipgloss.Color(ColorBorderActive))
+	Background(lipgloss.Color(ColorSurface)).
+	Underline(true)
 
 // ============================================================================
 // Status Bar Styles
@@ -82,7 +82,7 @@ var KeyHintDescStyle = lipgloss.NewStyle().
 // ============================================================================
 
 var TableHeaderStyle = lipgloss.NewStyle().
-	Foreground(lipgloss.Color(ColorTextSubtle)).
+	Foreground(lipgloss.Color(ColorTextMuted)).
 	Bold(true).
 	BorderBottom(true).
 	BorderStyle(lipgloss.NormalBorder()).

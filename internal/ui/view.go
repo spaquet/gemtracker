@@ -72,7 +72,7 @@ func (m *Model) renderTabBar() string {
 		}
 	}
 
-	return strings.Join(tabs, "")
+	return strings.Join(tabs, "  ")
 }
 
 func (m *Model) renderStatusBar() string {
@@ -391,11 +391,17 @@ func (m *Model) viewSearch() string {
 
 	// Search input
 	searchPrompt := SearchPromptStyle.Render("/ ")
-	searchInput := SearchBoxStyle.Width(m.Width - 10).Render(m.SearchInput.View())
-	searchLine := searchPrompt + searchInput
+	promptWidth := lipgloss.Width(searchPrompt)
+	// Account for prompt, left margin (2), right margin (2), border (2)
+	searchInputWidth := m.Width - promptWidth - 6
+	if searchInputWidth < 10 {
+		searchInputWidth = 10
+	}
+	searchInput := SearchBoxStyle.Width(searchInputWidth).Render(m.SearchInput.View())
+	searchLine := lipgloss.JoinHorizontal(lipgloss.Top, searchPrompt, searchInput)
 
 	// Search results
-	contentHeight := m.Height - FixedChrome - 4
+	contentHeight := m.Height - FixedChrome - 3
 	resultContent := m.renderSearchResults(contentHeight)
 
 	content := lipgloss.JoinVertical(lipgloss.Left,
