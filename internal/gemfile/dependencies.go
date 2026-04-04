@@ -1,7 +1,5 @@
 package gemfile
 
-import "fmt"
-
 type DependencyNode struct {
 	Name     string
 	Version  string
@@ -151,10 +149,9 @@ func buildReverseDependencyTree(gemName string, gemfile *Gemfile, visited map[st
 			Children: make([]*DependencyNode, 0),
 		}
 
-		// For the parent's dependencies (other than the current gem), add a few as children for context
-		depCount := 0
+		// For the parent's dependencies (other than the current gem), add all as children
 		for _, dep := range parentGem.Dependencies {
-			if dep == gemName || depCount >= 2 { // Limit to first 2 other deps for context
+			if dep == gemName {
 				continue
 			}
 			depGem, ok := gemfile.Gems[dep]
@@ -165,24 +162,7 @@ func buildReverseDependencyTree(gemName string, gemfile *Gemfile, visited map[st
 					Depth:    depth + 2,
 					Children: make([]*DependencyNode, 0),
 				})
-				depCount++
 			}
-		}
-
-		// If parent has more deps, indicate that
-		otherDepsCount := 0
-		for _, dep := range parentGem.Dependencies {
-			if dep != gemName {
-				otherDepsCount++
-			}
-		}
-		if otherDepsCount > 2 {
-			parentNode.Children = append(parentNode.Children, &DependencyNode{
-				Name:     fmt.Sprintf("... +%d more", otherDepsCount-2),
-				Version:  "",
-				Depth:    depth + 2,
-				Children: make([]*DependencyNode, 0),
-			})
 		}
 
 		node.Children = append(node.Children, parentNode)
