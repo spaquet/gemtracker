@@ -328,12 +328,11 @@ func (m *Model) viewGemDetail() string {
 	forwardTitle := "Dependencies (what this gem needs)"
 	reverseTitle := "Used By (what depends on this gem)"
 
-	// If navigating forward dependencies with cursor, show the selected gem
-	if m.DetailSection == 0 && m.DetailTreeCursor < len(m.DetailForwardLines) {
-		currentGem := m.DetailForwardLines[m.DetailTreeCursor]
-		reverseTitle = fmt.Sprintf("Used By %s (what depends on it)", currentGem)
-	} else if m.DetailSection == 1 && m.DetailTreeCursor < len(m.DetailReverseLines) {
-		// If navigating reverse dependencies, show a hint
+	// Only show dynamic titles when in the opposite section
+	// When viewing forward deps (DetailSection==0), show what depends on selected reverse dep
+	// When viewing reverse deps (DetailSection==1), show dependencies of selected forward dep
+	if m.DetailSection == 1 && m.DetailTreeCursor < len(m.DetailReverseLines) {
+		// If viewing reverse dependencies section, show which forward gem we're looking at
 		currentGem := m.DetailReverseLines[m.DetailTreeCursor]
 		forwardTitle = fmt.Sprintf("Dependencies of %s", currentGem)
 	}
