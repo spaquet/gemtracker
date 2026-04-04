@@ -3,6 +3,7 @@ package ui
 import (
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
@@ -109,17 +110,15 @@ type Model struct {
 // Initialization
 // ============================================================================
 
-func NewModel(version, commit, date string) *Model {
+func NewModel(version, commit, date, projectPath string) *Model {
 	m := &Model{
-		Version:        version,
-		Commit:         commit,
-		Date:           date,
-		CurrentView:    ViewGemList,
-		ActiveTab:      ViewGemList,
-		ProjectPath:    "./",
-		GemfileLockPath: "./Gemfile.lock",
-		SearchInput:    textinput.New(),
-		PathInput:      textinput.New(),
+		Version:     version,
+		Commit:      commit,
+		Date:        date,
+		CurrentView: ViewGemList,
+		ActiveTab:   ViewGemList,
+		SearchInput: textinput.New(),
+		PathInput:   textinput.New(),
 	}
 
 	// Configure search input
@@ -136,14 +135,33 @@ func NewModel(version, commit, date string) *Model {
 	m.PathInput.TextStyle = textinput.NewModel().TextStyle
 	m.PathInput.Cursor.Style = textinput.NewModel().Cursor.Style
 
+	// Load the provided project path
+	m.loadProject(projectPath)
+
 	return m
 }
 
 func (m *Model) Init() tea.Cmd {
-	// Start by showing path selection if needed
-	if m.ProjectPath == "./" {
-		return nil
+	// Auto-start analysis if Gemfile.lock exists
+	if _, err := os.Stat(m.GemfileLockPath); err == nil {
+		// File exists, start analysis
+		m.CurrentView = ViewLoading
+		m.ActiveTab = ViewGemList
+		m.Loading = true
+		m.LoadingMessage = "Analyzing Gemfile.lock..."
+		m.AnimationFrame = 0
+
+		return tea.Batch(
+			tea.Tick(100*time.Millisecond, func(time.Time) tea.Msg {
+				return SpinnerTickMsg{}
+			}),
+			performAnalysis(m.GemfileLockPath),
+		)
 	}
+
+	// File doesn't exist, show path selection
+	m.CurrentView = ViewSelectPath
+	m.PathInput.Focus()
 	return nil
 }
 
@@ -152,23 +170,29 @@ func (m *Model) Init() tea.Cmd {
 // ============================================================================
 
 func (m *Model) loadProject(path string) {
-	if path == "~" || path == "." {
-		if path == "." {
-			m.ProjectPath = "./"
-			m.GemfileLockPath = "./Gemfile.lock"
-		} else {
-			m.ProjectPath = "~/"
-			m.GemfileLockPath = "~/Gemfile.lock"
-		}
-	} else if len(path) > 0 && path[0] == '~' {
+	// Expand ~ to home directory
+	expandedPath := path
+	if len(path) > 0 && path[0] == '~' {
 		home := os.Getenv("HOME")
-		path = home + path[1:]
-		m.ProjectPath = path
-		m.GemfileLockPath = path + "/Gemfile.lock"
-	} else {
-		m.ProjectPath = path
-		m.GemfileLockPath = path + "/Gemfile.lock"
+		expandedPath = home + path[1:]
 	}
+
+	// Check if path is a file (Gemfile.lock) or directory
+	fileInfo, err := os.Stat(expandedPath)
+	if err == nil && !fileInfo.IsDir() {
+		// It's a file - assume it's Gemfile.lock
+		m.GemfileLockPath = expandedPath
+		m.ProjectPath = filepath.Dir(expandedPath)
+		return
+	}
+
+	// It's a directory (or doesn't exist yet)
+	if expandedPath == "." {
+		m.ProjectPath = "./"
+	} else {
+		m.ProjectPath = expandedPath
+	}
+	m.GemfileLockPath = filepath.Join(m.ProjectPath, "Gemfile.lock")
 }
 
 // ============================================================================
