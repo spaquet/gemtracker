@@ -363,14 +363,14 @@ func (m *Model) renderDependencyPanel(node *gemfile.DependencyNode, height int, 
 		return strings.Repeat(" \n", height)
 	}
 
-	// Get all lines from the tree
-	allLines := m.renderDependencyTree(node, 9999, 0)
-
 	// Get the appropriate offset for this panel
 	offset := m.DetailForwardOffset
 	if !focused {
 		offset = m.DetailReverseOffset
 	}
+
+	// Get all lines from the tree (this will also populate DetailTreeLines)
+	allLines := m.renderDependencyTree(node, 9999, 0, offset)
 
 	// Apply offset to slice
 	if offset > len(allLines) {
@@ -386,14 +386,14 @@ func (m *Model) renderDependencyPanel(node *gemfile.DependencyNode, height int, 
 	return strings.Join(visibleLines[:height], "\n")
 }
 
-func (m *Model) renderDependencyTree(node *gemfile.DependencyNode, maxLines int, depth int) []string {
+func (m *Model) renderDependencyTree(node *gemfile.DependencyNode, maxLines int, depth int, offset int) []string {
 	if node == nil || maxLines <= 0 {
 		return []string{}
 	}
 
 	var lines []string
 	var gemNames []string
-	m.renderTreeNode(node, depth, &lines, &gemNames, maxLines, 0)
+	m.renderTreeNode(node, depth, &lines, &gemNames, maxLines, 0, offset)
 
 	// Store gem names for later lookup
 	m.DetailTreeLines = gemNames
@@ -401,7 +401,7 @@ func (m *Model) renderDependencyTree(node *gemfile.DependencyNode, maxLines int,
 	return lines
 }
 
-func (m *Model) renderTreeNode(node *gemfile.DependencyNode, depth int, lines *[]string, gemNames *[]string, maxLines int, lineIdx int) int {
+func (m *Model) renderTreeNode(node *gemfile.DependencyNode, depth int, lines *[]string, gemNames *[]string, maxLines int, lineIdx int, offset int) int {
 	if node == nil || len(*lines) >= maxLines {
 		return lineIdx
 	}
@@ -419,8 +419,11 @@ func (m *Model) renderTreeNode(node *gemfile.DependencyNode, depth int, lines *[
 		displayName = fmt.Sprintf("%s (%s)", name, node.Version)
 	}
 
-	// Check if this line should be highlighted
-	isSelected := lineIdx == m.DetailTreeCursor
+	// Calculate visible line index (accounting for offset)
+	visibleLineIdx := lineIdx - offset
+
+	// Check if this line should be highlighted (and is visible)
+	isSelected := visibleLineIdx == m.DetailTreeCursor && visibleLineIdx >= 0
 
 	var line string
 	if isSelected {
@@ -439,7 +442,7 @@ func (m *Model) renderTreeNode(node *gemfile.DependencyNode, depth int, lines *[
 		if len(*lines) >= maxLines {
 			break
 		}
-		lineIdx = m.renderTreeNode(child, depth+1, lines, gemNames, maxLines, lineIdx)
+		lineIdx = m.renderTreeNode(child, depth+1, lines, gemNames, maxLines, lineIdx, offset)
 	}
 
 	return lineIdx
