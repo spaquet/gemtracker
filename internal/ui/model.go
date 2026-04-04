@@ -68,9 +68,12 @@ type Model struct {
 	GemListOffset  int
 
 	// Gem Detail screen state
-	SelectedGem   *gemfile.GemStatus
-	DetailSection int // 0 = forward deps, 1 = reverse deps
-	DetailOffset  int
+	SelectedGem         *gemfile.GemStatus
+	DetailSection       int // 0 = forward deps, 1 = reverse deps
+	DetailForwardOffset int
+	DetailReverseOffset int
+	DetailTreeCursor    int       // Selected line in current tree panel
+	DetailTreeLines     []string  // Gem names at each line in the rendered tree
 
 	// Search screen state
 	SearchInput   textinput.Model

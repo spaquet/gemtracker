@@ -14,13 +14,15 @@ type RubygemeInfo struct {
 	Version       string `json:"version"`
 	HomepageURI   string `json:"homepage_uri"`
 	SourceCodeURI string `json:"source_code_uri"`
+	Info          string `json:"info"`
 }
 
 // OutdatedChecker checks if gems are outdated by querying rubygems.org
 type OutdatedChecker struct {
-	client    *http.Client
-	cache     map[string]string // gem name -> latest version
-	homepages map[string]string // gem name -> homepage URL
+	client       *http.Client
+	cache        map[string]string // gem name -> latest version
+	homepages    map[string]string // gem name -> homepage URL
+	descriptions map[string]string // gem name -> description
 }
 
 // NewOutdatedChecker creates a new checker with HTTP client
@@ -29,8 +31,9 @@ func NewOutdatedChecker() *OutdatedChecker {
 		client: &http.Client{
 			Timeout: 10 * time.Second,
 		},
-		cache:     make(map[string]string),
-		homepages: make(map[string]string),
+		cache:        make(map[string]string),
+		homepages:    make(map[string]string),
+		descriptions: make(map[string]string),
 	}
 }
 
@@ -90,6 +93,9 @@ func (oc *OutdatedChecker) getLatestVersion(gemName string) (string, error) {
 	}
 	oc.homepages[gemName] = homepage
 
+	// Cache description
+	oc.descriptions[gemName] = info.Info
+
 	return info.Version, nil
 }
 
@@ -110,6 +116,24 @@ func (oc *OutdatedChecker) GetHomepage(gemName string) string {
 
 	// Ultimate fallback
 	return fmt.Sprintf("https://rubygems.org/gems/%s", gemName)
+}
+
+// GetDescription returns the description for a gem, using cached data or fetching if needed
+func (oc *OutdatedChecker) GetDescription(gemName string) string {
+	// If we have it cached, return it
+	if desc, ok := oc.descriptions[gemName]; ok {
+		return desc
+	}
+
+	// Fetch it (this will populate the cache as a side effect)
+	oc.getLatestVersion(gemName)
+
+	// Return cached value or empty string
+	if desc, ok := oc.descriptions[gemName]; ok {
+		return desc
+	}
+
+	return ""
 }
 
 // isVersionLess compares two semantic versions

@@ -82,7 +82,7 @@ func (m *Model) renderStatusBar() string {
 	case ViewGemList:
 		hints = []string{"↑↓ navigate", "enter select", "tab next", "q quit"}
 	case ViewGemDetail:
-		hints = []string{"esc back", "tab section", "↑↓ scroll", "q quit"}
+		hints = []string{"esc back", "tab section", "↑↓ navigate", "enter select", "o open url", "q quit"}
 	case ViewSearch:
 		hints = []string{"type search", "↑↓ navigate", "enter select", "esc clear"}
 	case ViewCVE:
@@ -259,16 +259,53 @@ func (m *Model) viewGemDetail() string {
 		return ""
 	}
 
-	contentHeight := m.Height - FixedChrome - 4
-	gemInfo := fmt.Sprintf("%s v%s    %s",
+	contentHeight := m.Height - FixedChrome - 5
+
+	// Format version info
+	versionDisplay := "Latest"
+	if m.SelectedGem.IsOutdated {
+		versionDisplay = m.SelectedGem.LatestVersion
+	}
+
+	// Build header lines
+	headerLine1 := fmt.Sprintf("%s   Installed: %s  →  %s%s",
 		m.SelectedGem.Name,
 		m.SelectedGem.Version,
-		m.SelectedGem.HomepageURL,
+		versionDisplay,
+		func() string {
+			if m.SelectedGem.IsOutdated {
+				return " (update available)"
+			}
+			return ""
+		}(),
 	)
-	gemInfoFormatted := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(ColorPrimary)).Render(gemInfo)
+	headerLine1Formatted := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(ColorPrimary)).Render(headerLine1)
+
+	// Format description line
+	descMaxLen := m.Width - 4
+	if descMaxLen < 20 {
+		descMaxLen = 20
+	}
+	descLine := ""
+	if m.SelectedGem.Description != "" {
+		descLine = truncateStr(m.SelectedGem.Description, descMaxLen)
+		descLine = "  " + descLine
+		descLine = lipgloss.NewStyle().Foreground(lipgloss.Color(ColorTextMuted)).Render(descLine)
+	}
+
+	// URL line
+	urlLine := "  " + truncateStr(m.SelectedGem.HomepageURL, descMaxLen)
+	urlLine = lipgloss.NewStyle().Foreground(lipgloss.Color(ColorTextMuted)).Italic(true).Render(urlLine)
+
+	var gemInfoLines []string
+	gemInfoLines = append(gemInfoLines, headerLine1Formatted)
+	if descLine != "" {
+		gemInfoLines = append(gemInfoLines, descLine)
+	}
+	gemInfoLines = append(gemInfoLines, urlLine)
 
 	// Two panels: forward deps and reverse deps
-	panelHeight := (contentHeight - 2) / 2
+	panelHeight := (contentHeight - len(gemInfoLines) - 2) / 2
 
 	forwardTitle := "  Dependencies (what this gem needs)"
 	reverseTitle := "  Used By (what depends on this gem)"
@@ -307,11 +344,10 @@ func (m *Model) viewGemDetail() string {
 	}
 	reversePanel := reverseBorderStyle.Render(reverseSection)
 
-	content := lipgloss.JoinVertical(lipgloss.Left,
-		gemInfoFormatted,
-		forwardPanel,
-		reversePanel,
-	)
+	contentLines := []string{}
+	contentLines = append(contentLines, gemInfoLines...)
+	contentLines = append(contentLines, forwardPanel, reversePanel)
+	content := lipgloss.JoinVertical(lipgloss.Left, contentLines...)
 
 	return lipgloss.JoinVertical(
 		lipgloss.Left,
@@ -327,14 +363,27 @@ func (m *Model) renderDependencyPanel(node *gemfile.DependencyNode, height int, 
 		return strings.Repeat(" \n", height)
 	}
 
-	lines := m.renderDependencyTree(node, height, 0)
+	// Get all lines from the tree
+	allLines := m.renderDependencyTree(node, 9999, 0)
 
-	// Ensure we have exactly `height` lines
-	for len(lines) < height {
-		lines = append(lines, "")
+	// Get the appropriate offset for this panel
+	offset := m.DetailForwardOffset
+	if !focused {
+		offset = m.DetailReverseOffset
 	}
 
-	return strings.Join(lines[:height], "\n")
+	// Apply offset to slice
+	if offset > len(allLines) {
+		offset = len(allLines)
+	}
+	visibleLines := allLines[offset:]
+
+	// Ensure we have exactly `height` lines
+	for len(visibleLines) < height {
+		visibleLines = append(visibleLines, "")
+	}
+
+	return strings.Join(visibleLines[:height], "\n")
 }
 
 func (m *Model) renderDependencyTree(node *gemfile.DependencyNode, maxLines int, depth int) []string {
@@ -343,13 +392,18 @@ func (m *Model) renderDependencyTree(node *gemfile.DependencyNode, maxLines int,
 	}
 
 	var lines []string
-	m.renderTreeNode(node, depth, &lines, maxLines)
+	var gemNames []string
+	m.renderTreeNode(node, depth, &lines, &gemNames, maxLines, 0)
+
+	// Store gem names for later lookup
+	m.DetailTreeLines = gemNames
+
 	return lines
 }
 
-func (m *Model) renderTreeNode(node *gemfile.DependencyNode, depth int, lines *[]string, remaining int) {
+func (m *Model) renderTreeNode(node *gemfile.DependencyNode, depth int, lines *[]string, gemNames *[]string, remaining int, lineIdx int) int {
 	if remaining <= 0 || node == nil {
-		return
+		return lineIdx
 	}
 
 	// Indent based on depth
@@ -360,24 +414,34 @@ func (m *Model) renderTreeNode(node *gemfile.DependencyNode, depth int, lines *[
 	}
 
 	name := node.Name
+	displayName := name
 	if node.Version != "" {
-		name = fmt.Sprintf("%s (%s)", name, node.Version)
+		displayName = fmt.Sprintf("%s (%s)", name, node.Version)
 	}
 
-	line := indent + connector + TreeGemNameStyle.Render(name)
+	// Check if this line should be highlighted
+	isSelected := lineIdx == m.DetailTreeCursor
+
+	var line string
+	if isSelected {
+		// Highlight selected line
+		line = indent + connector + RowSelectedStyle.Render(displayName)
+	} else {
+		line = indent + connector + TreeGemNameStyle.Render(displayName)
+	}
+
 	*lines = append(*lines, line)
+	*gemNames = append(*gemNames, name)
+	lineIdx++
 	remaining--
 
-	// Render children (cap at 3 per node for readability)
-	for i, child := range node.Children {
-		if i >= 3 && len(node.Children) > 3 {
-			*lines = append(*lines, strings.Repeat("  ", depth+1)+"... and "+
-				fmt.Sprintf("%d more", len(node.Children)-3))
-			break
-		}
-		m.renderTreeNode(child, depth+1, lines, remaining)
+	// Render all children
+	for _, child := range node.Children {
+		lineIdx = m.renderTreeNode(child, depth+1, lines, gemNames, remaining, lineIdx)
 		remaining = len(*lines) - 1
 	}
+
+	return lineIdx
 }
 
 // ============================================================================

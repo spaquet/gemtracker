@@ -15,6 +15,7 @@ type GemStatus struct {
 	IsVulnerable      bool
 	VulnerabilityInfo string // Detailed vulnerability info
 	HomepageURL       string // Homepage or source code URL
+	Description       string // Gem description from rubygems.org
 }
 
 type AnalysisResult struct {
@@ -64,6 +65,9 @@ func Analyze(gemfile *Gemfile) *AnalysisResult {
 
 		// Get homepage URL
 		status.HomepageURL = outdatedChecker.GetHomepage(gem.Name)
+
+		// Get description
+		status.Description = outdatedChecker.GetDescription(gem.Name)
 
 		// Track first-level gems (those with groups from Gemfile, not transitive deps)
 		if len(gem.Groups) > 0 {

@@ -2,6 +2,8 @@ package ui
 
 import (
 	"fmt"
+	"os/exec"
+	"runtime"
 	"sort"
 	"strings"
 	"time"
@@ -146,19 +148,63 @@ func (m *Model) handleGemDetailKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case "tab":
 		m.DetailSection = (m.DetailSection + 1) % 2
-		m.DetailOffset = 0
+		m.DetailTreeCursor = 0
 		return m, nil
 
 	case "up":
-		if m.DetailOffset > 0 {
-			m.DetailOffset--
+		if m.DetailTreeCursor > 0 {
+			m.DetailTreeCursor--
+			m.ensureDetailCursorVisible()
 		}
 		return m, nil
 
 	case "down":
-		m.DetailOffset++
-		// Clamp to max based on section
-		m.clampDetailOffset()
+		if m.DetailTreeCursor < len(m.DetailTreeLines)-1 {
+			m.DetailTreeCursor++
+			m.ensureDetailCursorVisible()
+		}
+		return m, nil
+
+	case "enter":
+		// Navigate to the selected gem in the tree
+		if m.DetailTreeCursor < len(m.DetailTreeLines) {
+			selectedGemName := m.DetailTreeLines[m.DetailTreeCursor]
+			// Find the gem status for this name
+			var targetGem *gemfile.GemStatus
+			for _, gem := range m.AnalysisResult.GemStatuses {
+				if gem.Name == selectedGemName {
+					targetGem = gem
+					break
+				}
+			}
+			if targetGem != nil {
+				m.SelectedGem = targetGem
+				m.DetailTreeCursor = 0
+				m.DetailForwardOffset = 0
+				m.DetailReverseOffset = 0
+				// Load dependency analysis for this gem
+				return m, performDependencyAnalysis(m.GemfileLockPath, selectedGemName)
+			}
+		}
+		return m, nil
+
+	case "o":
+		// Open the homepage URL in the default browser
+		if m.SelectedGem != nil && m.SelectedGem.HomepageURL != "" {
+			var cmd *exec.Cmd
+			switch runtime.GOOS {
+			case "darwin":
+				cmd = exec.Command("open", m.SelectedGem.HomepageURL)
+			case "linux":
+				cmd = exec.Command("xdg-open", m.SelectedGem.HomepageURL)
+			case "windows":
+				cmd = exec.Command("cmd", "/c", "start", m.SelectedGem.HomepageURL)
+			default:
+				return m, nil
+			}
+			// Run the command in the background
+			_ = cmd.Start()
+		}
 		return m, nil
 	}
 
@@ -381,7 +427,9 @@ func (m *Model) handleDependencyComplete(msg DependencyCompleteMsg) (tea.Model, 
 
 	m.DependencyResult = msg.Result
 	m.DetailSection = 0
-	m.DetailOffset = 0
+	m.DetailForwardOffset = 0
+	m.DetailReverseOffset = 0
+	m.DetailTreeCursor = 0
 	m.CurrentView = ViewGemDetail
 
 	return m, nil
@@ -470,10 +518,22 @@ func (m *Model) ensureCVECursorVisible() {
 	}
 }
 
-func (m *Model) clampDetailOffset() {
-	// Rough estimate - clamp to prevent too much scrolling
-	maxDepth := 20
-	if m.DetailOffset > maxDepth {
-		m.DetailOffset = maxDepth
+func (m *Model) ensureDetailCursorVisible() {
+	// Rough estimate of visible height for detail panels
+	contentHeight := m.Height - FixedChrome - 5 // Account for header lines
+	panelHeight := (contentHeight - 2) / 2       // Two panels
+
+	var offset *int
+	if m.DetailSection == 0 {
+		offset = &m.DetailForwardOffset
+	} else {
+		offset = &m.DetailReverseOffset
+	}
+
+	if m.DetailTreeCursor < *offset {
+		*offset = m.DetailTreeCursor
+	} else if m.DetailTreeCursor >= *offset+panelHeight {
+		*offset = m.DetailTreeCursor - panelHeight + 1
 	}
 }
+
