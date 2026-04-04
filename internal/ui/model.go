@@ -177,21 +177,23 @@ func (m *Model) loadProject(path string) {
 		expandedPath = home + path[1:]
 	}
 
+	// Convert to absolute path for reliable handling
+	absPath, err := filepath.Abs(expandedPath)
+	if err != nil {
+		absPath = expandedPath
+	}
+
 	// Check if path is a file (Gemfile.lock) or directory
-	fileInfo, err := os.Stat(expandedPath)
+	fileInfo, err := os.Stat(absPath)
 	if err == nil && !fileInfo.IsDir() {
 		// It's a file - assume it's Gemfile.lock
-		m.GemfileLockPath = expandedPath
-		m.ProjectPath = filepath.Dir(expandedPath)
+		m.GemfileLockPath = absPath
+		m.ProjectPath = filepath.Dir(absPath)
 		return
 	}
 
 	// It's a directory (or doesn't exist yet)
-	if expandedPath == "." {
-		m.ProjectPath = "./"
-	} else {
-		m.ProjectPath = expandedPath
-	}
+	m.ProjectPath = absPath
 	m.GemfileLockPath = filepath.Join(m.ProjectPath, "Gemfile.lock")
 }
 
