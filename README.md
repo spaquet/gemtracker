@@ -227,6 +227,33 @@ make build
 make test
 ```
 
+### Code Quality Checks
+
+Before submitting a PR, ensure your code passes all quality checks:
+
+```bash
+# Run tests
+make test
+
+# Check code formatting (auto-fix with -w flag)
+gofmt -s -l .
+
+# Run linter
+go vet ./...
+```
+
+**Required before PR submission:**
+- ✅ All tests must pass: `make test`
+- ✅ Code must be formatted: `gofmt -s -w .` (fixes automatically)
+- ✅ No vet warnings: `go vet ./...`
+
+These checks run automatically in GitHub Actions when you push, but fixing them locally first prevents CI failures:
+
+```bash
+# Quick pre-PR checklist (one command)
+make test && gofmt -s -w . && go vet ./... && echo "✓ Ready for PR!"
+```
+
 ### Project Structure
 ```
 gemtracker/
@@ -272,6 +299,7 @@ Once gemtracker has stable releases, we plan to submit it to [homebrew/homebrew-
 
 ## Documentation
 
+- **[CONTRIBUTING.md](CONTRIBUTING.md)** — How to contribute and code quality requirements
 - **[CHANGELOG.md](CHANGELOG.md)** — Version history and what's new in each release
 - **[RELEASE_GUIDE.md](RELEASE_GUIDE.md)** — How to make releases and manage the distribution pipeline
 - **[DISTRIBUTION_SETUP.md](DISTRIBUTION_SETUP.md)** — GitHub setup instructions for distribution
@@ -291,11 +319,12 @@ See [LICENSE](LICENSE) file for details.
 
 Contributions are welcome! Please feel free to submit a Pull Request.
 
-## Support
+## Support & Contributing
 
 - **Questions?** Open a [discussion](https://github.com/spaquet/gemtracker/discussions)
 - **Found a bug?** Open an [issue](https://github.com/spaquet/gemtracker/issues)
-- **Want to help?** Check [contributing guidelines](CLAUDE.md)
+- **Want to contribute?** See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines
+- **Code quality requirements?** See [CONTRIBUTING.md — Code Quality](CONTRIBUTING.md#code-quality)
 
 ## Troubleshooting
 
