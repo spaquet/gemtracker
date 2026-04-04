@@ -537,29 +537,47 @@ func (m *Model) ensureCVECursorVisible() {
 }
 
 func (m *Model) ensureDetailCursorVisible() {
-	// DetailTreeCursor is relative to the visible area (0-based)
-	// No need to adjust offsets - just ensure cursor is within valid range
-	// The panelHeight will be handled during navigation
-
-	// Get the appropriate offset for current panel
+	// Get the appropriate offset and total lines for current panel
 	var offset *int
+	var totalLines int
+
 	if m.DetailSection == 0 {
 		offset = &m.DetailForwardOffset
+		totalLines = len(m.DetailForwardLines)
 	} else {
 		offset = &m.DetailReverseOffset
+		totalLines = len(m.DetailReverseLines)
 	}
 
 	// Estimate panel height
 	contentHeight := m.Height - FixedChrome - 5
 	panelHeight := (contentHeight - 2) / 2
 
-	// If cursor goes beyond visible area, scroll
-	// visibleLineIdx = lineIdx - offset, so if cursor reaches panelHeight, scroll
+	// Clamp cursor to visible range
 	if m.DetailTreeCursor >= panelHeight {
 		// Cursor is beyond visible area, scroll down
-		linesNeeded := m.DetailTreeCursor - panelHeight + 1
-		*offset += linesNeeded
-		m.DetailTreeCursor = panelHeight - 1
+		*offset = m.DetailTreeCursor - panelHeight + 1
+	} else if m.DetailTreeCursor < 0 {
+		m.DetailTreeCursor = 0
+	}
+
+	// Ensure offset doesn't go past the end
+	maxOffset := totalLines - panelHeight
+	if maxOffset < 0 {
+		maxOffset = 0
+	}
+	if *offset > maxOffset {
+		*offset = maxOffset
+		// Adjust cursor if offset was clamped
+		visibleLines := totalLines - *offset
+		if m.DetailTreeCursor >= visibleLines {
+			m.DetailTreeCursor = visibleLines - 1
+		}
+	}
+
+	// Ensure offset is not negative
+	if *offset < 0 {
+		*offset = 0
 	}
 }
 
