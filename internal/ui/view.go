@@ -304,49 +304,62 @@ func (m *Model) viewGemDetail() string {
 	}
 	gemInfoLines = append(gemInfoLines, urlLine)
 
-	// Two panels: forward deps and reverse deps
-	panelHeight := (contentHeight - len(gemInfoLines) - 2) / 2
+	// Two panels: forward deps and reverse deps (side by side)
+	panelHeight := contentHeight - len(gemInfoLines) - 1
 
-	forwardTitle := "  Dependencies (what this gem needs)"
-	reverseTitle := "  Used By (what depends on this gem)"
+	forwardTitle := "Dependencies (what this gem needs)"
+	reverseTitle := "Used By (what depends on this gem)"
+
+	// Calculate panel widths (split screen)
+	panelWidth := (m.Width - 4) / 2
+	if panelWidth < 20 {
+		panelWidth = 20
+	}
 
 	var forwardContent string
 	var reverseContent string
 
 	if m.DependencyResult != nil {
-		forwardContent = m.renderDependencyPanel(m.DependencyResult.DependencyInfo.ForwardTree, panelHeight, m.DetailSection == 0)
-		reverseContent = m.renderDependencyPanel(m.DependencyResult.DependencyInfo.ReverseTree, panelHeight, m.DetailSection == 1)
+		forwardContent = m.renderDependencyPanel(m.DependencyResult.DependencyInfo.ForwardTree, panelHeight, true)
+		reverseContent = m.renderDependencyPanel(m.DependencyResult.DependencyInfo.ReverseTree, panelHeight, false)
 	} else {
 		forwardContent = strings.Repeat(" \n", panelHeight)
 		reverseContent = strings.Repeat(" \n", panelHeight)
 	}
 
+	// Format titles with width constraint
+	forwardTitleFormatted := truncateStr(forwardTitle, panelWidth-2)
+	reverseTitleFormatted := truncateStr(reverseTitle, panelWidth-2)
+
 	forwardSection := lipgloss.JoinVertical(lipgloss.Left,
-		forwardTitle,
+		forwardTitleFormatted,
 		forwardContent,
 	)
 
 	reverseSection := lipgloss.JoinVertical(lipgloss.Left,
-		reverseTitle,
+		reverseTitleFormatted,
 		reverseContent,
 	)
 
-	// Apply borders
+	// Apply borders with width
 	borderStyle := PanelBorderStyle
 	if m.DetailSection == 0 {
 		borderStyle = PanelBorderActiveStyle
 	}
 
-	forwardPanel := borderStyle.Render(forwardSection)
+	forwardPanel := borderStyle.Width(panelWidth).Render(forwardSection)
 	reverseBorderStyle := PanelBorderStyle
 	if m.DetailSection == 1 {
 		reverseBorderStyle = PanelBorderActiveStyle
 	}
-	reversePanel := reverseBorderStyle.Render(reverseSection)
+	reversePanel := reverseBorderStyle.Width(panelWidth).Render(reverseSection)
+
+	// Join panels horizontally
+	panelsRow := lipgloss.JoinHorizontal(lipgloss.Top, forwardPanel, "  ", reversePanel)
 
 	contentLines := []string{}
 	contentLines = append(contentLines, gemInfoLines...)
-	contentLines = append(contentLines, forwardPanel, reversePanel)
+	contentLines = append(contentLines, panelsRow)
 	content := lipgloss.JoinVertical(lipgloss.Left, contentLines...)
 
 	return lipgloss.JoinVertical(
@@ -358,19 +371,19 @@ func (m *Model) viewGemDetail() string {
 	)
 }
 
-func (m *Model) renderDependencyPanel(node *gemfile.DependencyNode, height int, focused bool) string {
+func (m *Model) renderDependencyPanel(node *gemfile.DependencyNode, height int, isForward bool) string {
 	if node == nil || node.Name == "" {
 		return strings.Repeat(" \n", height)
 	}
 
 	// Get the appropriate offset for this panel
 	offset := m.DetailForwardOffset
-	if !focused {
+	if !isForward {
 		offset = m.DetailReverseOffset
 	}
 
-	// Get all lines from the tree (this will also populate DetailTreeLines)
-	allLines := m.renderDependencyTree(node, 9999, 0, offset)
+	// Get all lines from the tree (this will also populate the correct lines list)
+	allLines := m.renderDependencyTree(node, 9999, 0, offset, isForward)
 
 	// Apply offset to slice
 	if offset > len(allLines) {
@@ -386,7 +399,7 @@ func (m *Model) renderDependencyPanel(node *gemfile.DependencyNode, height int, 
 	return strings.Join(visibleLines[:height], "\n")
 }
 
-func (m *Model) renderDependencyTree(node *gemfile.DependencyNode, maxLines int, depth int, offset int) []string {
+func (m *Model) renderDependencyTree(node *gemfile.DependencyNode, maxLines int, depth int, offset int, isForward bool) []string {
 	if node == nil || maxLines <= 0 {
 		return []string{}
 	}
@@ -395,8 +408,12 @@ func (m *Model) renderDependencyTree(node *gemfile.DependencyNode, maxLines int,
 	var gemNames []string
 	m.renderTreeNode(node, depth, &lines, &gemNames, maxLines, 0, offset)
 
-	// Store gem names for later lookup
-	m.DetailTreeLines = gemNames
+	// Store gem names for later lookup in the appropriate list
+	if isForward {
+		m.DetailForwardLines = gemNames
+	} else {
+		m.DetailReverseLines = gemNames
+	}
 
 	return lines
 }

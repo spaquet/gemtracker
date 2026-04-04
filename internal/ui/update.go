@@ -159,7 +159,13 @@ func (m *Model) handleGemDetailKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case "down":
-		if m.DetailTreeCursor < len(m.DetailTreeLines)-1 {
+		maxCursor := 0
+		if m.DetailSection == 0 {
+			maxCursor = len(m.DetailForwardLines) - 1
+		} else {
+			maxCursor = len(m.DetailReverseLines) - 1
+		}
+		if m.DetailTreeCursor < maxCursor {
 			m.DetailTreeCursor++
 			m.ensureDetailCursorVisible()
 		}
@@ -167,8 +173,20 @@ func (m *Model) handleGemDetailKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case "enter":
 		// Navigate to the selected gem in the tree
-		if m.DetailTreeCursor < len(m.DetailTreeLines) {
-			selectedGemName := m.DetailTreeLines[m.DetailTreeCursor]
+		var selectedGemName string
+		if m.DetailSection == 0 {
+			// Forward dependencies
+			if m.DetailTreeCursor < len(m.DetailForwardLines) {
+				selectedGemName = m.DetailForwardLines[m.DetailTreeCursor]
+			}
+		} else {
+			// Reverse dependencies (Used By)
+			if m.DetailTreeCursor < len(m.DetailReverseLines) {
+				selectedGemName = m.DetailReverseLines[m.DetailTreeCursor]
+			}
+		}
+
+		if selectedGemName != "" {
 			// Find the gem status for this name
 			var targetGem *gemfile.GemStatus
 			for _, gem := range m.AnalysisResult.GemStatuses {

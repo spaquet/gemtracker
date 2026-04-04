@@ -72,8 +72,9 @@ type Model struct {
 	DetailSection       int // 0 = forward deps, 1 = reverse deps
 	DetailForwardOffset int
 	DetailReverseOffset int
-	DetailTreeCursor    int       // Selected line in current tree panel
-	DetailTreeLines     []string  // Gem names at each line in the rendered tree
+	DetailTreeCursor    int        // Selected line in current tree panel
+	DetailForwardLines  []string   // Gem names at each line in forward tree
+	DetailReverseLines  []string   // Gem names at each line in reverse tree
 
 	// Search screen state
 	SearchInput   textinput.Model
