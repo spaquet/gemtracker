@@ -189,3 +189,12 @@ var ErrorTitleStyle = lipgloss.NewStyle().
 
 var ErrorMessageStyle = lipgloss.NewStyle().
 	Foreground(lipgloss.Color(ColorText))
+
+// ============================================================================
+// Update Notification Styles
+// ============================================================================
+
+var UpdateBarStyle = lipgloss.NewStyle().
+	Background(lipgloss.Color(ColorSurface)).
+	Foreground(lipgloss.Color(ColorWarning)).
+	Padding(0, 2)

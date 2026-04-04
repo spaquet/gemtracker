@@ -38,6 +38,12 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case DependencyCompleteMsg:
 		return m.handleDependencyComplete(msg)
+
+	case VersionCheckMsg:
+		if msg.HasUpdate {
+			m.NewVersionAvailable = msg.LatestVersion
+		}
+		return m, nil
 	}
 
 	return m, nil
@@ -492,7 +498,7 @@ func (m *Model) updateSearchResults() {
 }
 
 func (m *Model) clampScrollOffsets() {
-	contentHeight := m.Height - FixedChrome
+	contentHeight := m.Height - FixedChrome - m.updateBarHeight()
 
 	// Clamp gem list offset
 	maxOffset := len(m.FirstLevelGems) - contentHeight + 2
@@ -523,7 +529,7 @@ func (m *Model) clampScrollOffsets() {
 }
 
 func (m *Model) ensureGemListCursorVisible() {
-	contentHeight := m.Height - FixedChrome - 2
+	contentHeight := m.Height - FixedChrome - m.updateBarHeight() - 2
 	if m.GemListCursor < m.GemListOffset {
 		m.GemListOffset = m.GemListCursor
 	} else if m.GemListCursor >= m.GemListOffset+contentHeight {
@@ -532,7 +538,7 @@ func (m *Model) ensureGemListCursorVisible() {
 }
 
 func (m *Model) ensureSearchCursorVisible() {
-	contentHeight := m.Height - FixedChrome - 2
+	contentHeight := m.Height - FixedChrome - m.updateBarHeight() - 2
 	if m.SearchCursor < m.SearchOffset {
 		m.SearchOffset = m.SearchCursor
 	} else if m.SearchCursor >= m.SearchOffset+contentHeight {
@@ -541,7 +547,7 @@ func (m *Model) ensureSearchCursorVisible() {
 }
 
 func (m *Model) ensureCVECursorVisible() {
-	contentHeight := m.Height - FixedChrome - 2
+	contentHeight := m.Height - FixedChrome - m.updateBarHeight() - 2
 	if m.CVECursor < m.CVEOffset {
 		m.CVEOffset = m.CVECursor
 	} else if m.CVECursor >= m.CVEOffset+contentHeight {
@@ -563,7 +569,7 @@ func (m *Model) ensureDetailCursorVisible() {
 	}
 
 	// Estimate panel height
-	contentHeight := m.Height - FixedChrome - 5
+	contentHeight := m.Height - FixedChrome - m.updateBarHeight() - 5
 	panelHeight := (contentHeight - 2) / 2
 
 	// Clamp cursor to visible range

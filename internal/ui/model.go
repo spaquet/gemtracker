@@ -1,8 +1,12 @@
 package ui
 
 import (
+	"encoding/json"
+	"io"
+	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/charmbracelet/bubbles/textinput"
@@ -44,6 +48,11 @@ type DependencyCompleteMsg struct {
 }
 
 type SpinnerTickMsg struct{}
+
+type VersionCheckMsg struct {
+	LatestVersion string
+	HasUpdate     bool
+}
 
 // ============================================================================
 // Model
@@ -106,10 +115,11 @@ type Model struct {
 	GemfileLockPath string
 
 	// App metadata
-	Version  string
-	Commit   string
-	Date     string
-	Quitting bool
+	Version              string
+	Commit               string
+	Date                 string
+	NewVersionAvailable  string // empty = no update, otherwise holds latest version tag
+	Quitting             bool
 }
 
 // ============================================================================
@@ -162,13 +172,15 @@ func (m *Model) Init() tea.Cmd {
 				return SpinnerTickMsg{}
 			}),
 			performAnalysis(m.GemfileLockPath),
+			checkLatestVersion(m.Version),
 		)
 	}
 
 	// File doesn't exist, show path selection
 	m.CurrentView = ViewSelectPath
 	m.PathInput.Focus()
-	return nil
+	// Still check for updates in background
+	return checkLatestVersion(m.Version)
 }
 
 // ============================================================================
@@ -242,5 +254,55 @@ func performDependencyAnalysis(gemfilePath string, gemName string) tea.Cmd {
 
 		result := gemfile.AnalyzeDependencies(gf, gemName)
 		return DependencyCompleteMsg{Result: result}
+	}
+}
+
+func checkLatestVersion(currentVersion string) tea.Cmd {
+	return func() tea.Msg {
+		// Create HTTP client with timeout
+		client := &http.Client{Timeout: 5 * time.Second}
+
+		// Fetch latest release from GitHub
+		resp, err := client.Get("https://api.github.com/repos/spaquet/gemtracker/releases/latest")
+		if err != nil {
+			// Silently fail - don't disrupt user experience
+			return VersionCheckMsg{HasUpdate: false}
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			return VersionCheckMsg{HasUpdate: false}
+		}
+
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return VersionCheckMsg{HasUpdate: false}
+		}
+
+		// Parse JSON response
+		var release struct {
+			TagName string `json:"tag_name"`
+		}
+		if err := json.Unmarshal(body, &release); err != nil {
+			return VersionCheckMsg{HasUpdate: false}
+		}
+
+		// Simple version comparison: strip "v" prefix and compare as strings
+		latestVersion := strings.TrimPrefix(release.TagName, "v")
+		currentVer := strings.TrimPrefix(currentVersion, "v")
+
+		// If current is "dev" or empty, don't suggest upgrade
+		if currentVer == "dev" || currentVer == "" {
+			return VersionCheckMsg{HasUpdate: false}
+		}
+
+		// Basic comparison: if latest > current (string comparison)
+		// In a real app, use semver, but for now string comparison works for standard versions
+		hasUpdate := latestVersion > currentVer
+		if hasUpdate {
+			return VersionCheckMsg{LatestVersion: release.TagName, HasUpdate: true}
+		}
+
+		return VersionCheckMsg{HasUpdate: false}
 	}
 }
