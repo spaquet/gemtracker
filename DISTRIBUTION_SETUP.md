@@ -22,6 +22,9 @@ The Homebrew tap is a separate GitHub repository that holds the formula for inst
 
 The tap URL will be: `https://github.com/spaquet/homebrew-gemtracker`
 
+**Installation command for users**: `brew tap spaquet/gemtracker && brew install gemtracker`
+(Homebrew automatically strips the `homebrew-` prefix)
+
 ## Step 2: Create a GitHub Personal Access Token (PAT)
 
 This token allows the release workflow to push the updated Homebrew formula automatically.
@@ -180,17 +183,27 @@ If any of these steps fail, check the GitHub Actions tab for workflow errors.
 4. **Homebrew formula updated**: New version available via Homebrew
 5. **Users can install**: `brew install spaquet/gemtracker/gemtracker`
 
-## Next Steps: Homebrew Core
+## Next Steps: Homebrew Core (Optional, for future)
 
-Once the project has a few stable releases and traction, you can submit to `homebrew/homebrew-core`:
+Once the project has a few stable releases (~v1.2.0+) and reasonable traction, you can submit to `homebrew/homebrew-core`:
 
 1. Fork https://github.com/Homebrew/homebrew-core
 2. Create a new file `Formula/gemtracker.rb` based on the formula goreleaser generates
 3. Submit a PR to `homebrew/homebrew-core`
-4. Homebrew maintainers review and merge
-5. Users can then just `brew install gemtracker` (no tap needed)
+4. Homebrew maintainers review and merge (usually takes 1-2 weeks)
+5. Users can then install with just `brew install gemtracker` (no tap needed)
 
-This is a one-time manual process, not automated. For now, the custom tap is sufficient.
+**Why do this?**
+- Better discoverability (users don't need to know about the tap)
+- No tap management needed
+- Official blessing from Homebrew community
+
+**Why not do it now?**
+- Homebrew Core has review requirements
+- Better to have a few releases first
+- Current tap (`brew tap spaquet/gemtracker && brew install gemtracker`) is already user-friendly
+
+For now, the custom tap is sufficient and gives you full control.
 
 ---
 

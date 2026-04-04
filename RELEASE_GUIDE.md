@@ -29,6 +29,11 @@ This document summarizes the distribution pipeline setup and how to make release
 1. Go to https://github.com/new
 2. Create repo: spaquet/homebrew-gemtracker (public)
 3. Leave empty, goreleaser will populate it
+
+# Users will then install with:
+# brew tap spaquet/gemtracker
+# brew install gemtracker
+# (Homebrew automatically strips the 'homebrew-' prefix)
 ```
 
 ### 2. Create GitHub Personal Access Token (PAT)
@@ -94,7 +99,7 @@ open https://github.com/spaquet/gemtracker/releases
 # Check Homebrew formula was updated
 open https://github.com/spaquet/homebrew-gemtracker
 
-# Test Homebrew install
+# Test Homebrew install (simple command for users!)
 brew tap spaquet/gemtracker
 brew install gemtracker
 gemtracker --version
@@ -173,7 +178,8 @@ Once the project has ~5-10 stable releases and reasonable traction, you can subm
 4. Homebrew maintainers review and merge
 5. Users can then just `brew install gemtracker` (no tap needed)
 
-For now, the custom tap at `spaquet/gemtracker/gemtracker` is perfectly fine.
+**Current setup** (`brew tap spaquet/gemtracker && brew install gemtracker`) is already user-friendly.
+**Future setup** (`brew install gemtracker`) will be even simpler once accepted into Homebrew Core.
 
 ---
 

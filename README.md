@@ -20,7 +20,8 @@ A beautiful, interactive Terminal UI for analyzing Ruby gem dependencies and qui
 
 ### macOS (Homebrew) — Recommended
 ```bash
-brew install spaquet/gemtracker/gemtracker
+brew tap spaquet/gemtracker
+brew install gemtracker
 ```
 
 To upgrade:
@@ -257,6 +258,10 @@ gemtracker --version
 
 - **Homebrew users**: `brew upgrade gemtracker`
 - **Direct download users**: Check [releases](https://github.com/spaquet/gemtracker/releases) page and re-download the latest binary
+
+### Future: Official Homebrew
+
+Once gemtracker has stable releases, we plan to submit it to [homebrew/homebrew-core](https://github.com/Homebrew/homebrew-core), allowing installation with just `brew install gemtracker` (no tap needed).
 
 ## Known Limitations
 
