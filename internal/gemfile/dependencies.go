@@ -103,6 +103,21 @@ func buildDependencyTree(gemName string, gemfile *Gemfile, visited map[string]bo
 	return node
 }
 
+// GetReverseDependencies returns a list of gems that depend on the given gem
+// This is useful for local calculations without needing to rebuild the tree
+func GetReverseDependencies(gemName string, gemfile *Gemfile) []string {
+	reverseDeps := []string{}
+	for _, gem := range gemfile.Gems {
+		for _, dep := range gem.Dependencies {
+			if dep == gemName {
+				reverseDeps = append(reverseDeps, gem.Name)
+				break
+			}
+		}
+	}
+	return reverseDeps
+}
+
 // buildReverseDependencyTree recursively builds a tree of what depends on this gem
 // For reverse dependencies, we want to show: gem <- parent1 <- grandparent, etc.
 // Plus show the parent's OTHER dependencies for context

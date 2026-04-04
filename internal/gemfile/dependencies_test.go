@@ -1,6 +1,7 @@
 package gemfile
 
 import (
+	"sort"
 	"testing"
 )
 
@@ -237,5 +238,91 @@ func TestSimpleDependencies(t *testing.T) {
 
 	if result.DependencyInfo.ForwardDeps[0] != "simple-gem" {
 		t.Errorf("expected forward dependency 'simple-gem', got %q", result.DependencyInfo.ForwardDeps[0])
+	}
+}
+
+func TestGetReverseDependencies(t *testing.T) {
+	// Create a simple gemfile
+	gf := &Gemfile{
+		Gems: map[string]*Gem{
+			"rails": {
+				Name:         "rails",
+				Version:      "7.0.0",
+				Dependencies: []string{"actionpack", "activesupport"},
+			},
+			"actionpack": {
+				Name:         "actionpack",
+				Version:      "7.0.0",
+				Dependencies: []string{"rack"},
+			},
+			"activesupport": {
+				Name:         "activesupport",
+				Version:      "7.0.0",
+				Dependencies: []string{"concurrent-ruby"},
+			},
+			"rack": {
+				Name:         "rack",
+				Version:      "2.2.3",
+				Dependencies: []string{},
+			},
+			"concurrent-ruby": {
+				Name:         "concurrent-ruby",
+				Version:      "1.2.0",
+				Dependencies: []string{},
+			},
+		},
+	}
+
+	tests := []struct {
+		name     string
+		gemName  string
+		expected []string
+	}{
+		{
+			name:     "rack has actionpack as reverse dep",
+			gemName:  "rack",
+			expected: []string{"actionpack"},
+		},
+		{
+			name:     "concurrent-ruby has activesupport as reverse dep",
+			gemName:  "concurrent-ruby",
+			expected: []string{"activesupport"},
+		},
+		{
+			name:     "rails has no reverse deps",
+			gemName:  "rails",
+			expected: []string{},
+		},
+		{
+			name:     "actionpack has rails as reverse dep",
+			gemName:  "actionpack",
+			expected: []string{"rails"},
+		},
+		{
+			name:     "activesupport has rails as reverse dep",
+			gemName:  "activesupport",
+			expected: []string{"rails"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := GetReverseDependencies(tt.gemName, gf)
+			
+			// Sort for comparison
+			sort.Strings(result)
+			sort.Strings(tt.expected)
+			
+			if len(result) != len(tt.expected) {
+				t.Errorf("got %d reverse dependencies, want %d", len(result), len(tt.expected))
+			}
+			
+			for i, dep := range result {
+				if i >= len(tt.expected) || dep != tt.expected[i] {
+					t.Errorf("got %v, want %v", result, tt.expected)
+					break
+				}
+			}
+		})
 	}
 }

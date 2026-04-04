@@ -328,10 +328,12 @@ func (m *Model) viewGemDetail() string {
 	forwardTitle := "Dependencies (what this gem needs)"
 	reverseTitle := "Used By (what depends on this gem)"
 
-	// Only show dynamic titles when in the opposite section
-	// When viewing forward deps (DetailSection==0), show what depends on selected reverse dep
-	// When viewing reverse deps (DetailSection==1), show dependencies of selected forward dep
-	if m.DetailSection == 1 && m.DetailTreeCursor < len(m.DetailReverseLines) {
+	// Update titles based on currently selected gem in detail view
+	if m.DetailSection == 0 && m.DetailTreeCursor < len(m.DetailForwardLines) {
+		// If viewing forward dependencies, show what depends on the selected dependency
+		currentGem := m.DetailForwardLines[m.DetailTreeCursor]
+		reverseTitle = fmt.Sprintf("Used By %s (what depends on it)", currentGem)
+	} else if m.DetailSection == 1 && m.DetailTreeCursor < len(m.DetailReverseLines) {
 		// If viewing reverse dependencies section, show which forward gem we're looking at
 		currentGem := m.DetailReverseLines[m.DetailTreeCursor]
 		forwardTitle = fmt.Sprintf("Dependencies of %s", currentGem)
@@ -433,7 +435,24 @@ func (m *Model) renderReverseDepsList(height int) string {
 		return strings.Repeat(" \n", height)
 	}
 
-	reverseDeps := m.DependencyResult.DependencyInfo.ReverseDeps
+	// Determine which gem's reverse dependencies to show
+	// If viewing a dependency in the forward tree, show its reverse deps
+	// Otherwise, show the originally selected gem's reverse deps
+	var reverseDeps []string
+
+	if m.DetailSection == 0 && m.DetailTreeCursor < len(m.DetailForwardLines) {
+		// User is navigating in the forward dependencies tree
+		// Get reverse dependencies for the currently selected dependency
+		currentGemName := m.DetailForwardLines[m.DetailTreeCursor]
+
+		// Use the AllGems map from DependencyResult to calculate reverse deps locally
+		if m.DependencyResult.AllGems != nil {
+			reverseDeps = gemfile.GetReverseDependencies(currentGemName, &gemfile.Gemfile{Gems: m.DependencyResult.AllGems})
+		}
+	} else {
+		// Show the originally selected gem's reverse dependencies
+		reverseDeps = m.DependencyResult.DependencyInfo.ReverseDeps
+	}
 
 	// Clear DetailReverseLines for navigation tracking
 	m.DetailReverseLines = []string{}
