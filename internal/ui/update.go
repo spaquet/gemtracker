@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -338,13 +339,23 @@ func (m *Model) handleAnalysisComplete(msg AnalysisCompleteMsg) (tea.Model, tea.
 		}
 	}
 
-	// Extract vulnerable gems
+	// Sort first-level gems alphabetically by name
+	sort.Slice(m.FirstLevelGems, func(i, j int) bool {
+		return m.FirstLevelGems[i].Name < m.FirstLevelGems[j].Name
+	})
+
+	// Extract vulnerable gems and sort alphabetically
 	m.VulnerableGems = make([]*gemfile.GemStatus, 0)
 	for _, gs := range msg.Result.GemStatuses {
 		if gs.IsVulnerable {
 			m.VulnerableGems = append(m.VulnerableGems, gs)
 		}
 	}
+
+	// Sort vulnerable gems alphabetically by name
+	sort.Slice(m.VulnerableGems, func(i, j int) bool {
+		return m.VulnerableGems[i].Name < m.VulnerableGems[j].Name
+	})
 
 	m.GemListCursor = 0
 	m.GemListOffset = 0
@@ -394,6 +405,11 @@ func (m *Model) updateSearchResults() {
 			m.SearchResults = append(m.SearchResults, gs)
 		}
 	}
+
+	// Sort search results alphabetically by name
+	sort.Slice(m.SearchResults, func(i, j int) bool {
+		return m.SearchResults[i].Name < m.SearchResults[j].Name
+	})
 }
 
 func (m *Model) clampScrollOffsets() {
