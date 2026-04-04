@@ -65,6 +65,10 @@ func (m *Model) renderTabBar() string {
 	var tabs []string
 	for i, label := range tabLabels {
 		mode := tabModes[i]
+		// Add CVE count to the CVE label
+		if mode == ViewCVE && len(m.VulnerableGems) > 0 {
+			label = fmt.Sprintf("%s (%d)", label, len(m.VulnerableGems))
+		}
 		if mode == m.ActiveTab {
 			tabs = append(tabs, TabActiveStyle.Render(label))
 		} else {
