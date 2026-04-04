@@ -1,15 +1,20 @@
 # gemtracker
 
-A Go CLI tool to analyze Ruby gem dependencies and quickly identify risks in your projects.
+A beautiful, interactive Terminal UI for analyzing Ruby gem dependencies and quickly identifying security risks in your projects.
 
 ## Features
 
-- **Interactive Terminal UI**: Beautiful, intuitive command palette interface for all analysis functions
-- **Dependency Visualization**: See which gems are using a specific gem and what versions
-- **Vulnerability Detection**: Identify outdated and potentially vulnerable gem versions
-- **License Compliance**: Scan and report on gem licenses for compliance requirements
-- **Conflict Detection**: Automatically detect version conflicts and compatibility issues
-- **Version Display**: Version info and project stats shown in the terminal header
+- **Interactive Tab-Based TUI**: Clean, modern interface with 4 main screens
+  - **[Gems]** - First-level gem list with versions and update status
+  - **[Search]** - Real-time gem search across all dependencies
+  - **[CVE]** - Vulnerability detection and reporting
+  - **Gem Details** - Full dependency tree visualization
+
+- **Dependency Visualization**: See forward and reverse dependency trees with version info
+- **Vulnerability Detection**: Identify known CVEs and affected gem versions
+- **Group-Based Analysis**: Understand gem scope (default, development, test, production)
+- **Version Management**: See installed versions, latest available, and outdated gems
+- **Direct Links**: Quick links to rubygems.org and GitHub repositories
 
 ## Installation
 
@@ -19,51 +24,159 @@ brew tap spaquet/gemtracker
 brew install gemtracker
 ```
 
+### From Source
+```bash
+git clone https://github.com/spaquet/gemtracker
+cd gemtracker
+make build
+```
+
 ### Linux & Windows
-Installation instructions coming soon.
+Build from source using `make build` (requires Go 1.24+)
 
 ## Usage
 
-### Interactive Mode (Default)
-Simply run gemtracker to launch the interactive terminal UI:
-
+### Basic Usage
 ```bash
+# Analyze current directory (must contain Gemfile.lock)
 gemtracker
+
+# Analyze specific project
+gemtracker /path/to/project
+
+# Analyze specific Gemfile.lock directly
+gemtracker /path/to/project/Gemfile.lock
+
+# Expand tilde for home directory
+gemtracker ~/my-rails-app
+
+# Show version
+gemtracker -v
+gemtracker --version
 ```
 
-The interactive interface provides:
-- **Analyze**: Scan your Gemfile.lock for risks, outdated gems, and conflicts
-- **Deps**: Show which parent gems are using a specific gem and their versions
-- **Vulnerabilities**: Check for known vulnerabilities in your gems
-- **Licenses**: Generate a license compliance report
-- **Help**: View keyboard shortcuts and detailed help
+### Interactive Navigation
 
-### Navigation
-- **Arrow Keys / Tab**: Navigate through available commands
-- **Enter**: Execute selected command
-- **Esc**: Clear search or return to main menu
-- **q**: Quit gemtracker
+Once running, use these keys:
+
+#### Tab Navigation
+- **Tab** / **Shift+Tab** - Switch between screens ([Gems] → [Search] → [CVE])
+- **/** - Jump directly to Search screen
+
+#### List Navigation
+- **↑ / ↓** - Move selection up/down
+- **Enter** - Select gem to view details
+
+#### Gem Details
+- **Tab** - Toggle between dependency sections
+- **↑ / ↓** - Scroll through dependencies
+- **Esc** - Return to previous screen
+
+#### Global
+- **q** / **Ctrl+C** - Quit gemtracker
+
+### Understanding the Gem Table
+
+The gem list shows:
+```
+#    Gem Name    Installed   Latest      Groups      Status
+──────────────────────────────────────────────────────────────
+1    rails       7.1.2       7.2.0       default     ↑ 7.2.0
+2    devise      4.9.3       latest      default     ✓
+3    rack        2.1.2       latest      default     ⚠ CVE
+```
+
+**Groups** column shows where gems are used:
+- **default** - All environments (production, staging, development)
+- **development** - Development only
+- **test** - Test only
+- **production** - Production only
+
+> **Important**: A vulnerability in a `test` or `development` gem doesn't affect production if not used there.
+
+**Status** column shows:
+- **✓** - Up to date, no vulnerabilities
+- **↑ version** - Newer version available (outdated)
+- **⚠ CVE** - Known vulnerabilities detected
+
+### Understanding CVE Information
+
+The CVE screen shows all known vulnerabilities:
+- **CVE ID** - Vulnerability identifier (e.g., CVE-2021-22942)
+- **Gem** - Name of the affected gem
+- **Version** - Version range affected
+- **Description** - What the vulnerability does
+- **Status** - Whether gem is directly used or transitive
 
 ## Quick Start
 
-1. Navigate to a Ruby project directory with a `Gemfile.lock`
-2. Run `gemtracker`
-3. Use the interactive menu to analyze your dependencies
+1. Navigate to a Ruby project with `Gemfile.lock`:
+   ```bash
+   cd ~/my-rails-app
+   ```
+
+2. Launch gemtracker:
+   ```bash
+   gemtracker
+   ```
+
+3. Browse gems:
+   - **[Gems]** tab shows all first-level dependencies
+   - Press **Enter** on any gem to see its full dependency tree
+   - Check **Groups** column to assess vulnerability impact
+
+4. Search for specific gems:
+   - Press **/** or click **[Search]** tab
+   - Type gem name to filter in real-time
+   - Press **Enter** to view details
+
+5. Check vulnerabilities:
+   - Click **[CVE]** tab to see all vulnerabilities
+   - Filter by gem in [Search] tab
+   - Check if vulnerable gems are in production
+
+## Building
+
+### Development Build
+```bash
+make build
+```
+
+### Release Build (macOS universal binary)
+```bash
+make build-release
+```
+
+### Version Information
+Built binaries include git commit hash and build date. To build with custom version:
+```bash
+VERSION=1.0.0 COMMIT=abc123 DATE=2026-04-04 make build
+```
 
 ## Project Goals
 
-- Provide fast, actionable insights into gem dependencies
-- Help identify security and compliance risks early
-- Support easy integration into CI/CD pipelines
-- Minimal dependencies and fast performance
+- Provide **fast, actionable insights** into gem dependencies
+- Help identify **security and compliance risks** early
+- Support **easy integration** into CI/CD pipelines
+- **Beautiful, intuitive UI** that developers love using
+- Minimal dependencies and **fast performance**
+
+## Tech Stack
+
+- **Language**: Go 1.24+
+- **TUI Framework**: BubbleTea + Lipgloss (charmbracelet)
+- **Data Source**: rubygems.org API + Gemfile.lock parsing
 
 ## Development
 
 ### Prerequisites
-- Go 1.21 or later
+- Go 1.24 or later
+- Make
 
-### Building from Source
+### Setup
 ```bash
+git clone https://github.com/spaquet/gemtracker
+cd gemtracker
 make build
 ```
 
@@ -72,6 +185,31 @@ make build
 make test
 ```
 
+### Project Structure
+```
+gemtracker/
+├── cmd/gemtracker/          # CLI entry point
+├── internal/
+│   ├── gemfile/             # Parsing & analysis
+│   │   ├── parser.go        # Gemfile.lock parser
+│   │   ├── analyzer.go      # Dependency analysis
+│   │   ├── outdated.go      # Version checking
+│   │   └── vulnerabilities.go # CVE detection
+│   └── ui/                  # Terminal UI
+│       ├── model.go         # BubbleTea model
+│       ├── update.go        # Message routing
+│       ├── view.go          # Screen rendering
+│       └── styles.go        # Colors & themes
+└── Makefile                 # Build & test
+```
+
+## Known Limitations
+
+- Only parses standard Gemfile.lock format
+- Outdated version checking requires network access
+- CVE database is static (not real-time updated)
+- No support for Gemfile global options or git/path sources yet
+
 ## License
 
 See [LICENSE](LICENSE) file for details.
@@ -79,3 +217,24 @@ See [LICENSE](LICENSE) file for details.
 ## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
+
+## Troubleshooting
+
+### "Gemfile.lock not found"
+Make sure you're in a Ruby project directory with `Gemfile.lock`, or specify the path:
+```bash
+gemtracker /path/to/project
+```
+
+### Version shows as "(development)"
+Build using `make build` instead of `go build` to get proper version info from git.
+
+### Terminal appears garbled
+Your terminal may not support 256 colors. Try:
+```bash
+TERM=xterm-256color gemtracker
+```
+
+## Questions?
+
+Check the built-in help or open an issue on GitHub.
