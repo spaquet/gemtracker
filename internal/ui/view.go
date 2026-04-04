@@ -121,7 +121,15 @@ func (m *Model) viewLoading() string {
 	spinnerText := SpinnerStyle.Render(spinner + " " + m.LoadingMessage)
 
 	contentHeight := m.Height - FixedChrome - 2
+	if contentHeight < 1 {
+		contentHeight = 1
+	}
+
 	contentLines := (contentHeight - 1) / 2
+	if contentLines < 0 {
+		contentLines = 0
+	}
+
 	padding := strings.Repeat("\n", contentLines)
 
 	content := lipgloss.JoinVertical(lipgloss.Center, padding, spinnerText)
@@ -158,6 +166,10 @@ func (m *Model) viewGemList() string {
 }
 
 func (m *Model) renderGemListTable(height int) string {
+	if height < 1 {
+		height = 1
+	}
+
 	// Table header
 	headerRow := fmt.Sprintf("  %-4s %-24s %-11s %-11s %-14s %s",
 		"#", "Gem Name", "Installed", "Latest", "Groups", "Status")
@@ -166,6 +178,9 @@ func (m *Model) renderGemListTable(height int) string {
 	// Table rows
 	lines := []string{header}
 	visibleRows := height - 2
+	if visibleRows < 0 {
+		visibleRows = 0
+	}
 	endIdx := m.GemListOffset + visibleRows
 	if endIdx > len(m.FirstLevelGems) {
 		endIdx = len(m.FirstLevelGems)
@@ -398,8 +413,13 @@ func (m *Model) viewSearch() string {
 }
 
 func (m *Model) renderSearchResults(height int) string {
+	if height < 1 {
+		height = 1
+	}
+
 	if m.SearchQuery == "" {
-		return strings.Repeat(" \n", height)
+		padding := strings.Repeat(" \n", height)
+		return padding
 	}
 
 	title := fmt.Sprintf("Gems matching \"%s\" (%d found)", m.SearchQuery, len(m.SearchResults))
@@ -413,6 +433,9 @@ func (m *Model) renderSearchResults(height int) string {
 
 	// Result rows
 	visibleRows := height - 4
+	if visibleRows < 0 {
+		visibleRows = 0
+	}
 	endIdx := m.SearchOffset + visibleRows
 	if endIdx > len(m.SearchResults) {
 		endIdx = len(m.SearchResults)
@@ -475,6 +498,10 @@ func (m *Model) viewCVE() string {
 }
 
 func (m *Model) renderCVETable(height int) string {
+	if height < 1 {
+		height = 1
+	}
+
 	if len(m.VulnerableGems) == 0 {
 		msg := "No vulnerabilities found. Your gems are safe! ✓"
 		return lipgloss.NewStyle().
@@ -494,6 +521,9 @@ func (m *Model) renderCVETable(height int) string {
 	lines := []string{title, header}
 
 	visibleRows := height - 3
+	if visibleRows < 0 {
+		visibleRows = 0
+	}
 	endIdx := m.CVEOffset + visibleRows
 	if endIdx > len(m.VulnerableGems) {
 		endIdx = len(m.VulnerableGems)
