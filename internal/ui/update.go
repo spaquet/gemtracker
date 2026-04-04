@@ -597,4 +597,3 @@ func (m *Model) ensureDetailCursorVisible() {
 		*offset = 0
 	}
 }
-

@@ -4,25 +4,25 @@ import "github.com/charmbracelet/lipgloss"
 
 // Color palette - dark slate/blue theme (256-color ANSI)
 const (
-	ColorBg            = "235"  // #262626 - base background
-	ColorSurface       = "237"  // #3a3a3a - cards/panels
-	ColorBorder        = "240"  // #585858 - default borders
-	ColorBorderActive  = "74"   // #5fafd7 - focused border (slate blue)
-	ColorText          = "252"  // #d0d0d0 - primary text
-	ColorTextMuted     = "244"  // #808080 - secondary text
-	ColorTextSubtle    = "240"  // #585858 - hints, tree connectors
-	ColorPrimary       = "74"   // #5fafd7 - app accent
-	ColorSuccess       = "71"   // #5faf5f - latest/up to date
-	ColorWarning       = "178"  // #d7af00 - outdated
-	ColorDanger        = "160"  // #d70000 - vulnerable
-	ColorSelected      = "24"   // #005f87 - selected row background
-	ColorTabActive     = "74"   // same as Primary
-	ColorTabInactive   = "244"  // same as TextMuted
+	ColorBg           = "235" // #262626 - base background
+	ColorSurface      = "237" // #3a3a3a - cards/panels
+	ColorBorder       = "240" // #585858 - default borders
+	ColorBorderActive = "74"  // #5fafd7 - focused border (slate blue)
+	ColorText         = "252" // #d0d0d0 - primary text
+	ColorTextMuted    = "244" // #808080 - secondary text
+	ColorTextSubtle   = "240" // #585858 - hints, tree connectors
+	ColorPrimary      = "74"  // #5fafd7 - app accent
+	ColorSuccess      = "71"  // #5faf5f - latest/up to date
+	ColorWarning      = "178" // #d7af00 - outdated
+	ColorDanger       = "160" // #d70000 - vulnerable
+	ColorSelected     = "24"  // #005f87 - selected row background
+	ColorTabActive    = "74"  // same as Primary
+	ColorTabInactive  = "244" // same as TextMuted
 )
 
 // Layout constants
 const (
-	FixedChrome     = 5  // header + tabbar + statusbar + 2 separators
+	FixedChrome     = 5 // header + tabbar + statusbar + 2 separators
 	HeaderHeight    = 3
 	TabBarHeight    = 1
 	StatusBarHeight = 1

@@ -37,7 +37,7 @@ func TestIsVersionLess(t *testing.T) {
 		{"1.1.0", "1.2.0", true},
 		{"1.0.1", "1.0.0", false},
 		{"1.0.0-rc1", "1.0.0", false}, // Pre-release stripped, both become 1.0.0
-		{"2.0", "2.0.0", false}, // Both have same major.minor
+		{"2.0", "2.0.0", false},       // Both have same major.minor
 		{"1.9.9", "2.0.0", true},
 	}
 
