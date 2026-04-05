@@ -249,7 +249,8 @@ func (m *Model) renderUpdateBar() string {
 // ============================================================================
 
 func (m *Model) viewLoading() string {
-	contentHeight := m.Height - FixedChrome - m.updateBarHeight()
+	statusbarLines := 1 + m.updateBarHeight()
+	contentHeight := m.Height - 2 - statusbarLines
 	if contentHeight < 1 {
 		contentHeight = 1
 	}
@@ -502,7 +503,11 @@ func (m *Model) viewGemDetail() string {
 		return ""
 	}
 
-	contentHeight := m.Height - FixedChrome - m.updateBarHeight() - 2
+	statusbarLines := 1 + m.updateBarHeight()
+	contentHeight := m.Height - 2 - statusbarLines
+	if contentHeight < 1 {
+		contentHeight = 1
+	}
 
 	// Format version info
 	versionDisplay := "Latest"
