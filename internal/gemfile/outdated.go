@@ -53,8 +53,13 @@ func (oc *OutdatedChecker) IsOutdated(gemName, currentVersion string) (bool, str
 		return false, "", err
 	}
 
+	// Normalize both versions by stripping platform suffixes before comparison
+	// This handles native gem versions like "1.6.3-x86_64-linux" vs "1.6.3"
+	cleanCurrent := stripPlatformSuffix(currentVersion)
+	cleanLatest := stripPlatformSuffix(latestVersion)
+
 	// Compare versions: if current is different from latest, it's outdated
-	isOutdated := currentVersion != latestVersion && isVersionLess(currentVersion, latestVersion)
+	isOutdated := cleanCurrent != cleanLatest && isVersionLess(cleanCurrent, cleanLatest)
 	return isOutdated, latestVersion, nil
 }
 
