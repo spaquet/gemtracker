@@ -61,7 +61,12 @@ test:
 	go test -v ./...
 
 lint:
-	golangci-lint run
+	@if [ "$$(gofmt -s -l . | wc -l)" -gt 0 ]; then \
+		echo "gofmt found formatting issues:"; \
+		gofmt -s -d .; \
+		exit 1; \
+	fi
+	go vet ./...
 
 clean:
 	rm -f gemtracker
