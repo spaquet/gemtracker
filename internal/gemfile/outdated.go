@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -21,6 +22,7 @@ type RubygemeInfo struct {
 // OutdatedChecker checks if gems are outdated by querying rubygems.org
 type OutdatedChecker struct {
 	client              *http.Client
+	mu                  sync.Mutex        // protects all maps below
 	cache               map[string]string // gem name -> latest version
 	homepages           map[string]string // gem name -> homepage URL
 	descriptions        map[string]string // gem name -> description
@@ -58,12 +60,15 @@ func (oc *OutdatedChecker) IsOutdated(gemName, currentVersion string) (bool, str
 
 // getLatestVersion fetches the latest version of a gem from rubygems.org
 func (oc *OutdatedChecker) getLatestVersion(gemName string) (string, error) {
-	// Check cache first
+	// Check cache first (with lock)
+	oc.mu.Lock()
 	if cached, ok := oc.cache[gemName]; ok {
+		oc.mu.Unlock()
 		return cached, nil
 	}
+	oc.mu.Unlock()
 
-	// Query rubygems.org API
+	// Query rubygems.org API (without lock - don't hold lock during HTTP request)
 	url := fmt.Sprintf("https://rubygems.org/api/v1/gems/%s.json", gemName)
 	resp, err := oc.client.Get(url)
 	if err != nil {
@@ -88,7 +93,8 @@ func (oc *OutdatedChecker) getLatestVersion(gemName string) (string, error) {
 		return "", fmt.Errorf("failed to parse response: %w", err)
 	}
 
-	// Cache the result
+	// Cache the result (with lock)
+	oc.mu.Lock()
 	oc.cache[gemName] = info.Version
 
 	// Cache homepage URL with fallback chain
@@ -107,6 +113,7 @@ func (oc *OutdatedChecker) getLatestVersion(gemName string) (string, error) {
 	// Cache source code URI and version created at for health checking
 	oc.sourceCodeURIs[gemName] = info.SourceCodeURI
 	oc.versionCreatedAts[gemName] = info.VersionCreatedAt
+	oc.mu.Unlock()
 
 	return info.Version, nil
 }
@@ -114,17 +121,23 @@ func (oc *OutdatedChecker) getLatestVersion(gemName string) (string, error) {
 // GetHomepage returns the homepage URL for a gem, using cached data or fetching if needed
 func (oc *OutdatedChecker) GetHomepage(gemName string) string {
 	// If we have it cached, return it
+	oc.mu.Lock()
 	if url, ok := oc.homepages[gemName]; ok {
+		oc.mu.Unlock()
 		return url
 	}
+	oc.mu.Unlock()
 
 	// Fetch it (this will populate the cache as a side effect)
 	oc.getLatestVersion(gemName)
 
 	// Return cached value or fallback
+	oc.mu.Lock()
 	if url, ok := oc.homepages[gemName]; ok {
+		oc.mu.Unlock()
 		return url
 	}
+	oc.mu.Unlock()
 
 	// Ultimate fallback
 	return fmt.Sprintf("https://rubygems.org/gems/%s", gemName)
@@ -133,17 +146,23 @@ func (oc *OutdatedChecker) GetHomepage(gemName string) string {
 // GetDescription returns the description for a gem, using cached data or fetching if needed
 func (oc *OutdatedChecker) GetDescription(gemName string) string {
 	// If we have it cached, return it
+	oc.mu.Lock()
 	if desc, ok := oc.descriptions[gemName]; ok {
+		oc.mu.Unlock()
 		return desc
 	}
+	oc.mu.Unlock()
 
 	// Fetch it (this will populate the cache as a side effect)
 	oc.getLatestVersion(gemName)
 
 	// Return cached value or empty string
+	oc.mu.Lock()
 	if desc, ok := oc.descriptions[gemName]; ok {
+		oc.mu.Unlock()
 		return desc
 	}
+	oc.mu.Unlock()
 
 	return ""
 }
@@ -151,17 +170,23 @@ func (oc *OutdatedChecker) GetDescription(gemName string) string {
 // GetSourceCodeURI returns the source code URI for a gem, using cached data or fetching if needed
 func (oc *OutdatedChecker) GetSourceCodeURI(gemName string) string {
 	// If we have it cached, return it
+	oc.mu.Lock()
 	if uri, ok := oc.sourceCodeURIs[gemName]; ok {
+		oc.mu.Unlock()
 		return uri
 	}
+	oc.mu.Unlock()
 
 	// Fetch it (this will populate the cache as a side effect)
 	oc.getLatestVersion(gemName)
 
 	// Return cached value or empty string
+	oc.mu.Lock()
 	if uri, ok := oc.sourceCodeURIs[gemName]; ok {
+		oc.mu.Unlock()
 		return uri
 	}
+	oc.mu.Unlock()
 
 	return ""
 }
@@ -169,17 +194,23 @@ func (oc *OutdatedChecker) GetSourceCodeURI(gemName string) string {
 // GetVersionCreatedAt returns the version created at timestamp for a gem, using cached data or fetching if needed
 func (oc *OutdatedChecker) GetVersionCreatedAt(gemName string) string {
 	// If we have it cached, return it
+	oc.mu.Lock()
 	if ts, ok := oc.versionCreatedAts[gemName]; ok {
+		oc.mu.Unlock()
 		return ts
 	}
+	oc.mu.Unlock()
 
 	// Fetch it (this will populate the cache as a side effect)
 	oc.getLatestVersion(gemName)
 
 	// Return cached value or empty string
+	oc.mu.Lock()
 	if ts, ok := oc.versionCreatedAts[gemName]; ok {
+		oc.mu.Unlock()
 		return ts
 	}
+	oc.mu.Unlock()
 
 	return ""
 }
