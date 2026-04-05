@@ -221,38 +221,42 @@ func (oc *OutdatedChecker) GetVersionCreatedAt(gemName string) string {
 }
 
 // stripPlatformSuffix removes platform/architecture identifiers from version strings
-// Examples: "1.6.3-x86_64-linux" -> "1.6.3", "1.0.0-alpha-x86_64-darwin" -> "1.0.0-alpha"
+// Keeps pre-release identifiers (alpha, beta, rc, etc.)
+// Examples: "1.6.3-x86_64-linux" -> "1.6.3", "1.0.0-beta.1" -> "1.0.0-beta.1"
 func stripPlatformSuffix(version string) string {
-	// Platform identifiers typically contain underscores (x86_64, arm64) or known OS names
 	parts := strings.Split(version, "-")
 	if len(parts) <= 1 {
 		return version
 	}
 
-	// Known platform OS names
-	platformOSes := map[string]bool{
-		"linux": true, "darwin": true, "windows": true, "freebsd": true,
-		"openbsd": true, "netbsd": true, "solaris": true, "aix": true,
-		"mingw": true, "mswin": true, "cygwin": true,
+	// Known pre-release keywords that should be kept
+	preReleaseKeywords := map[string]bool{
+		"alpha": true, "a": true,
+		"beta": true, "b": true,
+		"rc": true, "release-candidate": true,
+		"pre": true, "preview": true,
+		"dev": true, "development": true,
+		"snapshot": true,
 	}
 
-	// Walk backwards through parts and remove platform identifiers
-	for i := len(parts) - 1; i >= 1; i-- {
-		part := parts[i]
-		// Check if this part is a platform identifier:
-		// - Contains underscore (common in architecture names: x86_64, aarch64, etc.)
-		// - Matches a known OS name
-		// - Is all lowercase (platforms are typically lowercase)
-		if strings.Contains(part, "_") || platformOSes[strings.ToLower(part)] {
-			// Remove this and all following parts
-			parts = parts[:i]
-		} else {
-			// Once we hit a non-platform part, stop (it's likely a pre-release like "alpha")
+	// Check the part after the first dash
+	suffix := strings.ToLower(parts[1])
+
+	// Check if suffix contains any pre-release keywords
+	isPreRelease := false
+	for keyword := range preReleaseKeywords {
+		if strings.Contains(suffix, keyword) {
+			isPreRelease = true
 			break
 		}
 	}
 
-	return strings.Join(parts, "-")
+	// If it's a pre-release, keep it; otherwise discard it (platform suffix)
+	if isPreRelease {
+		return version // Keep the whole version including pre-release
+	}
+
+	return parts[0] // Return just the base version, discard platform suffix
 }
 
 // isVersionLess compares two semantic versions
