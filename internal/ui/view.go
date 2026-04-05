@@ -60,6 +60,37 @@ func (m *Model) View() string {
 // Chrome Components
 // ============================================================================
 
+func (m *Model) assembleViewWithChrome(contentString string) string {
+	// Helper function to assemble any view with proper header, tabbar, and statusbar
+	var allLines []string
+
+	// Add header
+	allLines = append(allLines, m.renderAppHeader())
+
+	// Add tab bar
+	allLines = append(allLines, m.renderTabBar())
+
+	// Add content (split into lines if it's a pre-joined string)
+	if contentString != "" {
+		contentLines := strings.Split(strings.TrimSuffix(contentString, "\n"), "\n")
+		allLines = append(allLines, contentLines...)
+	}
+
+	// Add status bar (can be multi-line)
+	statusbarContent := m.renderStatusBar()
+	if statusbarContent != "" {
+		statusbarLines := strings.Split(strings.TrimSuffix(statusbarContent, "\n"), "\n")
+		allLines = append(allLines, statusbarLines...)
+	}
+
+	// Ensure we don't exceed terminal height
+	if len(allLines) > m.Height {
+		allLines = allLines[:m.Height]
+	}
+
+	return lipgloss.JoinVertical(lipgloss.Left, allLines...)
+}
+
 func (m *Model) renderAppHeader() string {
 	appName := fmt.Sprintf("gemtracker %s", m.Version)
 	projectPath := m.ProjectPath
@@ -72,13 +103,17 @@ func (m *Model) renderAppHeader() string {
 
 	// Calculate spacing
 	totalLen := lipgloss.Width(left) + lipgloss.Width(right)
-	spacerCount := m.Width - totalLen - 4
+	spacerCount := m.Width - totalLen
 	if spacerCount < 0 {
 		spacerCount = 0
 	}
 	spacer := strings.Repeat(" ", spacerCount)
 
-	return left + spacer + right
+	// Apply background to spacer to fill full width
+	headerStyle := lipgloss.NewStyle().Background(lipgloss.Color(ColorSurface))
+	headerSpaceFill := headerStyle.Render(spacer)
+
+	return left + headerSpaceFill + right
 }
 
 func (m *Model) renderTabBar() string {
@@ -104,7 +139,18 @@ func (m *Model) renderTabBar() string {
 		}
 	}
 
-	return strings.Join(tabs, "  ")
+	tabContent := strings.Join(tabs, "  ")
+	tabWidth := lipgloss.Width(tabContent)
+
+	// Fill remaining width with background
+	if tabWidth < m.Width {
+		fillStyle := lipgloss.NewStyle().Background(lipgloss.Color(ColorSurface))
+		fillWidth := m.Width - tabWidth
+		fill := fillStyle.Render(strings.Repeat(" ", fillWidth))
+		tabContent = tabContent + fill
+	}
+
+	return tabContent
 }
 
 func (m *Model) renderStatusBar() string {
@@ -203,10 +249,6 @@ func (m *Model) renderUpdateBar() string {
 // ============================================================================
 
 func (m *Model) viewLoading() string {
-	header := m.renderAppHeader()
-	tabbar := m.renderTabBar()
-	statusbar := m.renderStatusBar()
-
 	contentHeight := m.Height - FixedChrome - m.updateBarHeight()
 	if contentHeight < 1 {
 		contentHeight = 1
@@ -259,13 +301,7 @@ func (m *Model) viewLoading() string {
 
 	content := strings.Join(allLines[:contentHeight], "\n")
 
-	return lipgloss.JoinVertical(
-		lipgloss.Left,
-		header,
-		tabbar,
-		content,
-		statusbar,
-	)
+	return m.assembleViewWithChrome(content)
 }
 
 // ============================================================================
@@ -273,20 +309,38 @@ func (m *Model) viewLoading() string {
 // ============================================================================
 
 func (m *Model) viewGemList() string {
-	header := m.renderAppHeader()
-	tabbar := m.renderTabBar()
-	statusbar := m.renderStatusBar()
+	// Build the view by collecting all lines
+	var allLines []string
 
-	contentHeight := m.Height - FixedChrome - m.updateBarHeight()
-	gemListContent := m.renderGemListTable(contentHeight)
+	// Add header
+	allLines = append(allLines, m.renderAppHeader())
 
-	return lipgloss.JoinVertical(
-		lipgloss.Left,
-		header,
-		tabbar,
-		gemListContent,
-		statusbar,
-	)
+	// Add tab bar
+	allLines = append(allLines, m.renderTabBar())
+
+	// Calculate content height: total height minus header, tabbar, and statusbar
+	// Statusbar can be 1 or 2 lines depending on update notification
+	statusbarLines := 1 + m.updateBarHeight()
+	contentHeight := m.Height - 2 - statusbarLines
+	if contentHeight < 1 {
+		contentHeight = 1
+	}
+
+	// Add gem list content
+	gemListLines := strings.Split(strings.TrimSuffix(m.renderGemListTable(contentHeight), "\n"), "\n")
+	allLines = append(allLines, gemListLines...)
+
+	// Add status bar (can be multi-line)
+	statusbarContent := m.renderStatusBar()
+	statusbarLines2 := strings.Split(strings.TrimSuffix(statusbarContent, "\n"), "\n")
+	allLines = append(allLines, statusbarLines2...)
+
+	// Ensure we don't exceed terminal height
+	if len(allLines) > m.Height {
+		allLines = allLines[:m.Height]
+	}
+
+	return lipgloss.JoinVertical(lipgloss.Left, allLines...)
 }
 
 func (m *Model) renderGemListTable(height int) string {
@@ -444,10 +498,6 @@ func (m *Model) formatGemListRow(idx int, gem *gemfile.GemStatus, selected bool)
 // ============================================================================
 
 func (m *Model) viewGemDetail() string {
-	header := m.renderAppHeader()
-	tabbar := m.renderTabBar()
-	statusbar := m.renderStatusBar()
-
 	if m.SelectedGem == nil {
 		return ""
 	}
@@ -579,13 +629,7 @@ func (m *Model) viewGemDetail() string {
 	contentLines = append(contentLines, panelsRow)
 	content := lipgloss.JoinVertical(lipgloss.Left, contentLines...)
 
-	return lipgloss.JoinVertical(
-		lipgloss.Left,
-		header,
-		tabbar,
-		content,
-		statusbar,
-	)
+	return m.assembleViewWithChrome(content)
 }
 
 func (m *Model) renderDependencyPanel(node *gemfile.DependencyNode, height int, isForward bool) string {
@@ -840,10 +884,6 @@ func (m *Model) renderHealthSection(health *gemfile.GemHealth, maxLen int) []str
 // ============================================================================
 
 func (m *Model) viewSearch() string {
-	header := m.renderAppHeader()
-	tabbar := m.renderTabBar()
-	statusbar := m.renderStatusBar()
-
 	// Search input
 	searchPrompt := SearchPromptStyle.Render("/ ")
 	promptWidth := lipgloss.Width(searchPrompt)
@@ -855,8 +895,12 @@ func (m *Model) viewSearch() string {
 	searchInput := SearchBoxStyle.Width(searchInputWidth).Render(m.SearchInput.View())
 	searchLine := lipgloss.JoinHorizontal(lipgloss.Top, searchPrompt, searchInput)
 
-	// Search results
-	contentHeight := m.Height - FixedChrome - m.updateBarHeight() - 1
+	// Search results - account for header (1), tabbar (1), searchLine (1), and statusbar (1-2)
+	statusbarLines := 1 + m.updateBarHeight()
+	contentHeight := m.Height - 3 - statusbarLines
+	if contentHeight < 1 {
+		contentHeight = 1
+	}
 	resultContent := m.renderSearchResults(contentHeight)
 
 	content := lipgloss.JoinVertical(lipgloss.Left,
@@ -864,13 +908,7 @@ func (m *Model) viewSearch() string {
 		resultContent,
 	)
 
-	return lipgloss.JoinVertical(
-		lipgloss.Left,
-		header,
-		tabbar,
-		content,
-		statusbar,
-	)
+	return m.assembleViewWithChrome(content)
 }
 
 func (m *Model) renderSearchResults(height int) string {
@@ -942,20 +980,14 @@ func (m *Model) renderSearchResults(height int) string {
 // ============================================================================
 
 func (m *Model) viewUpgradeable() string {
-	header := m.renderAppHeader()
-	tabbar := m.renderTabBar()
-	statusbar := m.renderStatusBar()
-
-	contentHeight := m.Height - FixedChrome - m.updateBarHeight()
+	statusbarLines := 1 + m.updateBarHeight()
+	contentHeight := m.Height - 2 - statusbarLines
+	if contentHeight < 1 {
+		contentHeight = 1
+	}
 	upgradeContent := m.renderUpgradeableTable(contentHeight)
 
-	return lipgloss.JoinVertical(
-		lipgloss.Left,
-		header,
-		tabbar,
-		upgradeContent,
-		statusbar,
-	)
+	return m.assembleViewWithChrome(upgradeContent)
 }
 
 func (m *Model) renderUpgradeableTable(height int) string {
@@ -1095,20 +1127,14 @@ func (m *Model) renderUpgradeableTable(height int) string {
 // ============================================================================
 
 func (m *Model) viewCVE() string {
-	header := m.renderAppHeader()
-	tabbar := m.renderTabBar()
-	statusbar := m.renderStatusBar()
-
-	contentHeight := m.Height - FixedChrome - m.updateBarHeight()
+	statusbarLines := 1 + m.updateBarHeight()
+	contentHeight := m.Height - 2 - statusbarLines
+	if contentHeight < 1 {
+		contentHeight = 1
+	}
 	cveContent := m.renderCVETable(contentHeight)
 
-	return lipgloss.JoinVertical(
-		lipgloss.Left,
-		header,
-		tabbar,
-		cveContent,
-		statusbar,
-	)
+	return m.assembleViewWithChrome(cveContent)
 }
 
 func (m *Model) renderCVETable(height int) string {
@@ -1181,20 +1207,14 @@ func (m *Model) renderCVETable(height int) string {
 // ============================================================================
 
 func (m *Model) viewProjectInfo() string {
-	header := m.renderAppHeader()
-	tabbar := m.renderTabBar()
-	statusbar := m.renderStatusBar()
-
-	contentHeight := m.Height - FixedChrome - m.updateBarHeight()
+	statusbarLines := 1 + m.updateBarHeight()
+	contentHeight := m.Height - 2 - statusbarLines
+	if contentHeight < 1 {
+		contentHeight = 1
+	}
 	projectContent := m.renderProjectInfo(contentHeight)
 
-	return lipgloss.JoinVertical(
-		lipgloss.Left,
-		header,
-		tabbar,
-		projectContent,
-		statusbar,
-	)
+	return m.assembleViewWithChrome(projectContent)
 }
 
 func (m *Model) renderProjectInfo(height int) string {
@@ -1276,10 +1296,6 @@ func (m *Model) formatInfoLine(label string, value string) string {
 // ============================================================================
 
 func (m *Model) viewSelectPath() string {
-	header := m.renderAppHeader()
-	tabbar := m.renderTabBar()
-	statusbar := m.renderStatusBar()
-
 	title := "Select Ruby Project Directory"
 	title = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(ColorPrimary)).Render(title)
 
@@ -1298,13 +1314,7 @@ func (m *Model) viewSelectPath() string {
 		hintStyle.Render(hint),
 	)
 
-	return lipgloss.JoinVertical(
-		lipgloss.Left,
-		header,
-		tabbar,
-		content,
-		statusbar,
-	)
+	return m.assembleViewWithChrome(content)
 }
 
 // ============================================================================
@@ -1312,20 +1322,14 @@ func (m *Model) viewSelectPath() string {
 // ============================================================================
 
 func (m *Model) viewFilterMenu() string {
-	header := m.renderAppHeader()
-	tabbar := m.renderTabBar()
-	statusbar := m.renderStatusBar()
-
-	contentHeight := m.Height - FixedChrome - m.updateBarHeight()
+	statusbarLines := 1 + m.updateBarHeight()
+	contentHeight := m.Height - 2 - statusbarLines
+	if contentHeight < 1 {
+		contentHeight = 1
+	}
 	filterContent := m.renderFilterMenu(contentHeight)
 
-	return lipgloss.JoinVertical(
-		lipgloss.Left,
-		header,
-		tabbar,
-		filterContent,
-		statusbar,
-	)
+	return m.assembleViewWithChrome(filterContent)
 }
 
 func (m *Model) renderFilterMenu(height int) string {
@@ -1412,12 +1416,7 @@ func (m *Model) renderFilterMenu(height int) string {
 // ============================================================================
 
 func (m *Model) viewError() string {
-	header := m.renderAppHeader()
-	tabbar := m.renderTabBar()
-	statusbar := m.renderStatusBar()
-
 	errorBox := ErrorBoxStyle.Render("ERROR\n\n" + m.ErrorMessage)
-	_ = m.updateBarHeight() // Ensure update bar height is considered in layout
 
 	content := lipgloss.JoinVertical(
 		lipgloss.Center,
@@ -1427,13 +1426,7 @@ func (m *Model) viewError() string {
 		"Press Enter or Esc to continue",
 	)
 
-	return lipgloss.JoinVertical(
-		lipgloss.Left,
-		header,
-		tabbar,
-		content,
-		statusbar,
-	)
+	return m.assembleViewWithChrome(content)
 }
 
 // ============================================================================
