@@ -7,10 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [v1.0.4] - 2026-04-04
+## [v1.0.5] - 2026-04-04
 
 ### Fixed
-- Homebrew cask version mismatch - ensure distribution version stays in sync with main repository
+- GoReleaser configuration format for v2.x compatibility (migrate from `homebrew` to `brews` field)
 
 ## [v1.0.3] - 2026-04-04
 
