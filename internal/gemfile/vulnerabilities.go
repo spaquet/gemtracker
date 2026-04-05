@@ -98,7 +98,7 @@ func (vc *VulnerabilityChecker) matchesSpec(version, spec string) bool {
 	// Handle >= comparison
 	if strings.HasPrefix(spec, ">= ") {
 		targetVersion := strings.TrimPrefix(spec, ">= ")
-		return !isVersionLess(version, targetVersion) && version != targetVersion
+		return !isVersionLess(version, targetVersion) || version == targetVersion
 	}
 
 	// Handle > comparison

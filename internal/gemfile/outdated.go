@@ -286,9 +286,12 @@ func isVersionLess(v1, v2 string) bool {
 	v1Nums := strings.Split(v1Base, ".")
 	v2Nums := strings.Split(v2Base, ".")
 
-	// Compare numeric parts
-	maxLen := len(v1Nums)
-	if len(v2Nums) > maxLen {
+	// Compare numeric parts (major.minor.patch only)
+	maxLen := 3 // Only compare first 3 parts
+	if len(v1Nums) < maxLen {
+		maxLen = len(v1Nums)
+	}
+	if len(v2Nums) < maxLen {
 		maxLen = len(v2Nums)
 	}
 
@@ -308,18 +311,6 @@ func isVersionLess(v1, v2 string) bool {
 		if num1 > num2 {
 			return false
 		}
-	}
-
-	// Base versions are equal; if v1 has pre-release and v2 doesn't, v1 is less
-	// e.g., 1.0.0-alpha < 1.0.0
-	hasV1Prerelease := len(v1Parts) > 1
-	hasV2Prerelease := len(v2Parts) > 1
-
-	if hasV1Prerelease && !hasV2Prerelease {
-		return true
-	}
-	if !hasV1Prerelease && hasV2Prerelease {
-		return false
 	}
 
 	return false
