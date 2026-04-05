@@ -1,0 +1,23 @@
+run:
+  timeout: 5m
+  tests: true
+
+linters:
+  enable:
+    - errcheck       # Check for unchecked errors
+    - govet          # Vet examines Go source code
+    - ineffassign    # Detect ineffectual assignments
+    - staticcheck    # Advanced static analysis
+    - unused         # Find unused variables, functions, constants
+    - gosimple       # Simplify code
+    - typecheck      # Parse and type-check Go code
+    - goimports      # Format imports
+    - gocritic       # Opinionated Go code review tool
+    - gofmt          # Format code
+
+issues:
+  exclude-rules:
+    # Allow underscores in test function names
+    - path: ".*_test\\.go"
+      linters:
+        - golint

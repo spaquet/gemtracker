@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"runtime"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/spaquet/gemtracker/internal/gemfile"
@@ -18,6 +19,25 @@ func (m *Model) updateBarHeight() int {
 		return 1
 	}
 	return 0
+}
+
+// statusBarTotalHeight calculates the total height of the status bar including
+// all lines: hints + optional status indicators + optional update notification
+func (m *Model) statusBarTotalHeight() int {
+	height := 1 // Base height for hints line
+
+	// Add height for status indicators line if any are present
+	if m.OutdatedLoading || m.HealthLoading || m.OutdatedRateLimited ||
+		m.HealthRateLimited || m.OutdatedErrorCount > 0 {
+		height += 1
+	}
+
+	// Add height for update notification bar if present
+	if m.NewVersionAvailable != "" {
+		height += 1
+	}
+
+	return height
 }
 
 // ============================================================================
@@ -38,6 +58,8 @@ func (m *Model) View() string {
 		return m.viewGemDetail()
 	case ViewSearch:
 		return m.viewSearch()
+	case ViewUpgradeable:
+		return m.viewUpgradeable()
 	case ViewCVE:
 		return m.viewCVE()
 	case ViewProjectInfo:
@@ -57,6 +79,50 @@ func (m *Model) View() string {
 // Chrome Components
 // ============================================================================
 
+func (m *Model) assembleViewWithChrome(contentString string) string {
+	// Helper function to assemble any view with proper header, tabbar, and statusbar
+	var allLines []string
+
+	// Add header and tabbar (2 lines)
+	allLines = append(allLines, m.renderAppHeader())
+	allLines = append(allLines, m.renderTabBar())
+
+	// Calculate available space for content and statusbar
+	statusbarLines := m.statusBarTotalHeight()
+	availableForContent := m.Height - 2 - statusbarLines
+	if availableForContent < 1 {
+		availableForContent = 1
+	}
+
+	// Add content (split into lines if it's a pre-joined string)
+	if contentString != "" {
+		contentLines := strings.Split(strings.Trim(contentString, "\n"), "\n")
+		// Limit to available space
+		if len(contentLines) > availableForContent {
+			contentLines = contentLines[:availableForContent]
+		}
+		allLines = append(allLines, contentLines...)
+	}
+
+	// Add status bar (can be multi-line)
+	statusbarContent := m.renderStatusBar()
+	if statusbarContent != "" {
+		statusbarLines2 := strings.Split(strings.Trim(statusbarContent, "\n"), "\n")
+		// Limit to expected statusbar height
+		if len(statusbarLines2) > statusbarLines {
+			statusbarLines2 = statusbarLines2[:statusbarLines]
+		}
+		allLines = append(allLines, statusbarLines2...)
+	}
+
+	// Final safety check - ensure we don't exceed terminal height
+	if len(allLines) > m.Height {
+		allLines = allLines[:m.Height]
+	}
+
+	return lipgloss.JoinVertical(lipgloss.Left, allLines...)
+}
+
 func (m *Model) renderAppHeader() string {
 	appName := fmt.Sprintf("gemtracker %s", m.Version)
 	projectPath := m.ProjectPath
@@ -69,24 +135,33 @@ func (m *Model) renderAppHeader() string {
 
 	// Calculate spacing
 	totalLen := lipgloss.Width(left) + lipgloss.Width(right)
-	spacerCount := m.Width - totalLen - 4
+	spacerCount := m.Width - totalLen
 	if spacerCount < 0 {
 		spacerCount = 0
 	}
 	spacer := strings.Repeat(" ", spacerCount)
 
-	return left + spacer + right
+	// Apply background to spacer to fill full width
+	headerStyle := lipgloss.NewStyle().Background(lipgloss.Color(ColorSurface))
+	headerSpaceFill := headerStyle.Render(spacer)
+
+	return left + headerSpaceFill + right
 }
 
 func (m *Model) renderTabBar() string {
-	tabLabels := []string{"Gems", "Search", "CVE", "Project"}
-	tabModes := []ViewMode{ViewGemList, ViewSearch, ViewCVE, ViewProjectInfo}
+	tabLabels := []string{"Gems", "Search", "Updates", "CVE", "Project"}
+	tabModes := []ViewMode{ViewGemList, ViewSearch, ViewUpgradeable, ViewCVE, ViewProjectInfo}
 
 	var tabs []string
 	for i, label := range tabLabels {
 		mode := tabModes[i]
-		// Add CVE count to the CVE label
-		if mode == ViewCVE && len(m.VulnerableGems) > 0 {
+		// Add count badges
+		if mode == ViewUpgradeable {
+			upgradableCount := len(m.UpgradeableGems) + len(m.UpgradeableFrameworkGems) + len(m.UpgradeableTransitiveDeps)
+			if upgradableCount > 0 {
+				label = fmt.Sprintf("%s (%d)", label, upgradableCount)
+			}
+		} else if mode == ViewCVE && len(m.VulnerableGems) > 0 {
 			label = fmt.Sprintf("%s (%d)", label, len(m.VulnerableGems))
 		}
 		if mode == m.ActiveTab {
@@ -96,7 +171,18 @@ func (m *Model) renderTabBar() string {
 		}
 	}
 
-	return strings.Join(tabs, "  ")
+	tabContent := strings.Join(tabs, "  ")
+	tabWidth := lipgloss.Width(tabContent)
+
+	// Fill remaining width with background
+	if tabWidth < m.Width {
+		fillStyle := lipgloss.NewStyle().Background(lipgloss.Color(ColorSurface))
+		fillWidth := m.Width - tabWidth
+		fill := fillStyle.Render(strings.Repeat(" ", fillWidth))
+		tabContent = tabContent + fill
+	}
+
+	return tabContent
 }
 
 func (m *Model) renderStatusBar() string {
@@ -109,6 +195,8 @@ func (m *Model) renderStatusBar() string {
 		hints = []string{"esc back", "tab section", "↑↓ navigate", "enter select", "o open url", "q quit"}
 	case ViewSearch:
 		hints = []string{"type search", "↑↓ navigate", "enter select", "esc clear"}
+	case ViewUpgradeable:
+		hints = []string{"↑↓ navigate", "enter select", "tab next", "q quit"}
 	case ViewCVE:
 		hints = []string{"↑↓ navigate", "enter select", "tab next", "q quit"}
 	case ViewProjectInfo:
@@ -131,13 +219,50 @@ func (m *Model) renderStatusBar() string {
 		}
 	}
 
-	content := strings.Join(rendered, "  ")
-	status := StatusBarStyle.Width(m.Width - 4).Render(content)
+	// Render the hint line
+	hintContent := strings.Join(rendered, "  ")
+	hintLine := StatusBarStyle.Width(m.Width - 4).Render(hintContent)
+
+	var lines []string
+	lines = append(lines, hintLine)
+
+	// Build status indicators on a separate line if needed
+	var statusParts []string
+
+	if m.OutdatedLoading {
+		doneCount := len(m.FirstLevelGems) - len(m.OutdatedPending)
+		outdatedStatus := fmt.Sprintf("Checking updates... (%d/%d)", doneCount, len(m.FirstLevelGems))
+		statusStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(ColorWarning))
+		statusParts = append(statusParts, statusStyle.Render(outdatedStatus))
+	}
+
+	if m.HealthLoading {
+		healthStatus := fmt.Sprintf("Fetching health... (%d/%d)", m.HealthLoadedCount, m.HealthTotalCount)
+		healthStatusStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(ColorWarning))
+		statusParts = append(statusParts, healthStatusStyle.Render(healthStatus))
+	}
+
+	// Add error warnings
+	errorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(ColorDanger))
+	if m.OutdatedRateLimited {
+		statusParts = append(statusParts, errorStyle.Render("updates: rate limited"))
+	}
+	if m.HealthRateLimited {
+		statusParts = append(statusParts, errorStyle.Render("health: rate limited"))
+	}
+	if m.OutdatedErrorCount > 0 {
+		errMsg := fmt.Sprintf("%d update errors", m.OutdatedErrorCount)
+		statusParts = append(statusParts, errorStyle.Render(errMsg))
+	}
+
+	// Add status line if there are any indicators
+	if len(statusParts) > 0 {
+		statusContent := strings.Join(statusParts, "  ")
+		statusLine := StatusBarStyle.Width(m.Width - 4).Render(statusContent)
+		lines = append(lines, statusLine)
+	}
 
 	// Add update notification bar if a new version is available
-	var lines []string
-	lines = append(lines, status)
-
 	if m.NewVersionAvailable != "" {
 		updateMsg := m.renderUpdateBar()
 		lines = append(lines, updateMsg)
@@ -164,11 +289,8 @@ func (m *Model) renderUpdateBar() string {
 // ============================================================================
 
 func (m *Model) viewLoading() string {
-	header := m.renderAppHeader()
-	tabbar := m.renderTabBar()
-	statusbar := m.renderStatusBar()
-
-	contentHeight := m.Height - FixedChrome - m.updateBarHeight() - 2
+	statusbarLines := m.statusBarTotalHeight()
+	contentHeight := m.Height - 2 - statusbarLines
 	if contentHeight < 1 {
 		contentHeight = 1
 	}
@@ -220,13 +342,7 @@ func (m *Model) viewLoading() string {
 
 	content := strings.Join(allLines[:contentHeight], "\n")
 
-	return lipgloss.JoinVertical(
-		lipgloss.Left,
-		header,
-		tabbar,
-		content,
-		statusbar,
-	)
+	return m.assembleViewWithChrome(content)
 }
 
 // ============================================================================
@@ -234,20 +350,61 @@ func (m *Model) viewLoading() string {
 // ============================================================================
 
 func (m *Model) viewGemList() string {
-	header := m.renderAppHeader()
-	tabbar := m.renderTabBar()
-	statusbar := m.renderStatusBar()
+	// Build the view by collecting all lines
+	var allLines []string
 
-	contentHeight := m.Height - FixedChrome - m.updateBarHeight() - 2
-	gemListContent := m.renderGemListTable(contentHeight)
+	// Add header
+	allLines = append(allLines, m.renderAppHeader())
 
-	return lipgloss.JoinVertical(
-		lipgloss.Left,
-		header,
-		tabbar,
-		gemListContent,
-		statusbar,
-	)
+	// Add tab bar
+	allLines = append(allLines, m.renderTabBar())
+
+	// Calculate content height: total height minus header, tabbar, and statusbar
+	// Statusbar can be 1 or 2 lines depending on update notification
+	statusbarLines := m.statusBarTotalHeight()
+	contentHeight := m.Height - 2 - statusbarLines
+	if contentHeight < 1 {
+		contentHeight = 1
+	}
+
+	// Add gem list content
+	gemTableStr := m.renderGemListTable(contentHeight)
+	if gemTableStr != "" {
+		gemListLines := strings.Split(strings.Trim(gemTableStr, "\n"), "\n")
+		// Limit to contentHeight to prevent overflow
+		if len(gemListLines) > contentHeight {
+			gemListLines = gemListLines[:contentHeight]
+		}
+		allLines = append(allLines, gemListLines...)
+	}
+
+	// Add status bar (can be multi-line)
+	statusbarContent := m.renderStatusBar()
+	if statusbarContent != "" {
+		statusbarLines2 := strings.Split(strings.Trim(statusbarContent, "\n"), "\n")
+		// Limit statusbar to its expected height
+		if len(statusbarLines2) > statusbarLines {
+			statusbarLines2 = statusbarLines2[:statusbarLines]
+		}
+		allLines = append(allLines, statusbarLines2...)
+	}
+
+	// Ensure we don't exceed terminal height - trim content if needed to preserve statusbar
+	if len(allLines) > m.Height {
+		// Preserve last statusbarLines entries (the statusbar)
+		excessLines := len(allLines) - m.Height
+		if excessLines >= len(allLines) {
+			// If removing excess would remove statusbar, trim from content instead
+			contentEndIdx := len(allLines) - statusbarLines
+			if contentEndIdx > 2 { // Keep at least header + tabbar
+				allLines = append(allLines[:2+contentEndIdx-excessLines], allLines[len(allLines)-statusbarLines:]...)
+			}
+		} else {
+			allLines = allLines[:m.Height]
+		}
+	}
+
+	return lipgloss.JoinVertical(lipgloss.Left, allLines...)
 }
 
 func (m *Model) renderGemListTable(height int) string {
@@ -281,13 +438,13 @@ func (m *Model) renderGemListTable(height int) string {
 	}
 
 	// Table header
-	headerRow := fmt.Sprintf("  %-4s %-24s %-11s %-11s %-14s %s",
-		"#", "Gem Name", "Installed", "Latest", "Groups", "Status")
+	headerRow := fmt.Sprintf("  %-4s %-24s %-11s %-11s %-14s %-3s %s",
+		"#", "Gem Name", "Installed", "Latest", "Groups", "H", "Status ")
 	header := TableHeaderStyle.Render(headerRow)
 	lines = append(lines, header)
 
 	// Table rows
-	visibleRows := height - len(lines) - 2
+	visibleRows := height - len(lines)
 	if visibleRows < 0 {
 		visibleRows = 0
 	}
@@ -323,14 +480,25 @@ func (m *Model) formatGemListRow(idx int, gem *gemfile.GemStatus, selected bool)
 		status = BadgeVulnerableStyle.Render("⚠ CVE")
 	} else if gem.IsOutdated {
 		status = BadgeOutdatedStyle.Render("↑ " + gem.LatestVersion)
+	} else if gem.OutdatedFailed {
+		status = BadgeErrorStyle.Render("! err")
+	} else if gem.LatestVersion == "" {
+		status = BadgeLoadingStyle.Render("…")
 	} else {
 		status = BadgeOKStyle.Render("✓")
 	}
 
 	// Latest version display
-	latestDisplay := "latest"
-	if gem.IsOutdated {
+	var latestDisplay string
+	switch {
+	case gem.OutdatedFailed:
+		latestDisplay = "-"
+	case gem.LatestVersion == "":
+		latestDisplay = "…"
+	case gem.IsOutdated:
 		latestDisplay = gem.LatestVersion
+	default:
+		latestDisplay = "latest"
 	}
 
 	// Groups display
@@ -339,15 +507,48 @@ func (m *Model) formatGemListRow(idx int, gem *gemfile.GemStatus, selected bool)
 		groupsDisplay = groupsDisplay[:11] + "..."
 	}
 
-	// Format row
-	row := fmt.Sprintf("  %-4d %-24s %-11s %-11s %-14s %s",
-		idx,
-		truncateStr(gem.Name, 24),
-		gem.Version,
-		latestDisplay,
-		groupsDisplay,
-		status,
-	)
+	// Health indicator (only on wide terminals)
+	healthDisplay := ""
+	if m.Width >= 80 {
+		if gem.Health == nil {
+			healthDisplay = "   " // 3 spaces for loading state
+		} else {
+			switch gem.Health.Score {
+			case gemfile.HealthHealthy:
+				healthDisplay = BadgeHealthyDotStyle.Render("●")
+			case gemfile.HealthWarning:
+				healthDisplay = BadgeWarningDotStyle.Render("●")
+			case gemfile.HealthCritical:
+				healthDisplay = BadgeCriticalDotStyle.Render("●")
+			default:
+				healthDisplay = BadgeErrorStyle.Render("!")
+			}
+		}
+		healthDisplay = fmt.Sprintf("%-3s", healthDisplay)
+	}
+
+	// Format row with truncated columns
+	var row string
+	if m.Width >= 80 {
+		row = fmt.Sprintf("  %-4d %-24s %-11s %-11s %-14s %s %s",
+			idx,
+			truncateStr(gem.Name, 24),
+			truncateStr(gem.Version, 11),
+			truncateStr(latestDisplay, 11),
+			groupsDisplay,
+			healthDisplay,
+			status,
+		)
+	} else {
+		row = fmt.Sprintf("  %-4d %-24s %-11s %-11s %-14s %s",
+			idx,
+			truncateStr(gem.Name, 24),
+			truncateStr(gem.Version, 11),
+			truncateStr(latestDisplay, 11),
+			groupsDisplay,
+			status,
+		)
+	}
 
 	// Apply selection styling
 	if selected {
@@ -361,15 +562,15 @@ func (m *Model) formatGemListRow(idx int, gem *gemfile.GemStatus, selected bool)
 // ============================================================================
 
 func (m *Model) viewGemDetail() string {
-	header := m.renderAppHeader()
-	tabbar := m.renderTabBar()
-	statusbar := m.renderStatusBar()
-
 	if m.SelectedGem == nil {
 		return ""
 	}
 
-	contentHeight := m.Height - FixedChrome - m.updateBarHeight() - 5
+	statusbarLines := m.statusBarTotalHeight()
+	contentHeight := m.Height - 2 - statusbarLines
+	if contentHeight < 1 {
+		contentHeight = 1
+	}
 
 	// Format version info
 	versionDisplay := "Latest"
@@ -413,6 +614,18 @@ func (m *Model) viewGemDetail() string {
 		gemInfoLines = append(gemInfoLines, descLine)
 	}
 	gemInfoLines = append(gemInfoLines, urlLine)
+
+	// Health section
+	if m.SelectedGem.Health != nil {
+		healthLines := m.renderHealthSection(m.SelectedGem.Health, descMaxLen)
+		gemInfoLines = append(gemInfoLines, healthLines...)
+	} else if m.HealthLoading {
+		healthLine := lipgloss.NewStyle().Foreground(lipgloss.Color(ColorTextMuted)).Render("  Health: ⠙ fetching...")
+		gemInfoLines = append(gemInfoLines, healthLine)
+	} else if m.HealthRateLimited {
+		healthLine := lipgloss.NewStyle().Foreground(lipgloss.Color(ColorWarning)).Render("  Health: — GitHub rate limited")
+		gemInfoLines = append(gemInfoLines, healthLine)
+	}
 
 	// Two panels: forward deps and reverse deps (side by side)
 	panelHeight := contentHeight - len(gemInfoLines) - 1
@@ -484,13 +697,7 @@ func (m *Model) viewGemDetail() string {
 	contentLines = append(contentLines, panelsRow)
 	content := lipgloss.JoinVertical(lipgloss.Left, contentLines...)
 
-	return lipgloss.JoinVertical(
-		lipgloss.Left,
-		header,
-		tabbar,
-		content,
-		statusbar,
-	)
+	return m.assembleViewWithChrome(content)
 }
 
 func (m *Model) renderDependencyPanel(node *gemfile.DependencyNode, height int, isForward bool) string {
@@ -663,14 +870,88 @@ func (m *Model) renderTreeNode(node *gemfile.DependencyNode, depth int, lines *[
 }
 
 // ============================================================================
+// Health Section Rendering
+// ============================================================================
+
+func (m *Model) renderHealthSection(health *gemfile.GemHealth, maxLen int) []string {
+	var lines []string
+
+	// Health header with score
+	scoreStr := "●"
+	scoreStyle := BadgeHealthyDotStyle
+	switch health.Score {
+	case gemfile.HealthHealthy:
+		scoreStyle = BadgeHealthyDotStyle
+		scoreStr = "● HEALTHY"
+	case gemfile.HealthWarning:
+		scoreStyle = BadgeWarningDotStyle
+		scoreStr = "● WARNING"
+	case gemfile.HealthCritical:
+		scoreStyle = BadgeCriticalDotStyle
+		scoreStr = "● CRITICAL"
+	default:
+		scoreStr = "? UNKNOWN"
+	}
+
+	healthHeader := "  Health: " + scoreStyle.Render(scoreStr)
+	lines = append(lines, healthHeader)
+
+	// Health details line
+	var details []string
+
+	// Last release time
+	if !health.LastRelease.IsZero() {
+		daysAgo := int(time.Since(health.LastRelease).Hours() / 24)
+		var releaseStr string
+		if daysAgo < 1 {
+			releaseStr = "days ago"
+		} else if daysAgo < 30 {
+			releaseStr = fmt.Sprintf("%d days ago", daysAgo)
+		} else if daysAgo < 365 {
+			releaseStr = fmt.Sprintf("%d months ago", daysAgo/30)
+		} else {
+			releaseStr = fmt.Sprintf("%d years ago", daysAgo/365)
+		}
+		details = append(details, fmt.Sprintf("Last: %s", releaseStr))
+	}
+
+	// Stars
+	if health.Stars > 0 {
+		starsStr := fmt.Sprintf("⭐ %d", health.Stars)
+		details = append(details, starsStr)
+	}
+
+	// Open issues
+	if health.OpenIssues >= 0 {
+		issuesStr := fmt.Sprintf("Issues: %d", health.OpenIssues)
+		details = append(details, issuesStr)
+	}
+
+	// Archived status
+	if health.Archived {
+		details = append(details, "❌ Archived")
+	}
+
+	// Maintainers
+	if health.MaintainerCount > 0 {
+		maintStr := fmt.Sprintf("Maintainers: %d", health.MaintainerCount)
+		details = append(details, maintStr)
+	}
+
+	if len(details) > 0 {
+		detailsStr := "    " + strings.Join(details, "    ")
+		detailsFormatted := lipgloss.NewStyle().Foreground(lipgloss.Color(ColorTextMuted)).Render(detailsStr)
+		lines = append(lines, detailsFormatted)
+	}
+
+	return lines
+}
+
+// ============================================================================
 // View: Search
 // ============================================================================
 
 func (m *Model) viewSearch() string {
-	header := m.renderAppHeader()
-	tabbar := m.renderTabBar()
-	statusbar := m.renderStatusBar()
-
 	// Search input
 	searchPrompt := SearchPromptStyle.Render("/ ")
 	promptWidth := lipgloss.Width(searchPrompt)
@@ -682,8 +963,12 @@ func (m *Model) viewSearch() string {
 	searchInput := SearchBoxStyle.Width(searchInputWidth).Render(m.SearchInput.View())
 	searchLine := lipgloss.JoinHorizontal(lipgloss.Top, searchPrompt, searchInput)
 
-	// Search results
-	contentHeight := m.Height - FixedChrome - m.updateBarHeight() - 3
+	// Search results - account for header (1), tabbar (1), searchLine (1), and statusbar (1-2)
+	statusbarLines := m.statusBarTotalHeight()
+	contentHeight := m.Height - 3 - statusbarLines
+	if contentHeight < 1 {
+		contentHeight = 1
+	}
 	resultContent := m.renderSearchResults(contentHeight)
 
 	content := lipgloss.JoinVertical(lipgloss.Left,
@@ -691,13 +976,7 @@ func (m *Model) viewSearch() string {
 		resultContent,
 	)
 
-	return lipgloss.JoinVertical(
-		lipgloss.Left,
-		header,
-		tabbar,
-		content,
-		statusbar,
-	)
+	return m.assembleViewWithChrome(content)
 }
 
 func (m *Model) renderSearchResults(height int) string {
@@ -761,7 +1040,150 @@ func (m *Model) renderSearchResults(height int) string {
 		lines = append(lines, "")
 	}
 
-	return strings.Join(lines[:height], "\n")
+	return lipgloss.JoinVertical(lipgloss.Left, lines[:height]...)
+}
+
+// ============================================================================
+// View: Upgradeable
+// ============================================================================
+
+func (m *Model) viewUpgradeable() string {
+	statusbarLines := m.statusBarTotalHeight()
+	contentHeight := m.Height - 2 - statusbarLines
+	if contentHeight < 1 {
+		contentHeight = 1
+	}
+	upgradeContent := m.renderUpgradeableTable(contentHeight)
+
+	return m.assembleViewWithChrome(upgradeContent)
+}
+
+func (m *Model) renderUpgradeableTable(height int) string {
+	if height < 1 {
+		height = 1
+	}
+
+	allUpgradeable := m.allUpgradeableGems()
+	if len(allUpgradeable) == 0 {
+		msg := "All gems are up to date! ✓"
+		return lipgloss.NewStyle().
+			Foreground(lipgloss.Color(ColorSuccess)).
+			Bold(true).
+			Padding(2, 2).
+			Render(msg)
+	}
+
+	// Build all visible lines first, then apply offset
+	var allLines []string
+
+	// Add top spacing
+	allLines = append(allLines, "")
+
+	lineIndex := 0 // Track line number for cursor comparison
+
+	// First-level gems section
+	if len(m.UpgradeableGems) > 0 {
+		allLines = append(allLines, lipgloss.NewStyle().
+			Bold(true).
+			Foreground(lipgloss.Color(ColorPrimary)).
+			Render("DIRECT DEPENDENCIES"))
+
+		headerRow := fmt.Sprintf("  %-24s %-11s %-11s %s",
+			"Gem Name", "Installed", "Latest", "")
+		header := TableHeaderStyle.Render(headerRow)
+		allLines = append(allLines, header)
+
+		for _, gem := range m.UpgradeableGems {
+			isSelected := lineIndex == m.UpgradeableCursor
+			row := fmt.Sprintf("  %-24s %-11s %-11s %s",
+				truncateStr(gem.Name, 24),
+				gem.Version,
+				gem.LatestVersion,
+				BadgeOutdatedStyle.Render("↑"),
+			)
+			if isSelected {
+				row = RowSelectedStyle.Render(row)
+			} else {
+				row = RowNormalStyle.Render(row)
+			}
+			allLines = append(allLines, row)
+			lineIndex++
+		}
+		allLines = append(allLines, "")
+		lineIndex++
+	}
+
+	// Framework gems section
+	if len(m.UpgradeableFrameworkGems) > 0 {
+		allLines = append(allLines, lipgloss.NewStyle().
+			Bold(true).
+			Foreground(lipgloss.Color(ColorPrimary)).
+			Render("FRAMEWORK COMPONENTS"))
+
+		headerRow := fmt.Sprintf("  %-24s %-11s %-11s %s",
+			"Gem Name", "Installed", "Latest", "")
+		header := TableHeaderStyle.Render(headerRow)
+		allLines = append(allLines, header)
+
+		for _, gem := range m.UpgradeableFrameworkGems {
+			isSelected := lineIndex == m.UpgradeableCursor
+			row := fmt.Sprintf("  %-24s %-11s %-11s %s",
+				truncateStr(gem.Name, 24),
+				gem.Version,
+				gem.LatestVersion,
+				BadgeOutdatedStyle.Render("↑"),
+			)
+			if isSelected {
+				row = RowSelectedStyle.Render(row)
+			} else {
+				row = RowNormalStyle.Render(row)
+			}
+			allLines = append(allLines, row)
+			lineIndex++
+		}
+		allLines = append(allLines, "")
+		lineIndex++
+	}
+
+	// Transitive dependencies section
+	if len(m.UpgradeableTransitiveDeps) > 0 {
+		allLines = append(allLines, lipgloss.NewStyle().
+			Bold(true).
+			Foreground(lipgloss.Color(ColorPrimary)).
+			Render("TRANSITIVE DEPENDENCIES"))
+
+		headerRow := fmt.Sprintf("  %-24s %-11s %-11s %s",
+			"Gem Name", "Installed", "Latest", "")
+		header := TableHeaderStyle.Render(headerRow)
+		allLines = append(allLines, header)
+
+		for _, gem := range m.UpgradeableTransitiveDeps {
+			isSelected := lineIndex == m.UpgradeableCursor
+			row := fmt.Sprintf("  %-24s %-11s %-11s %s",
+				truncateStr(gem.Name, 24),
+				gem.Version,
+				gem.LatestVersion,
+				BadgeOutdatedStyle.Render("↑"),
+			)
+			if isSelected {
+				row = RowSelectedStyle.Render(row)
+			} else {
+				row = RowNormalStyle.Render(row)
+			}
+			allLines = append(allLines, row)
+			lineIndex++
+		}
+	}
+
+	// Apply offset and return visible lines
+	visibleLines := allLines[m.UpgradeableOffset:]
+
+	// Ensure we have at least height lines
+	for len(visibleLines) < height {
+		visibleLines = append(visibleLines, "")
+	}
+
+	return lipgloss.JoinVertical(lipgloss.Left, visibleLines[:height]...)
 }
 
 // ============================================================================
@@ -769,20 +1191,14 @@ func (m *Model) renderSearchResults(height int) string {
 // ============================================================================
 
 func (m *Model) viewCVE() string {
-	header := m.renderAppHeader()
-	tabbar := m.renderTabBar()
-	statusbar := m.renderStatusBar()
-
-	contentHeight := m.Height - FixedChrome - m.updateBarHeight() - 2
+	statusbarLines := m.statusBarTotalHeight()
+	contentHeight := m.Height - 2 - statusbarLines
+	if contentHeight < 1 {
+		contentHeight = 1
+	}
 	cveContent := m.renderCVETable(contentHeight)
 
-	return lipgloss.JoinVertical(
-		lipgloss.Left,
-		header,
-		tabbar,
-		cveContent,
-		statusbar,
-	)
+	return m.assembleViewWithChrome(cveContent)
 }
 
 func (m *Model) renderCVETable(height int) string {
@@ -847,7 +1263,7 @@ func (m *Model) renderCVETable(height int) string {
 		lines = append(lines, "")
 	}
 
-	return strings.Join(lines[:height], "\n")
+	return lipgloss.JoinVertical(lipgloss.Left, lines[:height]...)
 }
 
 // ============================================================================
@@ -855,20 +1271,14 @@ func (m *Model) renderCVETable(height int) string {
 // ============================================================================
 
 func (m *Model) viewProjectInfo() string {
-	header := m.renderAppHeader()
-	tabbar := m.renderTabBar()
-	statusbar := m.renderStatusBar()
-
-	contentHeight := m.Height - FixedChrome - m.updateBarHeight() - 2
+	statusbarLines := m.statusBarTotalHeight()
+	contentHeight := m.Height - 2 - statusbarLines
+	if contentHeight < 1 {
+		contentHeight = 1
+	}
 	projectContent := m.renderProjectInfo(contentHeight)
 
-	return lipgloss.JoinVertical(
-		lipgloss.Left,
-		header,
-		tabbar,
-		projectContent,
-		statusbar,
-	)
+	return m.assembleViewWithChrome(projectContent)
 }
 
 func (m *Model) renderProjectInfo(height int) string {
@@ -921,13 +1331,12 @@ func (m *Model) renderProjectInfo(height int) string {
 	}
 
 	// Padding to fill height
-	content := strings.Join(sections, "\n")
-	lines := strings.Split(content, "\n")
+	lines := sections
 	for len(lines) < height {
 		lines = append(lines, "")
 	}
 
-	return strings.Join(lines[:height], "\n")
+	return lipgloss.JoinVertical(lipgloss.Left, lines[:height]...)
 }
 
 func (m *Model) formatInfoLine(label string, value string) string {
@@ -951,10 +1360,6 @@ func (m *Model) formatInfoLine(label string, value string) string {
 // ============================================================================
 
 func (m *Model) viewSelectPath() string {
-	header := m.renderAppHeader()
-	tabbar := m.renderTabBar()
-	statusbar := m.renderStatusBar()
-
 	title := "Select Ruby Project Directory"
 	title = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(ColorPrimary)).Render(title)
 
@@ -973,13 +1378,7 @@ func (m *Model) viewSelectPath() string {
 		hintStyle.Render(hint),
 	)
 
-	return lipgloss.JoinVertical(
-		lipgloss.Left,
-		header,
-		tabbar,
-		content,
-		statusbar,
-	)
+	return m.assembleViewWithChrome(content)
 }
 
 // ============================================================================
@@ -987,20 +1386,14 @@ func (m *Model) viewSelectPath() string {
 // ============================================================================
 
 func (m *Model) viewFilterMenu() string {
-	header := m.renderAppHeader()
-	tabbar := m.renderTabBar()
-	statusbar := m.renderStatusBar()
-
-	contentHeight := m.Height - FixedChrome - m.updateBarHeight() - 2
+	statusbarLines := m.statusBarTotalHeight()
+	contentHeight := m.Height - 2 - statusbarLines
+	if contentHeight < 1 {
+		contentHeight = 1
+	}
 	filterContent := m.renderFilterMenu(contentHeight)
 
-	return lipgloss.JoinVertical(
-		lipgloss.Left,
-		header,
-		tabbar,
-		filterContent,
-		statusbar,
-	)
+	return m.assembleViewWithChrome(filterContent)
 }
 
 func (m *Model) renderFilterMenu(height int) string {
@@ -1087,12 +1480,7 @@ func (m *Model) renderFilterMenu(height int) string {
 // ============================================================================
 
 func (m *Model) viewError() string {
-	header := m.renderAppHeader()
-	tabbar := m.renderTabBar()
-	statusbar := m.renderStatusBar()
-
 	errorBox := ErrorBoxStyle.Render("ERROR\n\n" + m.ErrorMessage)
-	_ = m.updateBarHeight() // Ensure update bar height is considered in layout
 
 	content := lipgloss.JoinVertical(
 		lipgloss.Center,
@@ -1102,13 +1490,7 @@ func (m *Model) viewError() string {
 		"Press Enter or Esc to continue",
 	)
 
-	return lipgloss.JoinVertical(
-		lipgloss.Left,
-		header,
-		tabbar,
-		content,
-		statusbar,
-	)
+	return m.assembleViewWithChrome(content)
 }
 
 // ============================================================================
@@ -1120,6 +1502,13 @@ func truncateStr(s string, maxLen int) string {
 		return s[:maxLen-3] + "..."
 	}
 	return s
+}
+
+func pluralizeGem(count int) string {
+	if count == 1 {
+		return "gem"
+	}
+	return "gems"
 }
 
 func extractCVEID(vulnInfo string) string {

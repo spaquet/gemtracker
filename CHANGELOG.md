@@ -7,6 +7,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v1.1.0] - 2026-04-05
+
+### Added
+- **Standardized Layout System** - Unified height calculation across all views for consistent and predictable UI
+- **Improved Statusbar Layout** - Status indicators (Fetching health, Checking updates, etc.) now display on separate line below keyboard hints for cleaner UX
+
+### Fixed
+- **Missing Header and Tabbar** - Fixed critical issue where gemtracker version, project path, and tab navigation were not displaying on some views
+- **Statusbar Visibility** - Resolved statusbar being cut off on tabs with long content lists (e.g., gems table with many entries)
+- **Height Calculation** - Corrected contentHeight calculation to properly account for header (1), tabbar (1), statusbar (1-3 lines), and update notifications
+- **View Composition** - Refactored from nested `lipgloss.JoinVertical` calls to single top-level assembly for proper line rendering
+- **Status Indicators Layout** - Separated status indicators from keyboard hints to prevent text overflow and improve readability
+- **Line Splitting Logic** - Fixed line truncation to prevent extra empty elements that would cause total height to exceed terminal size
+- **Content Overflow Prevention** - Implemented smart truncation that preserves statusbar when content would exceed terminal height
+
+### Technical
+- Created `assembleViewWithChrome()` helper function for consistent view assembly across all screen types
+- Added `statusBarTotalHeight()` function to calculate complete statusbar height including status indicator lines
+- Updated all 10 view functions (viewGemList, viewGemDetail, viewSearch, viewUpgradeable, viewCVE, viewProjectInfo, viewLoading, viewSelectPath, viewFilterMenu, viewError) to use standardized layout approach
+- Improved line truncation logic with explicit height limits and content preservation
+
+## [v1.0.8] - 2026-04-05
+
+### Added
+- **Gem Health Indicators** - Maintenance status tracking for first-level gems
+  - Shows health status (🟢 HEALTHY, 🟡 WARNING, 🔴 CRITICAL) as colored dot in gem list
+  - Health section in gem detail view with detailed statistics
+  - Last release date, GitHub stars, open issues, maintainer count, archived status
+  - Health data fetched from RubyGems and GitHub APIs asynchronously
+- **Health Data Caching** with 24-hour TTL
+  - Separate cache at `~/.cache/gemtracker/{hash}_health.json`
+  - Instant results on subsequent runs within 24 hours
+  - Graceful fallback if GitHub rate limited (60 req/hr anonymous limit)
+- **Improved CLI Help**
+  - Display version information at top of help
+  - Show GitHub repository link
+  - Document `--no-cache` option
+  - Better organized options section
+
+### Technical
+- Sequential async health data loading (one gem at a time)
+- Respects GitHub's anonymous API rate limits
+- Progressive health dot filling in gem list as data arrives
+- Robust error handling for network and rate limit scenarios
+
 ## [v1.0.7] - 2026-04-05
 
 ### Changed

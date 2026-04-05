@@ -14,11 +14,13 @@ type Gem struct {
 	Version      string
 	Dependencies []string
 	Groups       []string // e.g., "default", "development", "test", "production"
+	IsFirstLevel bool     // true if this gem is in DEPENDENCIES section (directly required)
 }
 
 type Gemfile struct {
-	Path string
-	Gems map[string]*Gem
+	Path           string
+	Gems           map[string]*Gem
+	FirstLevelGems []string // Names of gems listed in DEPENDENCIES section
 }
 
 func Parse(path string) (*Gemfile, error) {
@@ -49,59 +51,94 @@ func Parse(path string) (*Gemfile, error) {
 	defer file.Close()
 
 	gf := &Gemfile{
-		Path: path,
-		Gems: make(map[string]*Gem),
+		Path:           path,
+		Gems:           make(map[string]*Gem),
+		FirstLevelGems: []string{},
 	}
 
 	scanner := bufio.NewScanner(file)
-	inGemSection := false
+	inSection := "" // track current section: "GIT", "GEM", "DEPENDENCIES", etc.
 
 	gemLineRegex := regexp.MustCompile(`(?i)^\s{4}([a-z0-9_-]+)\s+\(([^)]+)\)`)
 	dependencyRegex := regexp.MustCompile(`(?i)^\s{6}([a-z0-9_-]+)`)
+	dependencyItemRegex := regexp.MustCompile(`(?i)^\s{2}([a-z0-9_-]+)`)
 
 	var currentGem *Gem
 
 	for scanner.Scan() {
 		line := scanner.Text()
 
-		// Look for GEM section
-		if strings.HasPrefix(line, "GEM") {
-			inGemSection = true
+		// Check for section headers
+		if strings.HasPrefix(line, "GIT") {
+			inSection = "GIT"
 			continue
-		}
-
-		// Stop at PLATFORMS or other sections
-		if inGemSection && strings.HasPrefix(line, "PLATFORMS") {
+		} else if strings.HasPrefix(line, "GEM") {
+			inSection = "GEM"
+			continue
+		} else if strings.HasPrefix(line, "PLATFORMS") {
+			inSection = "PLATFORMS"
+			continue
+		} else if strings.HasPrefix(line, "DEPENDENCIES") {
+			inSection = "DEPENDENCIES"
+			continue
+		} else if strings.HasPrefix(line, "BUNDLED WITH") {
+			inSection = "BUNDLED"
 			break
 		}
 
-		// Skip non-gem lines
-		if !inGemSection || strings.TrimSpace(line) == "" || strings.HasPrefix(line, "  remote:") || strings.HasPrefix(line, "  specs:") {
+		// Skip empty lines and section metadata
+		if strings.TrimSpace(line) == "" || strings.HasPrefix(line, "  remote:") || strings.HasPrefix(line, "  specs:") || strings.HasPrefix(line, "  revision:") || strings.HasPrefix(line, "  branch:") || strings.HasPrefix(line, "  tag:") {
 			continue
 		}
 
-		// Parse gem lines (4-space indent)
-		matches := gemLineRegex.FindStringSubmatch(line)
-		if len(matches) > 0 {
-			name := strings.ToLower(matches[1])
-			version := matches[2]
+		// Skip PLATFORMS section content - just skip lines that are indented (platform names)
+		if inSection == "PLATFORMS" && (strings.HasPrefix(line, "  ") || strings.HasPrefix(line, " ")) {
+			continue
+		}
 
-			currentGem = &Gem{
-				Name:         name,
-				Version:      version,
-				Dependencies: []string{},
-				Groups:       []string{},
+		// Parse GIT and GEM sections
+		if inSection == "GIT" || inSection == "GEM" {
+			// Parse gem lines (4-space indent)
+			matches := gemLineRegex.FindStringSubmatch(line)
+			if len(matches) > 0 {
+				name := strings.ToLower(matches[1])
+				version := matches[2]
+
+				currentGem = &Gem{
+					Name:         name,
+					Version:      version,
+					Dependencies: []string{},
+					Groups:       []string{},
+					IsFirstLevel: false,
+				}
+				gf.Gems[name] = currentGem
+				continue
 			}
-			gf.Gems[name] = currentGem
-			continue
+
+			// Parse dependency lines (6-space indent)
+			if currentGem != nil {
+				depMatches := dependencyRegex.FindStringSubmatch(line)
+				if len(depMatches) > 0 {
+					depName := strings.ToLower(depMatches[1])
+					currentGem.Dependencies = append(currentGem.Dependencies, depName)
+				}
+			}
 		}
 
-		// Parse dependency lines (6-space indent)
-		if currentGem != nil {
-			depMatches := dependencyRegex.FindStringSubmatch(line)
-			if len(depMatches) > 0 {
-				depName := strings.ToLower(depMatches[1])
-				currentGem.Dependencies = append(currentGem.Dependencies, depName)
+		// Parse DEPENDENCIES section (2-space indent for gem names)
+		if inSection == "DEPENDENCIES" {
+			matches := dependencyItemRegex.FindStringSubmatch(line)
+			if len(matches) > 0 {
+				gemName := strings.ToLower(matches[1])
+				// Remove trailing '!' if it's a git dependency in DEPENDENCIES
+				gemName = strings.TrimSuffix(gemName, "!")
+
+				gf.FirstLevelGems = append(gf.FirstLevelGems, gemName)
+
+				// Mark the gem as first-level if it exists
+				if gem, ok := gf.Gems[gemName]; ok {
+					gem.IsFirstLevel = true
+				}
 			}
 		}
 	}

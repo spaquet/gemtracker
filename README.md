@@ -150,6 +150,42 @@ The CVE screen shows all known vulnerabilities:
 - **Description** - What the vulnerability does
 - **Status** - Whether gem is directly used or transitive
 
+### Understanding Gem Health Status
+
+Each gem in the [Gems] tab shows a health indicator (colored dot) that reflects the gem's maintenance status. gemtracker fetches this data from RubyGems and GitHub APIs to help you assess dependency health:
+
+**Health Levels:**
+
+- **🟢 HEALTHY** - Actively maintained gem
+  - Activity within the last year (release or GitHub commit)
+  - Multiple maintainers (2+)
+  - Regular updates and engagement
+
+- **🟡 WARNING** - Gem with maintenance concerns
+  - No activity in the last 1-3 years, OR
+  - Single maintainer (even if recent activity)
+  - May still receive occasional updates
+
+- **🔴 CRITICAL** - Potentially dead or unmaintained gem
+  - No activity for 3+ years
+  - Archived or disabled on GitHub
+  - Essentially abandoned
+
+**Gem Details** include full health statistics:
+- Last release date
+- GitHub stars and watchers
+- Open issues count
+- Number of active maintainers
+- Archived status (if applicable)
+
+**Why Health Matters:**
+- A "CRITICAL" gem may indicate security risks if vulnerabilities go unpatched
+- Unmaintained gems may have compatibility issues with new Ruby/Rails versions
+- "HEALTHY" gems are more likely to receive timely security updates
+- Different tolerance levels apply: a test-only gem's health matters less than a production core dependency
+
+> **Note**: Health data is fetched asynchronously in the background. If GitHub rate-limited, cached data from the last 24 hours is used.
+
 ## Performance & Caching
 
 ### Automatic Analysis Caching
@@ -280,30 +316,57 @@ make test
 
 ### Code Quality Checks
 
-Before submitting a PR, ensure your code passes all quality checks:
+gemtracker uses `golangci-lint` for comprehensive code quality checks. These run **automatically before pushing** via a git hook to catch issues early.
+
+#### Installation
+
+First, install golangci-lint:
 
 ```bash
+# Using Homebrew (macOS)
+brew install golangci-lint
+
+# Or using the official installer
+curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin
+```
+
+#### Running Checks Locally
+
+```bash
+# Run linter
+make lint
+
 # Run tests
 make test
 
-# Check code formatting (auto-fix with -w flag)
-gofmt -s -l .
+# Or run both before committing
+make lint && make test
+```
 
-# Run linter
-go vet ./...
+#### Automatic Pre-Push Hook
+
+A git `pre-push` hook automatically runs tests and linter before pushing to prevent CI failures:
+
+```bash
+git push
+# Output:
+# 🔍 Running linter...
+# ✓ Linter passed
+# 🧪 Running tests...
+# ✓ Tests passed
+# ✅ All checks passed! Pushing...
+```
+
+To skip the hook (not recommended):
+```bash
+git push --no-verify
 ```
 
 **Required before PR submission:**
 - ✅ All tests must pass: `make test`
-- ✅ Code must be formatted: `gofmt -s -w .` (fixes automatically)
-- ✅ No vet warnings: `go vet ./...`
+- ✅ Linter must pass: `make lint`
 
-These checks run automatically in GitHub Actions when you push, but fixing them locally first prevents CI failures:
-
-```bash
-# Quick pre-PR checklist (one command)
-make test && gofmt -s -w . && go vet ./... && echo "✓ Ready for PR!"
-```
+These checks run automatically in GitHub Actions when you push, but fixing them locally first via the pre-push hook prevents CI failures.
 
 ### Project Structure
 ```

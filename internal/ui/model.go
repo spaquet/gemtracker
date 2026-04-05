@@ -2,6 +2,7 @@ package ui
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -20,6 +21,35 @@ import (
 var spinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧"}
 
 // ============================================================================
+// Framework Gems
+// ============================================================================
+
+// frameworkGems maps gem names to their framework families
+// Used for categorizing upgradeable gems
+var frameworkGems = map[string]string{
+	// Rails
+	"actioncable":   "rails",
+	"actionmailer":  "rails",
+	"actionpack":    "rails",
+	"actiontext":    "rails",
+	"actionview":    "rails",
+	"activejob":     "rails",
+	"activemodel":   "rails",
+	"activerecord":  "rails",
+	"activestorage": "rails",
+	"activesupport": "rails",
+	"railties":      "rails",
+	"activeconfig":  "rails",
+	// Sinatra
+	"sinatra-contrib": "sinatra",
+	"rack-protection": "sinatra",
+	// Hanami
+	"hanami-controller": "hanami",
+	"hanami-view":       "hanami",
+	"hanami-router":     "hanami",
+}
+
+// ============================================================================
 // View Modes
 // ============================================================================
 
@@ -30,6 +60,7 @@ const (
 	ViewGemList
 	ViewGemDetail
 	ViewSearch
+	ViewUpgradeable
 	ViewCVE
 	ViewProjectInfo
 	ViewFilterMenu
@@ -42,8 +73,9 @@ const (
 // ============================================================================
 
 type AnalysisCompleteMsg struct {
-	Result *gemfile.AnalysisResult
-	Error  error
+	Result          *gemfile.AnalysisResult
+	Error           error
+	OutdatedChecker *gemfile.OutdatedChecker
 }
 
 type DependencyCompleteMsg struct {
@@ -73,6 +105,29 @@ type StageUpdateMsg struct {
 	OutdatedGems   []*gemfile.GemStatus    // Updated gems with version info
 	VulnerableGems []*gemfile.GemStatus    // Updated with CVE info
 }
+
+type HealthItemMsg struct {
+	GemName string
+	Health  *gemfile.GemHealth
+	Error   error
+}
+
+type HealthCompleteMsg struct{}
+
+type HealthRateLimitedMsg struct {
+	StoppedAt string // gem name where rate limiting occurred
+}
+
+type OutdatedItemMsg struct {
+	GemName       string
+	IsOutdated    bool
+	LatestVersion string
+	HomepageURL   string
+	Description   string
+	Error         error
+}
+
+type OutdatedCompleteMsg struct{}
 
 // ============================================================================
 // Model
@@ -121,6 +176,13 @@ type Model struct {
 	SearchCursor  int
 	SearchOffset  int
 
+	// Upgradeable screen state
+	UpgradeableGems           []*gemfile.GemStatus
+	UpgradeableFrameworkGems  []*gemfile.GemStatus
+	UpgradeableTransitiveDeps []*gemfile.GemStatus // Transitive dependency gems that can be upgraded
+	UpgradeableCursor         int
+	UpgradeableOffset         int
+
 	// CVE screen state
 	VulnerableGems []*gemfile.GemStatus
 	CVECursor      int
@@ -148,6 +210,21 @@ type Model struct {
 	AnalysisCurrentCount int    // Current item in stage
 	AnalysisTotalCount   int    // Total items for stage
 
+	// Health loading state
+	HealthLoading     bool
+	HealthRateLimited bool
+	HealthLoadedCount int
+	HealthTotalCount  int
+	HealthPending     []*gemfile.GemStatus // Queue for sequential fetching
+	HealthChecker     *gemfile.HealthChecker
+	OutdatedChecker   *gemfile.OutdatedChecker // Reused for health data extraction
+
+	// Outdated checking state
+	OutdatedLoading     bool
+	OutdatedPending     []*gemfile.GemStatus // Queue for sequential fetching
+	OutdatedErrorCount  int
+	OutdatedRateLimited bool
+
 	// Error state
 	ErrorMessage string
 
@@ -170,15 +247,18 @@ type Model struct {
 
 func NewModel(version, commit, date, projectPath string, noCache bool) *Model {
 	m := &Model{
-		Version:        version,
-		Commit:         commit,
-		Date:           date,
-		CurrentView:    ViewGemList,
-		ActiveTab:      ViewGemList,
-		SearchInput:    textinput.New(),
-		PathInput:      textinput.New(),
-		SelectedGroups: make(map[string]bool),
-		NoCache:        noCache,
+		Version:         version,
+		Commit:          commit,
+		Date:            date,
+		CurrentView:     ViewGemList,
+		ActiveTab:       ViewGemList,
+		SearchInput:     textinput.New(),
+		PathInput:       textinput.New(),
+		SelectedGroups:  make(map[string]bool),
+		NoCache:         noCache,
+		HealthChecker:   gemfile.NewHealthChecker(),
+		OutdatedChecker: gemfile.NewOutdatedChecker(),
+		HealthPending:   make([]*gemfile.GemStatus, 0),
 	}
 
 	// Configure search input
@@ -275,9 +355,11 @@ func performAnalysis(gemfilePath string, noCache bool) tea.Cmd {
 			cacheEntry, cacheErr := cache.Read(gemfilePath)
 			if cacheErr == nil && cacheEntry != nil && cacheEntry.Result != nil {
 				// Cache hit! Return cached result
+				// Create a fresh outdated checker so health data can be fetched
 				return AnalysisCompleteMsg{
-					Result: cacheEntry.Result,
-					Error:  nil,
+					Result:          cacheEntry.Result,
+					Error:           nil,
+					OutdatedChecker: gemfile.NewOutdatedChecker(),
 				}
 			}
 		}
@@ -295,10 +377,16 @@ func performAnalysis(gemfilePath string, noCache bool) tea.Cmd {
 		dir := filepath.Dir(gemfilePath)
 		gf.LoadGroupsFromGemfile(dir)
 
+		// Create the outdated checker once and reuse it
+		outdatedChecker := gemfile.NewOutdatedChecker()
+
 		result := gemfile.Analyze(gf)
+		// Lazy load source code URIs during health fetching to keep UI responsive
+
 		return AnalysisCompleteMsg{
-			Result: result,
-			Error:  nil,
+			Result:          result,
+			Error:           nil,
+			OutdatedChecker: outdatedChecker,
 		}
 	}
 }
@@ -312,8 +400,9 @@ func performAnalysisWithProgress(gemfilePath string) tea.Cmd {
 		if cacheErr == nil && cacheEntry != nil && cacheEntry.Result != nil {
 			// Cache hit! Return complete analysis immediately
 			return AnalysisCompleteMsg{
-				Result: cacheEntry.Result,
-				Error:  nil,
+				Result:          cacheEntry.Result,
+				Error:           nil,
+				OutdatedChecker: gemfile.NewOutdatedChecker(),
 			}
 		}
 
@@ -333,10 +422,19 @@ func performAnalysisWithProgress(gemfilePath string) tea.Cmd {
 		// Stage 2: Analyze gems (40-70%)
 		result := gemfile.Analyze(gf)
 
+		// Warm up outdated checker for health data extraction
+		outdatedChecker := gemfile.NewOutdatedChecker()
+		if result != nil {
+			for _, gem := range result.FirstLevelGems {
+				outdatedChecker.GetSourceCodeURI(gem)
+			}
+		}
+
 		// Stage 3: Return complete results (100%)
 		return AnalysisCompleteMsg{
-			Result: result,
-			Error:  nil,
+			Result:          result,
+			Error:           nil,
+			OutdatedChecker: outdatedChecker,
 		}
 	}
 }
@@ -544,4 +642,124 @@ func (m *Model) clearFilters() {
 // hasActiveFilters returns true if any filters are applied
 func (m *Model) hasActiveFilters() bool {
 	return len(m.SelectedGroups) > 0 || m.ShowOnlyUpgradable
+}
+
+// buildUpgradeableList categorizes outdated gems into first-level, framework, and transitive dependencies
+func (m *Model) buildUpgradeableList() {
+	if m.AnalysisResult == nil {
+		return
+	}
+
+	// Build a set of first-level gem names for quick lookup
+	firstLevelSet := make(map[string]bool)
+	for _, gem := range m.FirstLevelGems {
+		firstLevelSet[gem.Name] = true
+	}
+
+	// Clear the upgradeable lists
+	m.UpgradeableGems = make([]*gemfile.GemStatus, 0)
+	m.UpgradeableFrameworkGems = make([]*gemfile.GemStatus, 0)
+	m.UpgradeableTransitiveDeps = make([]*gemfile.GemStatus, 0)
+
+	// Categorize all outdated gems
+	for _, gs := range m.AnalysisResult.GemStatuses {
+		if !gs.IsOutdated {
+			continue
+		}
+
+		// Check if it's first-level
+		if firstLevelSet[gs.Name] {
+			m.UpgradeableGems = append(m.UpgradeableGems, gs)
+		} else if _, isFramework := frameworkGems[gs.Name]; isFramework {
+			// It's a framework gem
+			m.UpgradeableFrameworkGems = append(m.UpgradeableFrameworkGems, gs)
+		} else {
+			// It's a transitive dependency
+			m.UpgradeableTransitiveDeps = append(m.UpgradeableTransitiveDeps, gs)
+		}
+	}
+
+	// Sort all slices by name
+	sort.Slice(m.UpgradeableGems, func(i, j int) bool {
+		return m.UpgradeableGems[i].Name < m.UpgradeableGems[j].Name
+	})
+	sort.Slice(m.UpgradeableFrameworkGems, func(i, j int) bool {
+		return m.UpgradeableFrameworkGems[i].Name < m.UpgradeableFrameworkGems[j].Name
+	})
+	sort.Slice(m.UpgradeableTransitiveDeps, func(i, j int) bool {
+		return m.UpgradeableTransitiveDeps[i].Name < m.UpgradeableTransitiveDeps[j].Name
+	})
+
+	// Reset cursor if out of bounds
+	if m.UpgradeableCursor >= len(m.allUpgradeableGems()) {
+		m.UpgradeableCursor = 0
+	}
+	m.UpgradeableOffset = 0
+}
+
+// allUpgradeableGems returns a combined slice of all upgradeable gems (first-level + framework + transitive)
+func (m *Model) allUpgradeableGems() []*gemfile.GemStatus {
+	all := append(m.UpgradeableGems, m.UpgradeableFrameworkGems...)
+	return append(all, m.UpgradeableTransitiveDeps...)
+}
+
+// ============================================================================
+// Health Data Loading
+// ============================================================================
+
+func fetchSingleHealth(gem *gemfile.GemStatus, hc *gemfile.HealthChecker, outdatedChecker *gemfile.OutdatedChecker) tea.Msg {
+	sourceCodeURI := outdatedChecker.GetSourceCodeURI(gem.Name)
+	homepageURI := outdatedChecker.GetHomepage(gem.Name)
+	versionCreatedAt := outdatedChecker.GetVersionCreatedAt(gem.Name)
+	ownersURL := fmt.Sprintf("https://rubygems.org/api/v1/gems/%s/owners.json", gem.Name)
+
+	health, err := hc.FetchHealth(gem.Name, sourceCodeURI, homepageURI, versionCreatedAt, ownersURL)
+
+	if err != nil && isRateLimited(err) {
+		return HealthRateLimitedMsg{StoppedAt: gem.Name}
+	}
+
+	return HealthItemMsg{GemName: gem.Name, Health: health, Error: err}
+}
+
+func fetchNextHealthItem(gems []*gemfile.GemStatus, hc *gemfile.HealthChecker, outdatedChecker *gemfile.OutdatedChecker) tea.Cmd {
+	if len(gems) == 0 {
+		return func() tea.Msg { return HealthCompleteMsg{} }
+	}
+	return func() tea.Msg {
+		// Add delay to avoid hitting GitHub API rate limits (60 req/hr unauthenticated)
+		// This limits us to ~3 requests/sec which is well within rate limits
+		time.Sleep(300 * time.Millisecond)
+		gem := gems[0]
+		return fetchSingleHealth(gem, hc, outdatedChecker)
+	}
+}
+
+func isRateLimited(err error) bool {
+	if err == nil {
+		return false
+	}
+	return strings.Contains(err.Error(), "403") || strings.Contains(err.Error(), "429")
+}
+
+func fetchNextOutdatedItem(gems []*gemfile.GemStatus, checker *gemfile.OutdatedChecker) tea.Cmd {
+	if len(gems) == 0 {
+		return func() tea.Msg { return OutdatedCompleteMsg{} }
+	}
+	return func() tea.Msg {
+		gem := gems[0]
+		isOutdated, latest, err := checker.IsOutdated(gem.Name, gem.Version)
+		if err != nil {
+			return OutdatedItemMsg{GemName: gem.Name, Error: err}
+		}
+		homepage := checker.GetHomepage(gem.Name)
+		desc := checker.GetDescription(gem.Name)
+		return OutdatedItemMsg{
+			GemName:       gem.Name,
+			IsOutdated:    isOutdated,
+			LatestVersion: latest,
+			HomepageURL:   homepage,
+			Description:   desc,
+		}
+	}
 }

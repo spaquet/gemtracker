@@ -73,6 +73,36 @@ gemtracker/
 - Screen rendering (gem list, details, search, vulnerabilities)
 - Keyboard navigation and interaction
 
+### Async Architecture
+
+**Version Update Checking** (`internal/gemfile/outdated.go`)
+- Fetches latest available gem versions from rubygems.org API
+- Runs asynchronously in background to keep UI responsive
+- Results cached for 24 hours per project (in `~/.cache/gemtracker/`)
+- Graceful degradation: if API unavailable, uses cached data or shows "checking..."
+- Status indicator shows progress: "Checking updates... (15/189)"
+- Respects API rate limits and implements exponential backoff
+
+**Gem Health Checking** (`internal/gemfile/health.go`)
+- Fetches maintenance health metrics from:
+  - RubyGems API (last release date, maintainer count)
+  - GitHub API (stars, maintainers, open issues, last push)
+- Evaluates health into three tiers based on `ComputeHealthScore()`:
+  - **HEALTHY** (🟢) - Activity within 1 year AND 2+ maintainers
+  - **WARNING** (🟡) - No activity for 1-3 years OR single maintainer
+  - **CRITICAL** (🔴) - No activity for 3+ years, archived, or disabled
+- Runs one gem at a time (sequential) to avoid rate limiting
+- Caches results for 24 hours per gem (`~/.cache/gemtracker/{hash}_health.json`)
+- Shows health dots in gem list as data loads in background
+- Handles GitHub rate limiting gracefully (60 req/hour for anonymous)
+
+**BubbleTea Integration**
+- Version checks and health updates sent as BubbleTea `Msg` events
+- UI state updated via `Update()` method without blocking
+- Progress indicators show loading state in real-time
+- Error states (rate limited, network issues) displayed in statusbar
+- Can be toggled on/off depending on user needs
+
 ## Key Features & Screens
 
 ### 1. First-Level Gems List

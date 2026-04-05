@@ -9,8 +9,10 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/getsentry/sentry-go"
 	"github.com/spaquet/gemtracker/internal/cache"
 	"github.com/spaquet/gemtracker/internal/gemfile"
+	"github.com/spaquet/gemtracker/internal/telemetry"
 )
 
 func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -77,6 +79,26 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.AnalysisPercentage = msg.Percentage
 		m.LoadingMessage = msg.Message
 		return m, nil
+
+	case HealthItemMsg:
+		return m.handleHealthItem(msg)
+
+	case HealthCompleteMsg:
+		return m.handleHealthComplete()
+
+	case HealthRateLimitedMsg:
+		m.HealthRateLimited = true
+		m.HealthLoading = false
+		// Report rate limiting to Sentry
+		err := fmt.Errorf("health check rate limited at gem: %s", msg.StoppedAt)
+		telemetry.CaptureException(err, sentry.LevelWarning)
+		return m, nil
+
+	case OutdatedItemMsg:
+		return m.handleOutdatedItem(msg)
+
+	case OutdatedCompleteMsg:
+		return m.handleOutdatedComplete()
 	}
 
 	return m, nil
@@ -115,6 +137,9 @@ func (m *Model) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case ViewSearch:
 		return m.handleSearchKeys(msg)
+
+	case ViewUpgradeable:
+		return m.handleUpgradeableKeys(msg)
 
 	case ViewCVE:
 		return m.handleCVEKeys(msg)
@@ -302,8 +327,8 @@ func (m *Model) handleGemDetailKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 func (m *Model) handleSearchKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "tab":
-		m.CurrentView = ViewCVE
-		m.ActiveTab = ViewCVE
+		m.CurrentView = ViewUpgradeable
+		m.ActiveTab = ViewUpgradeable
 		return m, nil
 
 	case "shift+tab":
@@ -361,6 +386,54 @@ func (m *Model) handleSearchKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 }
 
+func (m *Model) handleUpgradeableKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "tab":
+		m.CurrentView = ViewCVE
+		m.ActiveTab = ViewCVE
+		return m, nil
+
+	case "shift+tab":
+		m.CurrentView = ViewSearch
+		m.ActiveTab = ViewSearch
+		return m, nil
+
+	case "up":
+		if m.UpgradeableCursor > 0 {
+			m.UpgradeableCursor--
+			m.ensureUpgradeableCursorVisible()
+		}
+		return m, nil
+
+	case "down":
+		allUpgradeable := m.allUpgradeableGems()
+		if m.UpgradeableCursor < len(allUpgradeable)-1 {
+			m.UpgradeableCursor++
+			m.ensureUpgradeableCursorVisible()
+		}
+		return m, nil
+
+	case "enter":
+		allUpgradeable := m.allUpgradeableGems()
+		if len(allUpgradeable) > 0 && m.UpgradeableCursor < len(allUpgradeable) {
+			m.SelectedGem = allUpgradeable[m.UpgradeableCursor]
+			m.CurrentView = ViewGemDetail
+			m.ActiveTab = ViewUpgradeable
+			m.Loading = true
+			m.LoadingMessage = "Loading dependencies..."
+			return m, tea.Batch(
+				tea.Tick(time.Millisecond*100, func(time.Time) tea.Msg {
+					return SpinnerTickMsg{}
+				}),
+				performDependencyAnalysis(m.GemfileLockPath, m.SelectedGem.Name),
+			)
+		}
+		return m, nil
+	}
+
+	return m, nil
+}
+
 func (m *Model) handleCVEKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "tab":
@@ -369,8 +442,8 @@ func (m *Model) handleCVEKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case "shift+tab":
-		m.CurrentView = ViewSearch
-		m.ActiveTab = ViewSearch
+		m.CurrentView = ViewUpgradeable
+		m.ActiveTab = ViewUpgradeable
 		return m, nil
 
 	case "up":
@@ -588,10 +661,28 @@ func (m *Model) handleAnalysisComplete(msg AnalysisCompleteMsg) (tea.Model, tea.
 	m.GemListOffset = 0
 	m.AnalysisPercentage = 100
 	m.AnalysisStage = "complete"
-	m.LoadingMessage = "Analysis complete - CVE scanning in background..."
+	m.LoadingMessage = "Analysis complete"
 	m.CurrentView = m.ActiveTab
 
-	return m, nil
+	// Store the outdated checker for health data extraction
+	if msg.OutdatedChecker != nil {
+		m.OutdatedChecker = msg.OutdatedChecker
+	}
+
+	// Start outdated checking for all gems (not just first-level)
+	m.OutdatedLoading = true
+	m.OutdatedPending = make([]*gemfile.GemStatus, len(msg.Result.GemStatuses))
+	copy(m.OutdatedPending, msg.Result.GemStatuses)
+
+	// Initialize health data loading queue (but don't start fetching yet)
+	// Health checks will start after outdated checking completes to avoid race conditions
+	m.HealthLoading = true
+	m.HealthTotalCount = len(msg.Result.GemStatuses)
+	m.HealthLoadedCount = 0
+	m.HealthPending = make([]*gemfile.GemStatus, len(msg.Result.GemStatuses))
+	copy(m.HealthPending, msg.Result.GemStatuses)
+
+	return m, fetchNextOutdatedItem(m.OutdatedPending, m.OutdatedChecker)
 }
 
 func (m *Model) handleDependencyComplete(msg DependencyCompleteMsg) (tea.Model, tea.Cmd) {
@@ -615,6 +706,123 @@ func (m *Model) handleDependencyComplete(msg DependencyCompleteMsg) (tea.Model, 
 	m.DetailReverseOffset = 0
 	m.DetailTreeCursor = 0
 	m.CurrentView = ViewGemDetail
+
+	return m, nil
+}
+
+func (m *Model) handleHealthItem(msg HealthItemMsg) (tea.Model, tea.Cmd) {
+	// Report error to Sentry if health check failed
+	if msg.Error != nil {
+		err := fmt.Errorf("failed to fetch health for gem %q: %w", msg.GemName, msg.Error)
+		telemetry.CaptureException(err, sentry.LevelError)
+	}
+
+	// Find and update the gem with health data
+	for _, gem := range m.FirstLevelGems {
+		if gem.Name == msg.GemName {
+			gem.Health = msg.Health
+			break
+		}
+	}
+	for _, gem := range m.UnfilteredGems {
+		if gem.Name == msg.GemName {
+			gem.Health = msg.Health
+			break
+		}
+	}
+
+	m.HealthLoadedCount++
+
+	// Pop the first pending gem and fetch the next
+	if len(m.HealthPending) > 0 {
+		m.HealthPending = m.HealthPending[1:]
+	}
+
+	if len(m.HealthPending) > 0 {
+		return m, fetchNextHealthItem(m.HealthPending, m.HealthChecker, m.OutdatedChecker)
+	}
+
+	// All gems processed, emit complete message
+	return m, func() tea.Msg { return HealthCompleteMsg{} }
+}
+
+func (m *Model) handleHealthComplete() (tea.Model, tea.Cmd) {
+	m.HealthLoading = false
+
+	// Save health data to cache
+	healthCache := &cache.HealthCacheEntry{
+		Gems:     make(map[string]*gemfile.GemHealth),
+		CachedAt: time.Now(),
+	}
+	for _, gem := range m.FirstLevelGems {
+		if gem.Health != nil {
+			healthCache.Gems[gem.Name] = gem.Health
+		}
+	}
+
+	// Fire-and-forget cache write
+	go cache.WriteHealth(m.GemfileLockPath, healthCache)
+
+	return m, nil
+}
+
+func (m *Model) handleOutdatedItem(msg OutdatedItemMsg) (tea.Model, tea.Cmd) {
+	if msg.Error != nil {
+		// Check if rate limited
+		if isRateLimited(msg.Error) {
+			m.OutdatedRateLimited = true
+			m.OutdatedLoading = false
+			// Report rate limiting to Sentry as a warning
+			telemetry.CaptureException(msg.Error, sentry.LevelWarning)
+			return m, nil // stop queue on rate limit
+		}
+		// Network/timeout error: mark gem as failed, continue queue
+		for _, gem := range m.AnalysisResult.GemStatuses {
+			if gem.Name == msg.GemName {
+				gem.OutdatedFailed = true
+				break
+			}
+		}
+		m.OutdatedErrorCount++
+		// Report individual gem check failure to Sentry
+		err := fmt.Errorf("failed to check outdated version for gem %q: %w", msg.GemName, msg.Error)
+		telemetry.CaptureException(err, sentry.LevelError)
+	} else {
+		// Success: update gem fields
+		for _, gem := range m.AnalysisResult.GemStatuses {
+			if gem.Name == msg.GemName {
+				gem.IsOutdated = msg.IsOutdated
+				gem.LatestVersion = msg.LatestVersion
+				gem.HomepageURL = msg.HomepageURL
+				gem.Description = msg.Description
+				break
+			}
+		}
+	}
+
+	// Pop the first pending gem
+	if len(m.OutdatedPending) > 0 {
+		m.OutdatedPending = m.OutdatedPending[1:]
+	}
+
+	if len(m.OutdatedPending) > 0 {
+		return m, fetchNextOutdatedItem(m.OutdatedPending, m.OutdatedChecker)
+	}
+
+	return m, func() tea.Msg { return OutdatedCompleteMsg{} }
+}
+
+func (m *Model) handleOutdatedComplete() (tea.Model, tea.Cmd) {
+	m.OutdatedLoading = false
+
+	// Rebuild the upgradeable gems list with updated outdated status
+	m.buildUpgradeableList()
+
+	// Start health checking now that outdated checker cache is fully populated
+	// This avoids race conditions with the outdated checker
+	if len(m.HealthPending) > 0 {
+		return m, fetchNextHealthItem(m.HealthPending, m.HealthChecker, m.OutdatedChecker)
+	}
 
 	return m, nil
 }
@@ -647,8 +855,12 @@ func (m *Model) updateSearchResults() {
 func (m *Model) clampScrollOffsets() {
 	contentHeight := m.Height - FixedChrome - m.updateBarHeight()
 
+	// Account for header row which reduces available space
+	// renderGemListTable shows: header (1) + gems (contentHeight - 1)
+	availableGemsRows := contentHeight - 1
+
 	// Clamp gem list offset
-	maxOffset := len(m.FirstLevelGems) - contentHeight + 2
+	maxOffset := len(m.FirstLevelGems) - availableGemsRows
 	if maxOffset < 0 {
 		maxOffset = 0
 	}
@@ -656,8 +868,9 @@ func (m *Model) clampScrollOffsets() {
 		m.GemListOffset = maxOffset
 	}
 
-	// Clamp search offset
-	maxSearchOffset := len(m.SearchResults) - contentHeight + 2
+	// Clamp search offset (has title + header lines above results)
+	availableSearchRows := contentHeight - 2
+	maxSearchOffset := len(m.SearchResults) - availableSearchRows
 	if maxSearchOffset < 0 {
 		maxSearchOffset = 0
 	}
@@ -665,8 +878,9 @@ func (m *Model) clampScrollOffsets() {
 		m.SearchOffset = maxSearchOffset
 	}
 
-	// Clamp CVE offset
-	maxCVEOffset := len(m.VulnerableGems) - contentHeight + 2
+	// Clamp CVE offset (has title + header lines above results)
+	availableCVERows := contentHeight - 2
+	maxCVEOffset := len(m.VulnerableGems) - availableCVERows
 	if maxCVEOffset < 0 {
 		maxCVEOffset = 0
 	}
@@ -676,29 +890,50 @@ func (m *Model) clampScrollOffsets() {
 }
 
 func (m *Model) ensureGemListCursorVisible() {
-	contentHeight := m.Height - FixedChrome - m.updateBarHeight() - 2
+	contentHeight := m.Height - FixedChrome - m.updateBarHeight()
+	// renderGemListTable shows: header (1) + gems (contentHeight - 1)
+	availableGemsRows := contentHeight - 1
 	if m.GemListCursor < m.GemListOffset {
 		m.GemListOffset = m.GemListCursor
-	} else if m.GemListCursor >= m.GemListOffset+contentHeight {
-		m.GemListOffset = m.GemListCursor - contentHeight + 1
+	} else if m.GemListCursor >= m.GemListOffset+availableGemsRows {
+		m.GemListOffset = m.GemListCursor - availableGemsRows + 1
 	}
 }
 
 func (m *Model) ensureSearchCursorVisible() {
-	contentHeight := m.Height - FixedChrome - m.updateBarHeight() - 2
+	contentHeight := m.Height - FixedChrome - m.updateBarHeight()
+	// renderSearchResults shows: title (1) + header (1) + results (contentHeight - 2)
+	availableSearchRows := contentHeight - 2
 	if m.SearchCursor < m.SearchOffset {
 		m.SearchOffset = m.SearchCursor
-	} else if m.SearchCursor >= m.SearchOffset+contentHeight {
-		m.SearchOffset = m.SearchCursor - contentHeight + 1
+	} else if m.SearchCursor >= m.SearchOffset+availableSearchRows {
+		m.SearchOffset = m.SearchCursor - availableSearchRows + 1
 	}
 }
 
 func (m *Model) ensureCVECursorVisible() {
-	contentHeight := m.Height - FixedChrome - m.updateBarHeight() - 2
+	contentHeight := m.Height - FixedChrome - m.updateBarHeight()
+	// renderCVETable shows: title (1) + header (1) + results (contentHeight - 2)
+	availableCVERows := contentHeight - 2
 	if m.CVECursor < m.CVEOffset {
 		m.CVEOffset = m.CVECursor
-	} else if m.CVECursor >= m.CVEOffset+contentHeight {
-		m.CVEOffset = m.CVECursor - contentHeight + 1
+	} else if m.CVECursor >= m.CVEOffset+availableCVERows {
+		m.CVEOffset = m.CVECursor - availableCVERows + 1
+	}
+}
+
+func (m *Model) ensureUpgradeableCursorVisible() {
+	contentHeight := m.Height - FixedChrome - m.updateBarHeight()
+	// renderUpgradeableTable shows sections with headers, so estimate visible rows as available height
+	// Rough estimate: title (1) + blank line (1) + headers and data
+	availableRows := contentHeight - 4
+	if availableRows < 1 {
+		availableRows = 1
+	}
+	if m.UpgradeableCursor < m.UpgradeableOffset {
+		m.UpgradeableOffset = m.UpgradeableCursor
+	} else if m.UpgradeableCursor >= m.UpgradeableOffset+availableRows {
+		m.UpgradeableOffset = m.UpgradeableCursor - availableRows + 1
 	}
 }
 

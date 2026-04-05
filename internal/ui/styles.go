@@ -22,7 +22,7 @@ const (
 
 // Layout constants
 const (
-	FixedChrome     = 5 // header + tabbar + statusbar + 2 separators
+	FixedChrome     = 3 // header (1) + tabbar (1) + statusbar (1)
 	HeaderHeight    = 3
 	TabBarHeight    = 1
 	StatusBarHeight = 1
@@ -110,6 +110,21 @@ var BadgeOutdatedStyle = lipgloss.NewStyle().
 	Foreground(lipgloss.Color(ColorWarning))
 
 var BadgeVulnerableStyle = lipgloss.NewStyle().
+	Foreground(lipgloss.Color(ColorDanger))
+
+var BadgeLoadingStyle = lipgloss.NewStyle().
+	Foreground(lipgloss.Color(ColorTextMuted))
+
+var BadgeErrorStyle = lipgloss.NewStyle().
+	Foreground(lipgloss.Color(ColorDanger))
+
+var BadgeHealthyDotStyle = lipgloss.NewStyle().
+	Foreground(lipgloss.Color(ColorSuccess))
+
+var BadgeWarningDotStyle = lipgloss.NewStyle().
+	Foreground(lipgloss.Color(ColorWarning))
+
+var BadgeCriticalDotStyle = lipgloss.NewStyle().
 	Foreground(lipgloss.Color(ColorDanger))
 
 // ============================================================================

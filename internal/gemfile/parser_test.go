@@ -309,3 +309,125 @@ PLATFORMS
 		t.Fatalf("LoadGroupsFromGemfile should not fail: %v", err)
 	}
 }
+
+func TestParse_FirstLevelGems(t *testing.T) {
+	// Test that DEPENDENCIES section is properly parsed to identify first-level gems
+	dir := t.TempDir()
+
+	lockContent := `GEM
+  remote: https://rubygems.org/
+  specs:
+    rails (7.0.0)
+      actionpack (= 7.0.0)
+      activesupport (= 7.0.0)
+    actionpack (7.0.0)
+    activesupport (7.0.0)
+    devise (4.8.0)
+      rails (>= 5.0)
+
+PLATFORMS
+  ruby
+
+DEPENDENCIES
+  rails
+  devise
+
+BUNDLED WITH
+   2.3.0
+`
+
+	lockPath := filepath.Join(dir, "Gemfile.lock")
+	if err := os.WriteFile(lockPath, []byte(lockContent), 0644); err != nil {
+		t.Fatalf("failed to write Gemfile.lock: %v", err)
+	}
+
+	gf, err := Parse(lockPath)
+	if err != nil {
+		t.Fatalf("Parse failed: %v", err)
+	}
+
+	// Check that DEPENDENCIES were parsed
+	if len(gf.FirstLevelGems) != 2 {
+		t.Errorf("expected 2 first-level gems, got %d", len(gf.FirstLevelGems))
+	}
+
+	// Check that specific gems are marked as first-level
+	rails := gf.Gems["rails"]
+	if rails == nil {
+		t.Fatal("rails gem not found")
+	}
+	if !rails.IsFirstLevel {
+		t.Error("expected rails to be marked as first-level")
+	}
+
+	devise := gf.Gems["devise"]
+	if devise == nil {
+		t.Fatal("devise gem not found")
+	}
+	if !devise.IsFirstLevel {
+		t.Error("expected devise to be marked as first-level")
+	}
+
+	// Check that transitive deps are NOT marked as first-level
+	actionpack := gf.Gems["actionpack"]
+	if actionpack == nil {
+		t.Fatal("actionpack gem not found")
+	}
+	if actionpack.IsFirstLevel {
+		t.Error("expected actionpack to NOT be marked as first-level")
+	}
+}
+
+func TestParse_GitSection(t *testing.T) {
+	// Test that GIT section is properly parsed
+	dir := t.TempDir()
+
+	lockContent := `GIT
+  remote: https://github.com/mbleigh/acts-as-taggable-on.git
+  revision: 1df5ac334c7f6321ac6b967fb014f834b3aa1e09
+  branch: master
+  specs:
+    acts-as-taggable-on (13.0.0)
+      activerecord (>= 7.1, < 8.2)
+
+GEM
+  remote: https://rubygems.org/
+  specs:
+    activerecord (8.1.0)
+    activesupport (8.1.0)
+
+PLATFORMS
+  ruby
+
+DEPENDENCIES
+  acts-as-taggable-on!
+
+BUNDLED WITH
+   2.7.1
+`
+
+	lockPath := filepath.Join(dir, "Gemfile.lock")
+	if err := os.WriteFile(lockPath, []byte(lockContent), 0644); err != nil {
+		t.Fatalf("failed to write Gemfile.lock: %v", err)
+	}
+
+	gf, err := Parse(lockPath)
+	if err != nil {
+		t.Fatalf("Parse failed: %v", err)
+	}
+
+	// Check that GIT section was parsed
+	actsTags := gf.Gems["acts-as-taggable-on"]
+	if actsTags == nil {
+		t.Fatal("acts-as-taggable-on gem not found - GIT section was not parsed")
+	}
+
+	if actsTags.Version != "13.0.0" {
+		t.Errorf("expected version 13.0.0, got %s", actsTags.Version)
+	}
+
+	// Check that it's marked as first-level
+	if !actsTags.IsFirstLevel {
+		t.Error("expected acts-as-taggable-on to be marked as first-level")
+	}
+}

@@ -13,9 +13,11 @@ type GemStatus struct {
 	IsOutdated        bool
 	LatestVersion     string // Latest available version
 	IsVulnerable      bool
-	VulnerabilityInfo string // Detailed vulnerability info
-	HomepageURL       string // Homepage or source code URL
-	Description       string // Gem description from rubygems.org
+	VulnerabilityInfo string     // Detailed vulnerability info
+	HomepageURL       string     // Homepage or source code URL
+	Description       string     // Gem description from rubygems.org
+	Health            *GemHealth // Gem health data (nil until fetched)
+	OutdatedFailed    bool       // true if outdated check failed with an error
 }
 
 type AnalysisResult struct {
@@ -30,7 +32,6 @@ type AnalysisResult struct {
 }
 
 func Analyze(gemfile *Gemfile) *AnalysisResult {
-	outdatedChecker := NewOutdatedChecker()
 	vulnChecker := NewVulnerabilityChecker()
 
 	allGems := gemfile.GetGemsAsList()
@@ -39,20 +40,18 @@ func Analyze(gemfile *Gemfile) *AnalysisResult {
 	firstLevelList := []string{}
 	gemStatuses := make([]*GemStatus, 0, len(allGems))
 
+	// Build a map of first-level gems for quick lookup
+	firstLevelMap := make(map[string]bool)
+	for _, name := range gemfile.FirstLevelGems {
+		firstLevelMap[name] = true
+	}
+
 	// Check each gem for outdated and vulnerable status
 	for _, gem := range allGems {
 		status := &GemStatus{
 			Name:    gem.Name,
 			Version: gem.Version,
 			Groups:  gem.Groups, // Copy group information
-		}
-
-		// Check if outdated
-		isOutdated, latestVersion := outdatedChecker.IsOutdated(gem.Name, gem.Version)
-		if isOutdated {
-			status.IsOutdated = true
-			status.LatestVersion = latestVersion
-			outdatedList = append(outdatedList, gem.Name)
 		}
 
 		// Check if vulnerable
@@ -63,14 +62,11 @@ func Analyze(gemfile *Gemfile) *AnalysisResult {
 			vulnerableList = append(vulnerableList, gem.Name)
 		}
 
-		// Get homepage URL
-		status.HomepageURL = outdatedChecker.GetHomepage(gem.Name)
-
-		// Get description
-		status.Description = outdatedChecker.GetDescription(gem.Name)
-
-		// Track first-level gems (those with groups from Gemfile, not transitive deps)
-		if len(gem.Groups) > 0 {
+		// Track first-level gems (those in DEPENDENCIES section of Gemfile.lock, not transitive deps)
+		// First, check if it was explicitly marked in DEPENDENCIES section
+		// Fall back to checking for group information (for compatibility with Gemfile parsing)
+		isFirstLevel := gem.IsFirstLevel || firstLevelMap[gem.Name] || len(gem.Groups) > 0
+		if isFirstLevel {
 			firstLevelList = append(firstLevelList, gem.Name)
 		}
 
