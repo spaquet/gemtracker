@@ -6,6 +6,7 @@ import (
 	"os"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/spaquet/gemtracker/internal/telemetry"
 	"github.com/spaquet/gemtracker/internal/ui"
 )
 
@@ -16,6 +17,13 @@ var (
 )
 
 func main() {
+	// Initialize Sentry error tracking (optional, only if SENTRY_DSN is set)
+	if err := telemetry.InitSentry(); err != nil {
+		// Log error but continue - Sentry is optional
+		fmt.Fprintf(os.Stderr, "Warning: Failed to initialize error tracking: %v\n", err)
+	}
+	defer telemetry.Close()
+
 	// Parse command-line flags
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage: gemtracker [path]\n")
@@ -31,6 +39,7 @@ func main() {
 
 	showVersion := flag.Bool("v", false, "Show version")
 	flag.BoolVar(showVersion, "version", false, "Show version")
+	noCache := flag.Bool("no-cache", false, "Skip cache and force fresh analysis")
 	flag.Parse()
 
 	if *showVersion {
@@ -48,10 +57,11 @@ func main() {
 	}
 
 	// Start the interactive TUI
-	model := ui.NewModel(version, commit, date, projectPath)
+	model := ui.NewModel(version, commit, date, projectPath, *noCache)
 	p := tea.NewProgram(model, tea.WithAltScreen())
 
 	if _, err := p.Run(); err != nil {
+		telemetry.CaptureError(err)
 		fmt.Fprintf(os.Stderr, "Error running program: %v\n", err)
 		os.Exit(1)
 	}

@@ -82,3 +82,7 @@ brews:
     homepage: "https://github.com/spaquet/gemtracker"
     description: "An interactive TUI for analyzing Ruby gem dependencies and security risks"
     license: MIT
+    skip_upload: false
+
+# Disable cask generation - we only use the formula
+casks: []

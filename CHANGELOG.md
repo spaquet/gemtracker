@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v1.0.6] - 2026-04-05
+
+### Added
+- **[Project]** tab - Display project metadata and statistics
+  - Ruby version extraction from Gemfile.lock
+  - Bundle version detection
+  - Framework detection (Rails, Sinatra, Hanami, Roda, Cuba, Grape) with version
+  - Gem statistics (total, direct dependencies, transitive dependencies)
+  - Vulnerability summary
+- Gem filtering on Gems tab
+  - Filter by gem group (default, development, test, production, etc.)
+  - Filter to show only upgradable gems
+  - Visual filter status indicator with clear shortcut
+  - Dedicated filter menu UI with keyboard shortcuts:
+    - `f` - Open filter menu
+    - `u` - Toggle upgradable-only filter
+    - `c` - Clear all filters
+- Optional Sentry error tracking
+  - Enabled via `SENTRY_DSN` environment variable (completely optional)
+  - Not required for development or self-built versions
+  - Helps track bugs and crashes in production builds
+- Analysis caching for faster subsequent loads
+  - Automatic cache storage in `~/.cache/gemtracker/`
+  - Cache invalidation based on Gemfile.lock modification time
+  - Instant project reload if Gemfile.lock unchanged
+
 ## [v1.0.5] - 2026-04-04
 
 ### Fixed

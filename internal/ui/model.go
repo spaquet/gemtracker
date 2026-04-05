@@ -6,11 +6,13 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/spaquet/gemtracker/internal/cache"
 	"github.com/spaquet/gemtracker/internal/gemfile"
 )
 
@@ -29,6 +31,8 @@ const (
 	ViewGemDetail
 	ViewSearch
 	ViewCVE
+	ViewProjectInfo
+	ViewFilterMenu
 	ViewSelectPath
 	ViewError
 )
@@ -54,6 +58,22 @@ type VersionCheckMsg struct {
 	HasUpdate     bool
 }
 
+type ProgressMsg struct {
+	Stage      string // "parsing", "checking-updates", "scanning-cves", "complete"
+	Percentage int    // 0-100
+	Message    string // Status message
+}
+
+type StageUpdateMsg struct {
+	Stage          string                  // "parsing", "checking-updates", "scanning-cves"
+	CurrentCount   int                     // Current gems processed
+	TotalCount     int                     // Total gems to process
+	Percentage     int                     // 0-100
+	Result         *gemfile.AnalysisResult // Accumulated results so far
+	OutdatedGems   []*gemfile.GemStatus    // Updated gems with version info
+	VulnerableGems []*gemfile.GemStatus    // Updated with CVE info
+}
+
 // ============================================================================
 // Model
 // ============================================================================
@@ -72,9 +92,16 @@ type Model struct {
 	DependencyResult *gemfile.DependencyResult
 
 	// Gem List screen state
-	FirstLevelGems []*gemfile.GemStatus
-	GemListCursor  int
-	GemListOffset  int
+	FirstLevelGems     []*gemfile.GemStatus
+	GemListCursor      int
+	GemListOffset      int
+	UnfilteredGems     []*gemfile.GemStatus // All first-level gems (for filter operations)
+	SelectedGroups     map[string]bool      // Groups to filter by (if empty, show all)
+	ShowOnlyUpgradable bool                 // Filter to show only gems with updates
+	AvailableGroups    []string             // All unique groups found in gems
+
+	// Filter Menu screen state
+	FilterMenuCursor int // Position in the filter menu (0 = upgradable, 1+ = groups)
 
 	// Gem Detail screen state
 	SelectedGem             *gemfile.GemStatus
@@ -99,13 +126,27 @@ type Model struct {
 	CVECursor      int
 	CVEOffset      int
 
+	// Project Info screen state
+	RubyVersion       string
+	RailsVersion      string
+	BundleVersion     string
+	OtherFramework    string // For non-Rails projects
+	TotalGems         int
+	FirstLevelCount   int
+	TransitiveDeps    int
+	FrameworkDetected string // The name of the framework detected
+
 	// Path selection modal
 	PathInput textinput.Model
 
 	// Loading state
-	Loading        bool
-	LoadingMessage string
-	AnimationFrame int
+	Loading              bool
+	LoadingMessage       string
+	AnimationFrame       int
+	AnalysisStage        string // "parsing", "checking-updates", "scanning-cves"
+	AnalysisPercentage   int    // 0-100
+	AnalysisCurrentCount int    // Current item in stage
+	AnalysisTotalCount   int    // Total items for stage
 
 	// Error state
 	ErrorMessage string
@@ -120,21 +161,24 @@ type Model struct {
 	Date                string
 	NewVersionAvailable string // empty = no update, otherwise holds latest version tag
 	Quitting            bool
+	NoCache             bool // Skip cache and force fresh analysis
 }
 
 // ============================================================================
 // Initialization
 // ============================================================================
 
-func NewModel(version, commit, date, projectPath string) *Model {
+func NewModel(version, commit, date, projectPath string, noCache bool) *Model {
 	m := &Model{
-		Version:     version,
-		Commit:      commit,
-		Date:        date,
-		CurrentView: ViewGemList,
-		ActiveTab:   ViewGemList,
-		SearchInput: textinput.New(),
-		PathInput:   textinput.New(),
+		Version:        version,
+		Commit:         commit,
+		Date:           date,
+		CurrentView:    ViewGemList,
+		ActiveTab:      ViewGemList,
+		SearchInput:    textinput.New(),
+		PathInput:      textinput.New(),
+		SelectedGroups: make(map[string]bool),
+		NoCache:        noCache,
 	}
 
 	// Configure search input
@@ -164,14 +208,17 @@ func (m *Model) Init() tea.Cmd {
 		m.CurrentView = ViewLoading
 		m.ActiveTab = ViewGemList
 		m.Loading = true
-		m.LoadingMessage = "Analyzing Gemfile.lock..."
+		m.LoadingMessage = "Parsing Gemfile.lock..."
+		m.AnalysisStage = "parsing"
+		m.AnalysisPercentage = 0
 		m.AnimationFrame = 0
 
 		return tea.Batch(
-			tea.Tick(100*time.Millisecond, func(time.Time) tea.Msg {
-				return SpinnerTickMsg{}
+			// Progress ticker - increments percentage while analysis runs
+			tea.Tick(200*time.Millisecond, func(time.Time) tea.Msg {
+				return ProgressTickMsg{}
 			}),
-			performAnalysis(m.GemfileLockPath),
+			performAnalysis(m.GemfileLockPath, m.NoCache),
 			checkLatestVersion(m.Version),
 		)
 	}
@@ -219,8 +266,23 @@ func (m *Model) loadProject(path string) {
 // Async Tasks
 // ============================================================================
 
-func performAnalysis(gemfilePath string) tea.Cmd {
+type ProgressTickMsg struct{}
+
+func performAnalysis(gemfilePath string, noCache bool) tea.Cmd {
 	return func() tea.Msg {
+		// Try to load from cache first (unless --no-cache flag is set)
+		if !noCache {
+			cacheEntry, cacheErr := cache.Read(gemfilePath)
+			if cacheErr == nil && cacheEntry != nil && cacheEntry.Result != nil {
+				// Cache hit! Return cached result
+				return AnalysisCompleteMsg{
+					Result: cacheEntry.Result,
+					Error:  nil,
+				}
+			}
+		}
+
+		// Cache miss or invalid, do full analysis
 		gf, err := gemfile.Parse(gemfilePath)
 		if err != nil {
 			return AnalysisCompleteMsg{
@@ -239,6 +301,94 @@ func performAnalysis(gemfilePath string) tea.Cmd {
 			Error:  nil,
 		}
 	}
+}
+
+// performAnalysisWithProgress does analysis with progress reporting
+// Emits ProgressMsg messages to show stages, then AnalysisCompleteMsg with results
+func performAnalysisWithProgress(gemfilePath string) tea.Cmd {
+	return func() tea.Msg {
+		// Try to load from cache first
+		cacheEntry, cacheErr := cache.Read(gemfilePath)
+		if cacheErr == nil && cacheEntry != nil && cacheEntry.Result != nil {
+			// Cache hit! Return complete analysis immediately
+			return AnalysisCompleteMsg{
+				Result: cacheEntry.Result,
+				Error:  nil,
+			}
+		}
+
+		// Stage 1: Parse Gemfile.lock (0-40%)
+		gf, err := gemfile.Parse(gemfilePath)
+		if err != nil {
+			return AnalysisCompleteMsg{
+				Result: nil,
+				Error:  err,
+			}
+		}
+
+		// Load group information from Gemfile
+		dir := filepath.Dir(gemfilePath)
+		gf.LoadGroupsFromGemfile(dir)
+
+		// Stage 2: Analyze gems (40-70%)
+		result := gemfile.Analyze(gf)
+
+		// Stage 3: Return complete results (100%)
+		return AnalysisCompleteMsg{
+			Result: result,
+			Error:  nil,
+		}
+	}
+}
+
+// performAnalysisWithProgressStages returns a batch of commands that emit progress
+// This chains multiple progress updates through the message system
+func performAnalysisWithProgressStages(gemfilePath string) tea.Cmd {
+	return tea.Batch(
+		// Emit initial parsing message
+		func() tea.Msg {
+			return ProgressMsg{
+				Stage:      "parsing",
+				Percentage: 10,
+				Message:    "Parsing Gemfile.lock...",
+			}
+		},
+		// Do the actual analysis after a small delay
+		func() tea.Msg {
+			time.Sleep(100 * time.Millisecond)
+
+			// Try to load from cache first
+			cacheEntry, cacheErr := cache.Read(gemfilePath)
+			if cacheErr == nil && cacheEntry != nil && cacheEntry.Result != nil {
+				// Cache hit! Return complete analysis
+				return AnalysisCompleteMsg{
+					Result: cacheEntry.Result,
+					Error:  nil,
+				}
+			}
+
+			// Do full analysis
+			gf, err := gemfile.Parse(gemfilePath)
+			if err != nil {
+				return AnalysisCompleteMsg{
+					Result: nil,
+					Error:  err,
+				}
+			}
+
+			// Load group information from Gemfile
+			dir := filepath.Dir(gemfilePath)
+			gf.LoadGroupsFromGemfile(dir)
+
+			// Analyze gems
+			result := gemfile.Analyze(gf)
+
+			return AnalysisCompleteMsg{
+				Result: result,
+				Error:  nil,
+			}
+		},
+	)
 }
 
 func performDependencyAnalysis(gemfilePath string, gemName string) tea.Cmd {
@@ -305,4 +455,93 @@ func checkLatestVersion(currentVersion string) tea.Cmd {
 
 		return VersionCheckMsg{HasUpdate: false}
 	}
+}
+
+// ============================================================================
+// Filter Methods
+// ============================================================================
+
+// extractAvailableGroups extracts unique groups from a list of gems
+func (m *Model) extractAvailableGroups(gems []*gemfile.GemStatus) []string {
+	groupSet := make(map[string]bool)
+	for _, gem := range gems {
+		for _, g := range gem.Groups {
+			groupSet[g] = true
+		}
+	}
+
+	var groups []string
+	for g := range groupSet {
+		groups = append(groups, g)
+	}
+
+	// Sort for consistent display
+	sort.Strings(groups)
+	return groups
+}
+
+// applyFilters applies the current filter state to FirstLevelGems
+func (m *Model) applyFilters() {
+	if m.UnfilteredGems == nil || len(m.UnfilteredGems) == 0 {
+		return
+	}
+
+	m.FirstLevelGems = make([]*gemfile.GemStatus, 0)
+
+	for _, gem := range m.UnfilteredGems {
+		// Check upgradable filter
+		if m.ShowOnlyUpgradable && !gem.IsOutdated {
+			continue
+		}
+
+		// Check group filter - if no groups selected, show all
+		if len(m.SelectedGroups) > 0 {
+			gemHasSelectedGroup := false
+			for _, gemGroup := range gem.Groups {
+				if m.SelectedGroups[gemGroup] {
+					gemHasSelectedGroup = true
+					break
+				}
+			}
+			if !gemHasSelectedGroup {
+				continue
+			}
+		}
+
+		m.FirstLevelGems = append(m.FirstLevelGems, gem)
+	}
+
+	// Reset cursor if out of bounds
+	if m.GemListCursor >= len(m.FirstLevelGems) {
+		m.GemListCursor = 0
+	}
+	m.GemListOffset = 0
+}
+
+// toggleGroupFilter toggles a group in the filter
+func (m *Model) toggleGroupFilter(group string) {
+	if m.SelectedGroups[group] {
+		delete(m.SelectedGroups, group)
+	} else {
+		m.SelectedGroups[group] = true
+	}
+	m.applyFilters()
+}
+
+// toggleUpgradableFilter toggles the upgradable-only filter
+func (m *Model) toggleUpgradableFilter() {
+	m.ShowOnlyUpgradable = !m.ShowOnlyUpgradable
+	m.applyFilters()
+}
+
+// clearFilters clears all applied filters
+func (m *Model) clearFilters() {
+	m.SelectedGroups = make(map[string]bool)
+	m.ShowOnlyUpgradable = false
+	m.applyFilters()
+}
+
+// hasActiveFilters returns true if any filters are applied
+func (m *Model) hasActiveFilters() bool {
+	return len(m.SelectedGroups) > 0 || m.ShowOnlyUpgradable
 }

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/spaquet/gemtracker/internal/cache"
 	"github.com/spaquet/gemtracker/internal/gemfile"
 )
 
@@ -30,6 +31,31 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case ProgressTickMsg:
+		if m.Loading && m.AnalysisPercentage < 90 {
+			// Increment progress with slight acceleration
+			increment := 3 + (m.AnalysisPercentage / 20)
+			if increment < 1 {
+				increment = 1
+			}
+			m.AnalysisPercentage += increment
+
+			// Update stage based on progress
+			if m.AnalysisPercentage < 50 {
+				m.AnalysisStage = "parsing"
+				m.LoadingMessage = "Parsing Gemfile.lock..."
+			} else {
+				m.AnalysisStage = "checking-updates"
+				m.LoadingMessage = "Checking for updates..."
+			}
+
+			// Continue ticking
+			return m, tea.Tick(time.Millisecond*200, func(time.Time) tea.Msg {
+				return ProgressTickMsg{}
+			})
+		}
+		return m, nil
+
 	case tea.KeyMsg:
 		return m.handleKeyPress(msg)
 
@@ -43,6 +69,13 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.HasUpdate {
 			m.NewVersionAvailable = msg.LatestVersion
 		}
+		return m, nil
+
+	case ProgressMsg:
+		// Update progress state
+		m.AnalysisStage = msg.Stage
+		m.AnalysisPercentage = msg.Percentage
+		m.LoadingMessage = msg.Message
 		return m, nil
 	}
 
@@ -85,6 +118,12 @@ func (m *Model) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case ViewCVE:
 		return m.handleCVEKeys(msg)
+
+	case ViewProjectInfo:
+		return m.handleProjectInfoKeys(msg)
+
+	case ViewFilterMenu:
+		return m.handleFilterMenuKeys(msg)
 
 	case ViewSelectPath:
 		return m.handlePathInputKeys(msg)
@@ -143,8 +182,20 @@ func (m *Model) handleGemListKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case "shift+tab":
-		m.CurrentView = ViewCVE
-		m.ActiveTab = ViewCVE
+		m.CurrentView = ViewProjectInfo
+		m.ActiveTab = ViewProjectInfo
+		return m, nil
+
+	case "u":
+		m.toggleUpgradableFilter()
+		return m, nil
+
+	case "c":
+		m.clearFilters()
+		return m, nil
+
+	case "f":
+		m.CurrentView = ViewFilterMenu
 		return m, nil
 	}
 
@@ -313,8 +364,8 @@ func (m *Model) handleSearchKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 func (m *Model) handleCVEKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "tab":
-		m.CurrentView = ViewGemList
-		m.ActiveTab = ViewGemList
+		m.CurrentView = ViewProjectInfo
+		m.ActiveTab = ViewProjectInfo
 		return m, nil
 
 	case "shift+tab":
@@ -356,6 +407,62 @@ func (m *Model) handleCVEKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+func (m *Model) handleProjectInfoKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "tab":
+		m.CurrentView = ViewGemList
+		m.ActiveTab = ViewGemList
+		return m, nil
+
+	case "shift+tab":
+		m.CurrentView = ViewCVE
+		m.ActiveTab = ViewCVE
+		return m, nil
+	}
+
+	return m, nil
+}
+
+func (m *Model) handleFilterMenuKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// Calculate total filter options: 1 for upgradable + number of groups
+	totalOptions := 1 + len(m.AvailableGroups)
+
+	switch msg.String() {
+	case "up":
+		if m.FilterMenuCursor > 0 {
+			m.FilterMenuCursor--
+		}
+		return m, nil
+
+	case "down":
+		if m.FilterMenuCursor < totalOptions-1 {
+			m.FilterMenuCursor++
+		}
+		return m, nil
+
+	case " ":
+		// Toggle the selected filter
+		if m.FilterMenuCursor == 0 {
+			// Upgradable filter
+			m.toggleUpgradableFilter()
+		} else {
+			// Group filter
+			groupIdx := m.FilterMenuCursor - 1
+			if groupIdx < len(m.AvailableGroups) {
+				m.toggleGroupFilter(m.AvailableGroups[groupIdx])
+			}
+		}
+		return m, nil
+
+	case "enter", "esc":
+		m.CurrentView = ViewGemList
+		m.FilterMenuCursor = 0
+		return m, nil
+	}
+
+	return m, nil
+}
+
 func (m *Model) handlePathInputKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "enter":
@@ -365,13 +472,15 @@ func (m *Model) handlePathInputKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.PathInput.Reset()
 			m.CurrentView = ViewLoading
 			m.Loading = true
-			m.LoadingMessage = "Analyzing Gemfile.lock..."
+			m.LoadingMessage = "Parsing Gemfile.lock..."
+			m.AnalysisStage = "parsing"
+			m.AnalysisPercentage = 0
 			m.AnimationFrame = 0
 			return m, tea.Batch(
-				tea.Tick(time.Millisecond*100, func(time.Time) tea.Msg {
-					return SpinnerTickMsg{}
+				tea.Tick(time.Millisecond*200, func(time.Time) tea.Msg {
+					return ProgressTickMsg{}
 				}),
-				performAnalysis(m.GemfileLockPath),
+				performAnalysis(m.GemfileLockPath, m.NoCache),
 			)
 		}
 		return m, nil
@@ -427,6 +536,11 @@ func (m *Model) handleAnalysisComplete(msg AnalysisCompleteMsg) (tea.Model, tea.
 		return m.FirstLevelGems[i].Name < m.FirstLevelGems[j].Name
 	})
 
+	// Store unfiltered gems and extract available groups for filtering
+	m.UnfilteredGems = make([]*gemfile.GemStatus, len(m.FirstLevelGems))
+	copy(m.UnfilteredGems, m.FirstLevelGems)
+	m.AvailableGroups = m.extractAvailableGroups(m.FirstLevelGems)
+
 	// Extract vulnerable gems and sort alphabetically
 	m.VulnerableGems = make([]*gemfile.GemStatus, 0)
 	for _, gs := range msg.Result.GemStatuses {
@@ -440,8 +554,41 @@ func (m *Model) handleAnalysisComplete(msg AnalysisCompleteMsg) (tea.Model, tea.
 		return m.VulnerableGems[i].Name < m.VulnerableGems[j].Name
 	})
 
+	// Populate project info fields
+	m.RubyVersion = gemfile.ExtractRubyVersion(m.GemfileLockPath)
+	m.BundleVersion = gemfile.ExtractBundleVersion(m.GemfileLockPath)
+
+	// Parse Gemfile for framework detection
+	gf, err := gemfile.Parse(m.GemfileLockPath)
+	if err == nil {
+		framework, version := gemfile.DetectFramework(gf)
+		m.FrameworkDetected = framework
+		m.RailsVersion = version
+	}
+
+	// Calculate statistics
+	m.TotalGems = len(msg.Result.GemStatuses)
+	m.FirstLevelCount = len(m.FirstLevelGems)
+	m.TransitiveDeps = m.TotalGems - m.FirstLevelCount
+
+	// Save to cache for faster subsequent loads
+	cacheEntry := &cache.CacheEntry{
+		Result:            msg.Result,
+		RubyVersion:       m.RubyVersion,
+		BundleVersion:     m.BundleVersion,
+		FrameworkDetected: m.FrameworkDetected,
+		RailsVersion:      m.RailsVersion,
+	}
+	if err := cache.Write(m.GemfileLockPath, cacheEntry); err != nil {
+		// Log but don't fail - caching is optional
+		fmt.Printf("Warning: Failed to cache analysis: %v\n", err)
+	}
+
 	m.GemListCursor = 0
 	m.GemListOffset = 0
+	m.AnalysisPercentage = 100
+	m.AnalysisStage = "complete"
+	m.LoadingMessage = "Analysis complete - CVE scanning in background..."
 	m.CurrentView = m.ActiveTab
 
 	return m, nil

@@ -40,6 +40,10 @@ func (m *Model) View() string {
 		return m.viewSearch()
 	case ViewCVE:
 		return m.viewCVE()
+	case ViewProjectInfo:
+		return m.viewProjectInfo()
+	case ViewFilterMenu:
+		return m.viewFilterMenu()
 	case ViewSelectPath:
 		return m.viewSelectPath()
 	case ViewError:
@@ -75,8 +79,8 @@ func (m *Model) renderAppHeader() string {
 }
 
 func (m *Model) renderTabBar() string {
-	tabLabels := []string{"Gems", "Search", "CVE"}
-	tabModes := []ViewMode{ViewGemList, ViewSearch, ViewCVE}
+	tabLabels := []string{"Gems", "Search", "CVE", "Project"}
+	tabModes := []ViewMode{ViewGemList, ViewSearch, ViewCVE, ViewProjectInfo}
 
 	var tabs []string
 	for i, label := range tabLabels {
@@ -100,13 +104,17 @@ func (m *Model) renderStatusBar() string {
 
 	switch m.CurrentView {
 	case ViewGemList:
-		hints = []string{"↑↓ navigate", "enter select", "tab next", "q quit"}
+		hints = []string{"↑↓ navigate", "enter select", "f filter", "u upgradable", "c clear", "tab next", "q quit"}
 	case ViewGemDetail:
 		hints = []string{"esc back", "tab section", "↑↓ navigate", "enter select", "o open url", "q quit"}
 	case ViewSearch:
 		hints = []string{"type search", "↑↓ navigate", "enter select", "esc clear"}
 	case ViewCVE:
 		hints = []string{"↑↓ navigate", "enter select", "tab next", "q quit"}
+	case ViewProjectInfo:
+		hints = []string{"tab next", "shift+tab prev", "q quit"}
+	case ViewFilterMenu:
+		hints = []string{"↑↓ navigate", "space toggle", "enter back", "q quit"}
 	case ViewSelectPath:
 		hints = []string{"enter confirm", "esc cancel"}
 	default:
@@ -160,23 +168,57 @@ func (m *Model) viewLoading() string {
 	tabbar := m.renderTabBar()
 	statusbar := m.renderStatusBar()
 
-	spinner := spinnerFrames[m.AnimationFrame%len(spinnerFrames)]
-	spinnerText := SpinnerStyle.Render(spinner + " " + m.LoadingMessage)
-
 	contentHeight := m.Height - FixedChrome - m.updateBarHeight() - 2
 	if contentHeight < 1 {
 		contentHeight = 1
 	}
 
-	contentLines := (contentHeight - 1) / 2
+	// Build progress display
+	var progressLines []string
+
+	// Stage indicator
+	stageText := m.AnalysisStage
+	if stageText == "" {
+		stageText = "initializing"
+	}
+	progressLines = append(progressLines, lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color(ColorPrimary)).
+		Render(fmt.Sprintf("Stage: %s", stageText)))
+
+	// Progress bar
+	barWidth := 40
+	filledWidth := (m.AnalysisPercentage * barWidth) / 100
+	if filledWidth > barWidth {
+		filledWidth = barWidth
+	}
+
+	progressBar := strings.Repeat("█", filledWidth) + strings.Repeat("░", barWidth-filledWidth)
+	progressBar = fmt.Sprintf("[%s] %d%%", progressBar, m.AnalysisPercentage)
+	progressLines = append(progressLines, progressBar)
+
+	// Message
+	if m.LoadingMessage != "" {
+		progressLines = append(progressLines, "")
+		progressLines = append(progressLines, SpinnerStyle.Render(m.LoadingMessage))
+	}
+
+	// Center the progress display
+	contentLines := (contentHeight - len(progressLines)) / 2
 	if contentLines < 0 {
 		contentLines = 0
 	}
 
 	padding := strings.Repeat("\n", contentLines)
+	allLines := []string{padding}
+	allLines = append(allLines, progressLines...)
 
-	content := lipgloss.JoinVertical(lipgloss.Center, padding, spinnerText)
-	content = lipgloss.NewStyle().Height(contentHeight).Render(content)
+	// Pad to fill height
+	for len(allLines) < contentHeight {
+		allLines = append(allLines, "")
+	}
+
+	content := strings.Join(allLines[:contentHeight], "\n")
 
 	return lipgloss.JoinVertical(
 		lipgloss.Left,
@@ -213,14 +255,39 @@ func (m *Model) renderGemListTable(height int) string {
 		height = 1
 	}
 
+	lines := []string{}
+
+	// Add filter status line if filters are active
+	if m.hasActiveFilters() {
+		var filterParts []string
+		if m.ShowOnlyUpgradable {
+			filterParts = append(filterParts, "upgradable")
+		}
+		if len(m.SelectedGroups) > 0 {
+			var groups []string
+			for _, g := range m.AvailableGroups {
+				if m.SelectedGroups[g] {
+					groups = append(groups, g)
+				}
+			}
+			filterParts = append(filterParts, "group:"+strings.Join(groups, ","))
+		}
+		filterStatus := fmt.Sprintf("  Filters: %s  (c to clear)", strings.Join(filterParts, " | "))
+		filterStatusStyle := lipgloss.NewStyle().
+			Foreground(lipgloss.Color(ColorWarning)).
+			Italic(true)
+		lines = append(lines, filterStatusStyle.Render(filterStatus))
+		lines = append(lines, "")
+	}
+
 	// Table header
 	headerRow := fmt.Sprintf("  %-4s %-24s %-11s %-11s %-14s %s",
 		"#", "Gem Name", "Installed", "Latest", "Groups", "Status")
 	header := TableHeaderStyle.Render(headerRow)
+	lines = append(lines, header)
 
 	// Table rows
-	lines := []string{header}
-	visibleRows := height - 2
+	visibleRows := height - len(lines) - 2
 	if visibleRows < 0 {
 		visibleRows = 0
 	}
@@ -784,6 +851,102 @@ func (m *Model) renderCVETable(height int) string {
 }
 
 // ============================================================================
+// View: Project Info
+// ============================================================================
+
+func (m *Model) viewProjectInfo() string {
+	header := m.renderAppHeader()
+	tabbar := m.renderTabBar()
+	statusbar := m.renderStatusBar()
+
+	contentHeight := m.Height - FixedChrome - m.updateBarHeight() - 2
+	projectContent := m.renderProjectInfo(contentHeight)
+
+	return lipgloss.JoinVertical(
+		lipgloss.Left,
+		header,
+		tabbar,
+		projectContent,
+		statusbar,
+	)
+}
+
+func (m *Model) renderProjectInfo(height int) string {
+	if height < 1 {
+		height = 1
+	}
+
+	title := "Project Information"
+	titleStyle := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color(ColorPrimary))
+
+	// Build info sections
+	var sections []string
+	sections = append(sections, titleStyle.Render(title))
+	sections = append(sections, "")
+
+	// Ruby version
+	sections = append(sections, m.formatInfoLine("Ruby Version", m.RubyVersion))
+
+	// Bundle version
+	sections = append(sections, m.formatInfoLine("Bundle Version", m.BundleVersion))
+
+	// Framework info
+	if m.FrameworkDetected != "" {
+		frameworkLabel := strings.ToTitle(m.FrameworkDetected)
+		sections = append(sections, m.formatInfoLine(frameworkLabel+" Version", m.RailsVersion))
+	}
+
+	// Gem statistics
+	sections = append(sections, "")
+	sections = append(sections, lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color(ColorPrimary)).
+		Render("Statistics"))
+	sections = append(sections, "")
+
+	sections = append(sections, m.formatInfoLine("Total Gems", fmt.Sprintf("%d", m.TotalGems)))
+	sections = append(sections, m.formatInfoLine("Direct Dependencies", fmt.Sprintf("%d", m.FirstLevelCount)))
+	sections = append(sections, m.formatInfoLine("Transitive Dependencies", fmt.Sprintf("%d", m.TransitiveDeps)))
+
+	// Vulnerabilities summary
+	if len(m.VulnerableGems) > 0 {
+		sections = append(sections, "")
+		vulnLabel := fmt.Sprintf("⚠ Vulnerabilities Found (%d)", len(m.VulnerableGems))
+		vulnStyle := lipgloss.NewStyle().
+			Bold(true).
+			Foreground(lipgloss.Color(ColorDanger))
+		sections = append(sections, vulnStyle.Render(vulnLabel))
+	}
+
+	// Padding to fill height
+	content := strings.Join(sections, "\n")
+	lines := strings.Split(content, "\n")
+	for len(lines) < height {
+		lines = append(lines, "")
+	}
+
+	return strings.Join(lines[:height], "\n")
+}
+
+func (m *Model) formatInfoLine(label string, value string) string {
+	if value == "" || value == "Unknown" {
+		value = "—"
+	}
+
+	labelStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color(ColorTextMuted))
+
+	valueStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color(ColorText))
+
+	return fmt.Sprintf("  %s: %s",
+		labelStyle.Render(label),
+		valueStyle.Render(value))
+}
+
+// ============================================================================
 // View: SelectPath
 // ============================================================================
 
@@ -817,6 +980,106 @@ func (m *Model) viewSelectPath() string {
 		content,
 		statusbar,
 	)
+}
+
+// ============================================================================
+// View: Filter Menu
+// ============================================================================
+
+func (m *Model) viewFilterMenu() string {
+	header := m.renderAppHeader()
+	tabbar := m.renderTabBar()
+	statusbar := m.renderStatusBar()
+
+	contentHeight := m.Height - FixedChrome - m.updateBarHeight() - 2
+	filterContent := m.renderFilterMenu(contentHeight)
+
+	return lipgloss.JoinVertical(
+		lipgloss.Left,
+		header,
+		tabbar,
+		filterContent,
+		statusbar,
+	)
+}
+
+func (m *Model) renderFilterMenu(height int) string {
+	if height < 1 {
+		height = 1
+	}
+
+	title := "Filter Gems"
+	titleStyle := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color(ColorPrimary))
+
+	lines := []string{titleStyle.Render(title), ""}
+
+	// Upgradable filter option
+	upgradableLabel := "Show only upgradable"
+	if m.ShowOnlyUpgradable {
+		upgradableLabel = "☑ " + upgradableLabel
+	} else {
+		upgradableLabel = "☐ " + upgradableLabel
+	}
+
+	if m.FilterMenuCursor == 0 {
+		lines = append(lines, RowSelectedStyle.Render("  "+upgradableLabel))
+	} else {
+		lines = append(lines, "  "+upgradableLabel)
+	}
+
+	lines = append(lines, "")
+
+	// Group filter options
+	if len(m.AvailableGroups) > 0 {
+		groupsTitle := "Filter by group:"
+		lines = append(lines, groupsTitle)
+
+		for i, group := range m.AvailableGroups {
+			label := group
+			if m.SelectedGroups[group] {
+				label = "☑ " + label
+			} else {
+				label = "☐ " + label
+			}
+
+			menuIdx := 1 + i
+			if m.FilterMenuCursor == menuIdx {
+				lines = append(lines, RowSelectedStyle.Render("  "+label))
+			} else {
+				lines = append(lines, "  "+label)
+			}
+		}
+	}
+
+	// Show active filters summary
+	lines = append(lines, "")
+	lines = append(lines, "Active filters:")
+
+	if !m.hasActiveFilters() {
+		lines = append(lines, "  (none)")
+	} else {
+		if m.ShowOnlyUpgradable {
+			lines = append(lines, "  • Show only upgradable")
+		}
+		if len(m.SelectedGroups) > 0 {
+			var selectedGroups []string
+			for _, g := range m.AvailableGroups {
+				if m.SelectedGroups[g] {
+					selectedGroups = append(selectedGroups, g)
+				}
+			}
+			lines = append(lines, fmt.Sprintf("  • Groups: %s", strings.Join(selectedGroups, ", ")))
+		}
+	}
+
+	// Padding
+	for len(lines) < height {
+		lines = append(lines, "")
+	}
+
+	return strings.Join(lines[:height], "\n")
 }
 
 // ============================================================================
