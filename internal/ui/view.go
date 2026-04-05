@@ -200,42 +200,50 @@ func (m *Model) renderStatusBar() string {
 		}
 	}
 
-	content := strings.Join(rendered, "  ")
+	// Render the hint line
+	hintContent := strings.Join(rendered, "  ")
+	hintLine := StatusBarStyle.Width(m.Width - 4).Render(hintContent)
 
-	// Add outdated checking indicator if needed
+	var lines []string
+	lines = append(lines, hintLine)
+
+	// Build status indicators on a separate line if needed
+	var statusParts []string
+
 	if m.OutdatedLoading {
 		doneCount := len(m.FirstLevelGems) - len(m.OutdatedPending)
 		outdatedStatus := fmt.Sprintf("Checking updates... (%d/%d)", doneCount, len(m.FirstLevelGems))
 		statusStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(ColorWarning))
-		content = content + "  " + statusStyle.Render(outdatedStatus)
+		statusParts = append(statusParts, statusStyle.Render(outdatedStatus))
 	}
 
-	// Add health loading indicator if needed
 	if m.HealthLoading {
 		healthStatus := fmt.Sprintf("Fetching health... (%d/%d)", m.HealthLoadedCount, m.HealthTotalCount)
 		healthStatusStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(ColorWarning))
-		content = content + "  " + healthStatusStyle.Render(healthStatus)
+		statusParts = append(statusParts, healthStatusStyle.Render(healthStatus))
 	}
 
 	// Add error warnings
 	errorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(ColorDanger))
 	if m.OutdatedRateLimited {
-		content = content + "  " + errorStyle.Render("updates: rate limited")
+		statusParts = append(statusParts, errorStyle.Render("updates: rate limited"))
 	}
 	if m.HealthRateLimited {
-		content = content + "  " + errorStyle.Render("health: rate limited")
+		statusParts = append(statusParts, errorStyle.Render("health: rate limited"))
 	}
 	if m.OutdatedErrorCount > 0 {
 		errMsg := fmt.Sprintf("%d update errors", m.OutdatedErrorCount)
-		content = content + "  " + errorStyle.Render(errMsg)
+		statusParts = append(statusParts, errorStyle.Render(errMsg))
 	}
 
-	status := StatusBarStyle.Width(m.Width - 4).Render(content)
+	// Add status line if there are any indicators
+	if len(statusParts) > 0 {
+		statusContent := strings.Join(statusParts, "  ")
+		statusLine := StatusBarStyle.Width(m.Width - 4).Render(statusContent)
+		lines = append(lines, statusLine)
+	}
 
 	// Add update notification bar if a new version is available
-	var lines []string
-	lines = append(lines, status)
-
 	if m.NewVersionAvailable != "" {
 		updateMsg := m.renderUpdateBar()
 		lines = append(lines, updateMsg)
