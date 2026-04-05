@@ -89,6 +89,9 @@ func (m *Model) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case ViewProjectInfo:
 		return m.handleProjectInfoKeys(msg)
 
+	case ViewFilterMenu:
+		return m.handleFilterMenuKeys(msg)
+
 	case ViewSelectPath:
 		return m.handlePathInputKeys(msg)
 
@@ -148,6 +151,18 @@ func (m *Model) handleGemListKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "shift+tab":
 		m.CurrentView = ViewProjectInfo
 		m.ActiveTab = ViewProjectInfo
+		return m, nil
+
+	case "u":
+		m.toggleUpgradableFilter()
+		return m, nil
+
+	case "c":
+		m.clearFilters()
+		return m, nil
+
+	case "f":
+		m.CurrentView = ViewFilterMenu
 		return m, nil
 	}
 
@@ -375,6 +390,46 @@ func (m *Model) handleProjectInfoKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+func (m *Model) handleFilterMenuKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// Calculate total filter options: 1 for upgradable + number of groups
+	totalOptions := 1 + len(m.AvailableGroups)
+
+	switch msg.String() {
+	case "up":
+		if m.FilterMenuCursor > 0 {
+			m.FilterMenuCursor--
+		}
+		return m, nil
+
+	case "down":
+		if m.FilterMenuCursor < totalOptions-1 {
+			m.FilterMenuCursor++
+		}
+		return m, nil
+
+	case " ":
+		// Toggle the selected filter
+		if m.FilterMenuCursor == 0 {
+			// Upgradable filter
+			m.toggleUpgradableFilter()
+		} else {
+			// Group filter
+			groupIdx := m.FilterMenuCursor - 1
+			if groupIdx < len(m.AvailableGroups) {
+				m.toggleGroupFilter(m.AvailableGroups[groupIdx])
+			}
+		}
+		return m, nil
+
+	case "enter", "esc":
+		m.CurrentView = ViewGemList
+		m.FilterMenuCursor = 0
+		return m, nil
+	}
+
+	return m, nil
+}
+
 func (m *Model) handlePathInputKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "enter":
@@ -445,6 +500,11 @@ func (m *Model) handleAnalysisComplete(msg AnalysisCompleteMsg) (tea.Model, tea.
 	sort.Slice(m.FirstLevelGems, func(i, j int) bool {
 		return m.FirstLevelGems[i].Name < m.FirstLevelGems[j].Name
 	})
+
+	// Store unfiltered gems and extract available groups for filtering
+	m.UnfilteredGems = make([]*gemfile.GemStatus, len(m.FirstLevelGems))
+	copy(m.UnfilteredGems, m.FirstLevelGems)
+	m.AvailableGroups = m.extractAvailableGroups(m.FirstLevelGems)
 
 	// Extract vulnerable gems and sort alphabetically
 	m.VulnerableGems = make([]*gemfile.GemStatus, 0)

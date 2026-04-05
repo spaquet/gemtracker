@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -30,6 +31,7 @@ const (
 	ViewSearch
 	ViewCVE
 	ViewProjectInfo
+	ViewFilterMenu
 	ViewSelectPath
 	ViewError
 )
@@ -73,9 +75,16 @@ type Model struct {
 	DependencyResult *gemfile.DependencyResult
 
 	// Gem List screen state
-	FirstLevelGems []*gemfile.GemStatus
-	GemListCursor  int
-	GemListOffset  int
+	FirstLevelGems      []*gemfile.GemStatus
+	GemListCursor       int
+	GemListOffset       int
+	UnfilteredGems      []*gemfile.GemStatus // All first-level gems (for filter operations)
+	SelectedGroups      map[string]bool       // Groups to filter by (if empty, show all)
+	ShowOnlyUpgradable  bool                  // Filter to show only gems with updates
+	AvailableGroups     []string              // All unique groups found in gems
+
+	// Filter Menu screen state
+	FilterMenuCursor int // Position in the filter menu (0 = upgradable, 1+ = groups)
 
 	// Gem Detail screen state
 	SelectedGem             *gemfile.GemStatus
@@ -139,13 +148,14 @@ type Model struct {
 
 func NewModel(version, commit, date, projectPath string) *Model {
 	m := &Model{
-		Version:     version,
-		Commit:      commit,
-		Date:        date,
-		CurrentView: ViewGemList,
-		ActiveTab:   ViewGemList,
-		SearchInput: textinput.New(),
-		PathInput:   textinput.New(),
+		Version:        version,
+		Commit:         commit,
+		Date:           date,
+		CurrentView:    ViewGemList,
+		ActiveTab:      ViewGemList,
+		SearchInput:    textinput.New(),
+		PathInput:      textinput.New(),
+		SelectedGroups: make(map[string]bool),
 	}
 
 	// Configure search input
@@ -316,4 +326,93 @@ func checkLatestVersion(currentVersion string) tea.Cmd {
 
 		return VersionCheckMsg{HasUpdate: false}
 	}
+}
+
+// ============================================================================
+// Filter Methods
+// ============================================================================
+
+// extractAvailableGroups extracts unique groups from a list of gems
+func (m *Model) extractAvailableGroups(gems []*gemfile.GemStatus) []string {
+	groupSet := make(map[string]bool)
+	for _, gem := range gems {
+		for _, g := range gem.Groups {
+			groupSet[g] = true
+		}
+	}
+
+	var groups []string
+	for g := range groupSet {
+		groups = append(groups, g)
+	}
+
+	// Sort for consistent display
+	sort.Strings(groups)
+	return groups
+}
+
+// applyFilters applies the current filter state to FirstLevelGems
+func (m *Model) applyFilters() {
+	if m.UnfilteredGems == nil || len(m.UnfilteredGems) == 0 {
+		return
+	}
+
+	m.FirstLevelGems = make([]*gemfile.GemStatus, 0)
+
+	for _, gem := range m.UnfilteredGems {
+		// Check upgradable filter
+		if m.ShowOnlyUpgradable && !gem.IsOutdated {
+			continue
+		}
+
+		// Check group filter - if no groups selected, show all
+		if len(m.SelectedGroups) > 0 {
+			gemHasSelectedGroup := false
+			for _, gemGroup := range gem.Groups {
+				if m.SelectedGroups[gemGroup] {
+					gemHasSelectedGroup = true
+					break
+				}
+			}
+			if !gemHasSelectedGroup {
+				continue
+			}
+		}
+
+		m.FirstLevelGems = append(m.FirstLevelGems, gem)
+	}
+
+	// Reset cursor if out of bounds
+	if m.GemListCursor >= len(m.FirstLevelGems) {
+		m.GemListCursor = 0
+	}
+	m.GemListOffset = 0
+}
+
+// toggleGroupFilter toggles a group in the filter
+func (m *Model) toggleGroupFilter(group string) {
+	if m.SelectedGroups[group] {
+		delete(m.SelectedGroups, group)
+	} else {
+		m.SelectedGroups[group] = true
+	}
+	m.applyFilters()
+}
+
+// toggleUpgradableFilter toggles the upgradable-only filter
+func (m *Model) toggleUpgradableFilter() {
+	m.ShowOnlyUpgradable = !m.ShowOnlyUpgradable
+	m.applyFilters()
+}
+
+// clearFilters clears all applied filters
+func (m *Model) clearFilters() {
+	m.SelectedGroups = make(map[string]bool)
+	m.ShowOnlyUpgradable = false
+	m.applyFilters()
+}
+
+// hasActiveFilters returns true if any filters are applied
+func (m *Model) hasActiveFilters() bool {
+	return len(m.SelectedGroups) > 0 || m.ShowOnlyUpgradable
 }

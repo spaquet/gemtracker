@@ -42,6 +42,8 @@ func (m *Model) View() string {
 		return m.viewCVE()
 	case ViewProjectInfo:
 		return m.viewProjectInfo()
+	case ViewFilterMenu:
+		return m.viewFilterMenu()
 	case ViewSelectPath:
 		return m.viewSelectPath()
 	case ViewError:
@@ -102,7 +104,7 @@ func (m *Model) renderStatusBar() string {
 
 	switch m.CurrentView {
 	case ViewGemList:
-		hints = []string{"↑↓ navigate", "enter select", "tab next", "q quit"}
+		hints = []string{"↑↓ navigate", "enter select", "f filter", "u upgradable", "c clear", "tab next", "q quit"}
 	case ViewGemDetail:
 		hints = []string{"esc back", "tab section", "↑↓ navigate", "enter select", "o open url", "q quit"}
 	case ViewSearch:
@@ -111,6 +113,8 @@ func (m *Model) renderStatusBar() string {
 		hints = []string{"↑↓ navigate", "enter select", "tab next", "q quit"}
 	case ViewProjectInfo:
 		hints = []string{"tab next", "shift+tab prev", "q quit"}
+	case ViewFilterMenu:
+		hints = []string{"↑↓ navigate", "space toggle", "enter back", "q quit"}
 	case ViewSelectPath:
 		hints = []string{"enter confirm", "esc cancel"}
 	default:
@@ -217,14 +221,39 @@ func (m *Model) renderGemListTable(height int) string {
 		height = 1
 	}
 
+	lines := []string{}
+
+	// Add filter status line if filters are active
+	if m.hasActiveFilters() {
+		var filterParts []string
+		if m.ShowOnlyUpgradable {
+			filterParts = append(filterParts, "upgradable")
+		}
+		if len(m.SelectedGroups) > 0 {
+			var groups []string
+			for _, g := range m.AvailableGroups {
+				if m.SelectedGroups[g] {
+					groups = append(groups, g)
+				}
+			}
+			filterParts = append(filterParts, "group:"+strings.Join(groups, ","))
+		}
+		filterStatus := fmt.Sprintf("  Filters: %s  (c to clear)", strings.Join(filterParts, " | "))
+		filterStatusStyle := lipgloss.NewStyle().
+			Foreground(lipgloss.Color(ColorWarning)).
+			Italic(true)
+		lines = append(lines, filterStatusStyle.Render(filterStatus))
+		lines = append(lines, "")
+	}
+
 	// Table header
 	headerRow := fmt.Sprintf("  %-4s %-24s %-11s %-11s %-14s %s",
 		"#", "Gem Name", "Installed", "Latest", "Groups", "Status")
 	header := TableHeaderStyle.Render(headerRow)
+	lines = append(lines, header)
 
 	// Table rows
-	lines := []string{header}
-	visibleRows := height - 2
+	visibleRows := height - len(lines) - 2
 	if visibleRows < 0 {
 		visibleRows = 0
 	}
@@ -917,6 +946,106 @@ func (m *Model) viewSelectPath() string {
 		content,
 		statusbar,
 	)
+}
+
+// ============================================================================
+// View: Filter Menu
+// ============================================================================
+
+func (m *Model) viewFilterMenu() string {
+	header := m.renderAppHeader()
+	tabbar := m.renderTabBar()
+	statusbar := m.renderStatusBar()
+
+	contentHeight := m.Height - FixedChrome - m.updateBarHeight() - 2
+	filterContent := m.renderFilterMenu(contentHeight)
+
+	return lipgloss.JoinVertical(
+		lipgloss.Left,
+		header,
+		tabbar,
+		filterContent,
+		statusbar,
+	)
+}
+
+func (m *Model) renderFilterMenu(height int) string {
+	if height < 1 {
+		height = 1
+	}
+
+	title := "Filter Gems"
+	titleStyle := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color(ColorPrimary))
+
+	lines := []string{titleStyle.Render(title), ""}
+
+	// Upgradable filter option
+	upgradableLabel := "Show only upgradable"
+	if m.ShowOnlyUpgradable {
+		upgradableLabel = "☑ " + upgradableLabel
+	} else {
+		upgradableLabel = "☐ " + upgradableLabel
+	}
+
+	if m.FilterMenuCursor == 0 {
+		lines = append(lines, RowSelectedStyle.Render("  "+upgradableLabel))
+	} else {
+		lines = append(lines, "  "+upgradableLabel)
+	}
+
+	lines = append(lines, "")
+
+	// Group filter options
+	if len(m.AvailableGroups) > 0 {
+		groupsTitle := "Filter by group:"
+		lines = append(lines, groupsTitle)
+
+		for i, group := range m.AvailableGroups {
+			label := group
+			if m.SelectedGroups[group] {
+				label = "☑ " + label
+			} else {
+				label = "☐ " + label
+			}
+
+			menuIdx := 1 + i
+			if m.FilterMenuCursor == menuIdx {
+				lines = append(lines, RowSelectedStyle.Render("  "+label))
+			} else {
+				lines = append(lines, "  "+label)
+			}
+		}
+	}
+
+	// Show active filters summary
+	lines = append(lines, "")
+	lines = append(lines, "Active filters:")
+
+	if !m.hasActiveFilters() {
+		lines = append(lines, "  (none)")
+	} else {
+		if m.ShowOnlyUpgradable {
+			lines = append(lines, "  • Show only upgradable")
+		}
+		if len(m.SelectedGroups) > 0 {
+			var selectedGroups []string
+			for _, g := range m.AvailableGroups {
+				if m.SelectedGroups[g] {
+					selectedGroups = append(selectedGroups, g)
+				}
+			}
+			lines = append(lines, fmt.Sprintf("  • Groups: %s", strings.Join(selectedGroups, ", ")))
+		}
+	}
+
+	// Padding
+	for len(lines) < height {
+		lines = append(lines, "")
+	}
+
+	return strings.Join(lines[:height], "\n")
 }
 
 // ============================================================================
