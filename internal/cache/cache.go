@@ -11,13 +11,13 @@ import (
 
 // CacheEntry represents a cached analysis result with metadata
 type CacheEntry struct {
-	Result             *gemfile.AnalysisResult `json:"result"`
-	GemfileLockMtime   int64                   `json:"gemfile_lock_mtime"`
-	CachedAt           time.Time               `json:"cached_at"`
-	RubyVersion        string                  `json:"ruby_version"`
-	BundleVersion      string                  `json:"bundle_version"`
-	FrameworkDetected  string                  `json:"framework_detected"`
-	RailsVersion       string                  `json:"rails_version"`
+	Result            *gemfile.AnalysisResult `json:"result"`
+	GemfileLockMtime  int64                   `json:"gemfile_lock_mtime"`
+	CachedAt          time.Time               `json:"cached_at"`
+	RubyVersion       string                  `json:"ruby_version"`
+	BundleVersion     string                  `json:"bundle_version"`
+	FrameworkDetected string                  `json:"framework_detected"`
+	RailsVersion      string                  `json:"rails_version"`
 }
 
 // GetCacheDir returns the cache directory path

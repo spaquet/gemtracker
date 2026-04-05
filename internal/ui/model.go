@@ -65,13 +65,13 @@ type ProgressMsg struct {
 }
 
 type StageUpdateMsg struct {
-	Stage          string                 // "parsing", "checking-updates", "scanning-cves"
-	CurrentCount   int                    // Current gems processed
-	TotalCount     int                    // Total gems to process
-	Percentage     int                    // 0-100
+	Stage          string                  // "parsing", "checking-updates", "scanning-cves"
+	CurrentCount   int                     // Current gems processed
+	TotalCount     int                     // Total gems to process
+	Percentage     int                     // 0-100
 	Result         *gemfile.AnalysisResult // Accumulated results so far
-	OutdatedGems   []*gemfile.GemStatus   // Updated gems with version info
-	VulnerableGems []*gemfile.GemStatus   // Updated with CVE info
+	OutdatedGems   []*gemfile.GemStatus    // Updated gems with version info
+	VulnerableGems []*gemfile.GemStatus    // Updated with CVE info
 }
 
 // ============================================================================
@@ -92,13 +92,13 @@ type Model struct {
 	DependencyResult *gemfile.DependencyResult
 
 	// Gem List screen state
-	FirstLevelGems      []*gemfile.GemStatus
-	GemListCursor       int
-	GemListOffset       int
-	UnfilteredGems      []*gemfile.GemStatus // All first-level gems (for filter operations)
-	SelectedGroups      map[string]bool       // Groups to filter by (if empty, show all)
-	ShowOnlyUpgradable  bool                  // Filter to show only gems with updates
-	AvailableGroups     []string              // All unique groups found in gems
+	FirstLevelGems     []*gemfile.GemStatus
+	GemListCursor      int
+	GemListOffset      int
+	UnfilteredGems     []*gemfile.GemStatus // All first-level gems (for filter operations)
+	SelectedGroups     map[string]bool      // Groups to filter by (if empty, show all)
+	ShowOnlyUpgradable bool                 // Filter to show only gems with updates
+	AvailableGroups    []string             // All unique groups found in gems
 
 	// Filter Menu screen state
 	FilterMenuCursor int // Position in the filter menu (0 = upgradable, 1+ = groups)
@@ -127,14 +127,14 @@ type Model struct {
 	CVEOffset      int
 
 	// Project Info screen state
-	RubyVersion      string
-	RailsVersion     string
-	BundleVersion    string
-	OtherFramework   string            // For non-Rails projects
-	TotalGems        int
-	FirstLevelCount  int
-	TransitiveDeps   int
-	FrameworkDetected string           // The name of the framework detected
+	RubyVersion       string
+	RailsVersion      string
+	BundleVersion     string
+	OtherFramework    string // For non-Rails projects
+	TotalGems         int
+	FirstLevelCount   int
+	TransitiveDeps    int
+	FrameworkDetected string // The name of the framework detected
 
 	// Path selection modal
 	PathInput textinput.Model
@@ -161,7 +161,7 @@ type Model struct {
 	Date                string
 	NewVersionAvailable string // empty = no update, otherwise holds latest version tag
 	Quitting            bool
-	NoCache             bool   // Skip cache and force fresh analysis
+	NoCache             bool // Skip cache and force fresh analysis
 }
 
 // ============================================================================
