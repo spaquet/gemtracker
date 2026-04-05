@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"regexp"
 	"time"
 )
@@ -76,14 +77,14 @@ type githubRepo struct {
 
 // FetchHealth fetches health data for a gem from RubyGems and GitHub
 // Returns (*GemHealth, error). If GitHub rate limited, returns partial data with RateLimited=true
-func (hc *HealthChecker) FetchHealth(gemName, sourceCodeURI, versionCreatedAtStr, ownersURL string) (*GemHealth, error) {
+func (hc *HealthChecker) FetchHealth(gemName, sourceCodeURI, homepageURI, versionCreatedAtStr, ownersURL string) (*GemHealth, error) {
 	health := &GemHealth{
 		FetchedAt: time.Now(),
 	}
 
-	// Parse version created at
+	// Parse version created at (rubygems returns with fractional seconds, use RFC3339Nano)
 	if versionCreatedAtStr != "" {
-		if t, err := time.Parse(time.RFC3339, versionCreatedAtStr); err == nil {
+		if t, err := time.Parse(time.RFC3339Nano, versionCreatedAtStr); err == nil {
 			health.LastRelease = t
 		}
 	}
@@ -96,9 +97,13 @@ func (hc *HealthChecker) FetchHealth(gemName, sourceCodeURI, versionCreatedAtStr
 		}
 	}
 
-	// Fetch GitHub stats if source URI provided
-	if sourceCodeURI != "" {
-		owner, repo, ok := ExtractGitHubOwnerRepo(sourceCodeURI)
+	// Fetch GitHub stats if source URI provided, fallback to homepage URI
+	githubURI := sourceCodeURI
+	if githubURI == "" {
+		githubURI = homepageURI
+	}
+	if githubURI != "" {
+		owner, repo, ok := ExtractGitHubOwnerRepo(githubURI)
 		if ok {
 			githubHealth, rateLimited := hc.fetchGitHubRepo(owner, repo)
 			if rateLimited {
@@ -141,7 +146,17 @@ func (hc *HealthChecker) fetchRubyGemsOwners(url string) (int, error) {
 // Second return value indicates if GitHub rate limited
 func (hc *HealthChecker) fetchGitHubRepo(owner, repo string) (*githubRepo, bool) {
 	url := fmt.Sprintf("https://api.github.com/repos/%s/%s", owner, repo)
-	resp, err := hc.client.Get(url)
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, false
+	}
+
+	// Add GitHub token if available for higher rate limits (5000/hr vs 60/hr)
+	if token := os.Getenv("GITHUB_TOKEN"); token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+
+	resp, err := hc.client.Do(req)
 	if err != nil {
 		return nil, false
 	}

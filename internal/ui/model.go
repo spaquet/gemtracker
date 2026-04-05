@@ -611,42 +611,13 @@ func (m *Model) hasActiveFilters() bool {
 // Health Data Loading
 // ============================================================================
 
-func fetchHealthData(gemfileLockPath string, gems []*gemfile.GemStatus, outdatedChecker *gemfile.OutdatedChecker) tea.Cmd {
-	return func() tea.Msg {
-		// Try to load from health cache first
-		cached, _ := cache.ReadHealth(gemfileLockPath)
-		if cached != nil && len(cached.Gems) > 0 {
-			// Load cached gems immediately
-			healthData := make(map[string]*gemfile.GemHealth)
-			for name, health := range cached.Gems {
-				healthData[name] = health
-			}
-			// Return the first cached item and continue with fetch
-			if len(gems) > 0 {
-				firstGem := gems[0]
-				if health, ok := healthData[firstGem.Name]; ok {
-					return HealthItemMsg{GemName: firstGem.Name, Health: health}
-				}
-			}
-		}
-
-		// No cache, fetch the first gem
-		if len(gems) > 0 {
-			gem := gems[0]
-			return fetchSingleHealth(gem, outdatedChecker)
-		}
-
-		return HealthCompleteMsg{}
-	}
-}
-
-func fetchSingleHealth(gem *gemfile.GemStatus, outdatedChecker *gemfile.OutdatedChecker) tea.Msg {
+func fetchSingleHealth(gem *gemfile.GemStatus, hc *gemfile.HealthChecker, outdatedChecker *gemfile.OutdatedChecker) tea.Msg {
 	sourceCodeURI := outdatedChecker.GetSourceCodeURI(gem.Name)
+	homepageURI := outdatedChecker.GetHomepage(gem.Name)
 	versionCreatedAt := outdatedChecker.GetVersionCreatedAt(gem.Name)
 	ownersURL := fmt.Sprintf("https://rubygems.org/api/v1/gems/%s/owners.json", gem.Name)
 
-	healthChecker := gemfile.NewHealthChecker()
-	health, err := healthChecker.FetchHealth(gem.Name, sourceCodeURI, versionCreatedAt, ownersURL)
+	health, err := hc.FetchHealth(gem.Name, sourceCodeURI, homepageURI, versionCreatedAt, ownersURL)
 
 	if err != nil && isRateLimited(err) {
 		return HealthRateLimitedMsg{StoppedAt: gem.Name}
@@ -655,13 +626,16 @@ func fetchSingleHealth(gem *gemfile.GemStatus, outdatedChecker *gemfile.Outdated
 	return HealthItemMsg{GemName: gem.Name, Health: health, Error: err}
 }
 
-func fetchNextHealthItem(gems []*gemfile.GemStatus, outdatedChecker *gemfile.OutdatedChecker) tea.Cmd {
+func fetchNextHealthItem(gems []*gemfile.GemStatus, hc *gemfile.HealthChecker, outdatedChecker *gemfile.OutdatedChecker) tea.Cmd {
 	if len(gems) == 0 {
 		return func() tea.Msg { return HealthCompleteMsg{} }
 	}
 	return func() tea.Msg {
+		// Add delay to avoid hitting GitHub API rate limits (60 req/hr unauthenticated)
+		// This limits us to ~3 requests/sec which is well within rate limits
+		time.Sleep(300 * time.Millisecond)
 		gem := gems[0]
-		return fetchSingleHealth(gem, outdatedChecker)
+		return fetchSingleHealth(gem, hc, outdatedChecker)
 	}
 }
 

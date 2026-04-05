@@ -623,17 +623,15 @@ func (m *Model) handleAnalysisComplete(msg AnalysisCompleteMsg) (tea.Model, tea.
 	m.OutdatedPending = make([]*gemfile.GemStatus, len(m.FirstLevelGems))
 	copy(m.OutdatedPending, m.FirstLevelGems)
 
-	// Start health data loading for first-level gems
+	// Initialize health data loading queue (but don't start fetching yet)
+	// Health checks will start after outdated checking completes to avoid race conditions
 	m.HealthLoading = true
 	m.HealthTotalCount = len(m.FirstLevelGems)
 	m.HealthLoadedCount = 0
 	m.HealthPending = make([]*gemfile.GemStatus, len(m.FirstLevelGems))
 	copy(m.HealthPending, m.FirstLevelGems)
 
-	return m, tea.Batch(
-		fetchNextOutdatedItem(m.OutdatedPending, m.OutdatedChecker),
-		fetchNextHealthItem(m.FirstLevelGems, m.OutdatedChecker),
-	)
+	return m, fetchNextOutdatedItem(m.OutdatedPending, m.OutdatedChecker)
 }
 
 func (m *Model) handleDependencyComplete(msg DependencyCompleteMsg) (tea.Model, tea.Cmd) {
@@ -690,7 +688,7 @@ func (m *Model) handleHealthItem(msg HealthItemMsg) (tea.Model, tea.Cmd) {
 	}
 
 	if len(m.HealthPending) > 0 {
-		return m, fetchNextHealthItem(m.HealthPending, m.OutdatedChecker)
+		return m, fetchNextHealthItem(m.HealthPending, m.HealthChecker, m.OutdatedChecker)
 	}
 
 	// All gems processed, emit complete message
@@ -765,6 +763,13 @@ func (m *Model) handleOutdatedItem(msg OutdatedItemMsg) (tea.Model, tea.Cmd) {
 
 func (m *Model) handleOutdatedComplete() (tea.Model, tea.Cmd) {
 	m.OutdatedLoading = false
+
+	// Start health checking now that outdated checker cache is fully populated
+	// This avoids race conditions with the outdated checker
+	if len(m.HealthPending) > 0 {
+		return m, fetchNextHealthItem(m.HealthPending, m.HealthChecker, m.OutdatedChecker)
+	}
+
 	return m, nil
 }
 
