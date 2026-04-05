@@ -215,9 +215,44 @@ func (oc *OutdatedChecker) GetVersionCreatedAt(gemName string) string {
 	return ""
 }
 
+// stripPlatformSuffix removes platform/architecture identifiers from version strings
+// Examples: "1.6.3-x86_64-linux" -> "1.6.3", "1.0.0-alpha-x86_64-darwin" -> "1.0.0-alpha"
+func stripPlatformSuffix(version string) string {
+	// Platform identifiers typically contain underscores (x86_64, arm64) or known OS names
+	parts := strings.Split(version, "-")
+	if len(parts) <= 1 {
+		return version
+	}
+
+	// Known platform OS names
+	platformOSes := map[string]bool{
+		"linux": true, "darwin": true, "windows": true, "freebsd": true,
+		"openbsd": true, "netbsd": true, "solaris": true, "aix": true,
+		"mingw": true, "mswin": true, "cygwin": true,
+	}
+
+	// Walk backwards through parts and remove platform identifiers
+	for i := len(parts) - 1; i >= 1; i-- {
+		part := parts[i]
+		// Check if this part is a platform identifier:
+		// - Contains underscore (common in architecture names: x86_64, aarch64, etc.)
+		// - Matches a known OS name
+		// - Is all lowercase (platforms are typically lowercase)
+		if strings.Contains(part, "_") || platformOSes[strings.ToLower(part)] {
+			// Remove this and all following parts
+			parts = parts[:i]
+		} else {
+			// Once we hit a non-platform part, stop (it's likely a pre-release like "alpha")
+			break
+		}
+	}
+
+	return strings.Join(parts, "-")
+}
+
 // isVersionLess compares two semantic versions
 // Returns true if v1 < v2
-// Handles pre-release versions (1.0.0-alpha < 1.0.0)
+// Handles pre-release versions (1.0.0-alpha < 1.0.0) and platform suffixes (1.6.3-x86_64-linux)
 func isVersionLess(v1, v2 string) bool {
 	// Normalize versions: remove leading 'v' if present
 	v1 = strings.TrimPrefix(v1, "v")
@@ -226,6 +261,10 @@ func isVersionLess(v1, v2 string) bool {
 	// Strip build metadata (everything after '+')
 	v1 = strings.Split(v1, "+")[0]
 	v2 = strings.Split(v2, "+")[0]
+
+	// Strip platform suffixes (x86_64-linux, arm64-darwin, etc.)
+	v1 = stripPlatformSuffix(v1)
+	v2 = stripPlatformSuffix(v2)
 
 	// Split on pre-release indicator
 	v1Parts := strings.Split(v1, "-")
