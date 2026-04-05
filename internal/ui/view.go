@@ -291,7 +291,7 @@ func (m *Model) renderGemListTable(height int) string {
 
 	// Table header
 	headerRow := fmt.Sprintf("  %-4s %-24s %-11s %-11s %-14s %-3s %s",
-		"#", "Gem Name", "Installed", "Latest", "Groups", "H", "Status")
+		"#", "Gem Name", "Installed", "Latest", "Groups", "H", "Status ")
 	header := TableHeaderStyle.Render(headerRow)
 	lines = append(lines, header)
 
@@ -368,14 +368,14 @@ func (m *Model) formatGemListRow(idx int, gem *gemfile.GemStatus, selected bool)
 		healthDisplay = fmt.Sprintf("%-3s", healthDisplay)
 	}
 
-	// Format row
+	// Format row with truncated columns
 	var row string
 	if m.Width >= 80 {
 		row = fmt.Sprintf("  %-4d %-24s %-11s %-11s %-14s %s %s",
 			idx,
 			truncateStr(gem.Name, 24),
-			gem.Version,
-			latestDisplay,
+			truncateStr(gem.Version, 11),
+			truncateStr(latestDisplay, 11),
 			groupsDisplay,
 			healthDisplay,
 			status,
@@ -384,8 +384,8 @@ func (m *Model) formatGemListRow(idx int, gem *gemfile.GemStatus, selected bool)
 		row = fmt.Sprintf("  %-4d %-24s %-11s %-11s %-14s %s",
 			idx,
 			truncateStr(gem.Name, 24),
-			gem.Version,
-			latestDisplay,
+			truncateStr(gem.Version, 11),
+			truncateStr(latestDisplay, 11),
 			groupsDisplay,
 			status,
 		)
