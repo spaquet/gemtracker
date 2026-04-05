@@ -28,18 +28,18 @@ var spinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "�
 // Used for categorizing upgradeable gems
 var frameworkGems = map[string]string{
 	// Rails
-	"actioncable":      "rails",
-	"actionmailer":     "rails",
-	"actionpack":       "rails",
-	"actiontext":       "rails",
-	"actionview":       "rails",
-	"activejob":        "rails",
-	"activemodel":      "rails",
-	"activerecord":     "rails",
-	"activestorage":    "rails",
-	"activesupport":    "rails",
-	"railties":         "rails",
-	"activeconfig":     "rails",
+	"actioncable":   "rails",
+	"actionmailer":  "rails",
+	"actionpack":    "rails",
+	"actiontext":    "rails",
+	"actionview":    "rails",
+	"activejob":     "rails",
+	"activemodel":   "rails",
+	"activerecord":  "rails",
+	"activestorage": "rails",
+	"activesupport": "rails",
+	"railties":      "rails",
+	"activeconfig":  "rails",
 	// Sinatra
 	"sinatra-contrib": "sinatra",
 	"rack-protection": "sinatra",
@@ -73,9 +73,9 @@ const (
 // ============================================================================
 
 type AnalysisCompleteMsg struct {
-	Result           *gemfile.AnalysisResult
-	Error            error
-	OutdatedChecker  *gemfile.OutdatedChecker
+	Result          *gemfile.AnalysisResult
+	Error           error
+	OutdatedChecker *gemfile.OutdatedChecker
 }
 
 type DependencyCompleteMsg struct {
@@ -211,18 +211,18 @@ type Model struct {
 	AnalysisTotalCount   int    // Total items for stage
 
 	// Health loading state
-	HealthLoading       bool
-	HealthRateLimited   bool
-	HealthLoadedCount   int
-	HealthTotalCount    int
-	HealthPending       []*gemfile.GemStatus    // Queue for sequential fetching
-	HealthChecker       *gemfile.HealthChecker
-	OutdatedChecker     *gemfile.OutdatedChecker // Reused for health data extraction
+	HealthLoading     bool
+	HealthRateLimited bool
+	HealthLoadedCount int
+	HealthTotalCount  int
+	HealthPending     []*gemfile.GemStatus // Queue for sequential fetching
+	HealthChecker     *gemfile.HealthChecker
+	OutdatedChecker   *gemfile.OutdatedChecker // Reused for health data extraction
 
 	// Outdated checking state
-	OutdatedLoading    bool
-	OutdatedPending    []*gemfile.GemStatus // Queue for sequential fetching
-	OutdatedErrorCount int
+	OutdatedLoading     bool
+	OutdatedPending     []*gemfile.GemStatus // Queue for sequential fetching
+	OutdatedErrorCount  int
 	OutdatedRateLimited bool
 
 	// Error state

@@ -13,11 +13,11 @@ type GemStatus struct {
 	IsOutdated        bool
 	LatestVersion     string // Latest available version
 	IsVulnerable      bool
-	VulnerabilityInfo string // Detailed vulnerability info
-	HomepageURL       string // Homepage or source code URL
-	Description       string // Gem description from rubygems.org
+	VulnerabilityInfo string     // Detailed vulnerability info
+	HomepageURL       string     // Homepage or source code URL
+	Description       string     // Gem description from rubygems.org
 	Health            *GemHealth // Gem health data (nil until fetched)
-	OutdatedFailed    bool   // true if outdated check failed with an error
+	OutdatedFailed    bool       // true if outdated check failed with an error
 }
 
 type AnalysisResult struct {

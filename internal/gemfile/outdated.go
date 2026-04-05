@@ -12,22 +12,22 @@ import (
 
 // RubygemeInfo represents gem data from rubygems.org API
 type RubygemeInfo struct {
-	Version            string `json:"version"`
-	VersionCreatedAt   string `json:"version_created_at"`
-	HomepageURI        string `json:"homepage_uri"`
-	SourceCodeURI      string `json:"source_code_uri"`
-	Info               string `json:"info"`
+	Version          string `json:"version"`
+	VersionCreatedAt string `json:"version_created_at"`
+	HomepageURI      string `json:"homepage_uri"`
+	SourceCodeURI    string `json:"source_code_uri"`
+	Info             string `json:"info"`
 }
 
 // OutdatedChecker checks if gems are outdated by querying rubygems.org
 type OutdatedChecker struct {
-	client              *http.Client
-	mu                  sync.Mutex        // protects all maps below
-	cache               map[string]string // gem name -> latest version
-	homepages           map[string]string // gem name -> homepage URL
-	descriptions        map[string]string // gem name -> description
-	sourceCodeURIs      map[string]string // gem name -> source code URI
-	versionCreatedAts   map[string]string // gem name -> version created at
+	client            *http.Client
+	mu                sync.Mutex        // protects all maps below
+	cache             map[string]string // gem name -> latest version
+	homepages         map[string]string // gem name -> homepage URL
+	descriptions      map[string]string // gem name -> description
+	sourceCodeURIs    map[string]string // gem name -> source code URI
+	versionCreatedAts map[string]string // gem name -> version created at
 }
 
 // NewOutdatedChecker creates a new checker with HTTP client

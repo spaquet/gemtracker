@@ -18,8 +18,8 @@ type Gem struct {
 }
 
 type Gemfile struct {
-	Path         string
-	Gems         map[string]*Gem
+	Path           string
+	Gems           map[string]*Gem
 	FirstLevelGems []string // Names of gems listed in DEPENDENCIES section
 }
 
@@ -57,7 +57,7 @@ func Parse(path string) (*Gemfile, error) {
 	}
 
 	scanner := bufio.NewScanner(file)
-	inSection := ""  // track current section: "GIT", "GEM", "DEPENDENCIES", etc.
+	inSection := "" // track current section: "GIT", "GEM", "DEPENDENCIES", etc.
 
 	gemLineRegex := regexp.MustCompile(`(?i)^\s{4}([a-z0-9_-]+)\s+\(([^)]+)\)`)
 	dependencyRegex := regexp.MustCompile(`(?i)^\s{6}([a-z0-9_-]+)`)
