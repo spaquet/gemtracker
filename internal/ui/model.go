@@ -12,6 +12,7 @@ import (
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/spaquet/gemtracker/internal/cache"
 	"github.com/spaquet/gemtracker/internal/gemfile"
 )
 
@@ -55,6 +56,14 @@ type SpinnerTickMsg struct{}
 type VersionCheckMsg struct {
 	LatestVersion string
 	HasUpdate     bool
+}
+
+type ProgressMsg struct {
+	Stage      string // "parsing", "checking-updates", "scanning-cves"
+	Current    int    // Current item number
+	Total      int    // Total items
+	Message    string // Status message
+	Percentage int    // 0-100
 }
 
 // ============================================================================
@@ -242,6 +251,17 @@ func (m *Model) loadProject(path string) {
 
 func performAnalysis(gemfilePath string) tea.Cmd {
 	return func() tea.Msg {
+		// Try to load from cache first
+		cacheEntry, cacheErr := cache.Read(gemfilePath)
+		if cacheErr == nil && cacheEntry != nil && cacheEntry.Result != nil {
+			// Cache hit! Return cached result
+			return AnalysisCompleteMsg{
+				Result: cacheEntry.Result,
+				Error:  nil,
+			}
+		}
+
+		// Cache miss or invalid, do full analysis
 		gf, err := gemfile.Parse(gemfilePath)
 		if err != nil {
 			return AnalysisCompleteMsg{

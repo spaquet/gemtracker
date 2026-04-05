@@ -9,6 +9,7 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/spaquet/gemtracker/internal/cache"
 	"github.com/spaquet/gemtracker/internal/gemfile"
 )
 
@@ -535,6 +536,19 @@ func (m *Model) handleAnalysisComplete(msg AnalysisCompleteMsg) (tea.Model, tea.
 	m.TotalGems = len(msg.Result.GemStatuses)
 	m.FirstLevelCount = len(m.FirstLevelGems)
 	m.TransitiveDeps = m.TotalGems - m.FirstLevelCount
+
+	// Save to cache for faster subsequent loads
+	cacheEntry := &cache.CacheEntry{
+		Result:            msg.Result,
+		RubyVersion:       m.RubyVersion,
+		BundleVersion:     m.BundleVersion,
+		FrameworkDetected: m.FrameworkDetected,
+		RailsVersion:      m.RailsVersion,
+	}
+	if err := cache.Write(m.GemfileLockPath, cacheEntry); err != nil {
+		// Log but don't fail - caching is optional
+		fmt.Printf("Warning: Failed to cache analysis: %v\n", err)
+	}
 
 	m.GemListCursor = 0
 	m.GemListOffset = 0
