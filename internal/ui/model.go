@@ -161,13 +161,14 @@ type Model struct {
 	Date                string
 	NewVersionAvailable string // empty = no update, otherwise holds latest version tag
 	Quitting            bool
+	NoCache             bool   // Skip cache and force fresh analysis
 }
 
 // ============================================================================
 // Initialization
 // ============================================================================
 
-func NewModel(version, commit, date, projectPath string) *Model {
+func NewModel(version, commit, date, projectPath string, noCache bool) *Model {
 	m := &Model{
 		Version:        version,
 		Commit:         commit,
@@ -177,6 +178,7 @@ func NewModel(version, commit, date, projectPath string) *Model {
 		SearchInput:    textinput.New(),
 		PathInput:      textinput.New(),
 		SelectedGroups: make(map[string]bool),
+		NoCache:        noCache,
 	}
 
 	// Configure search input
@@ -212,10 +214,11 @@ func (m *Model) Init() tea.Cmd {
 		m.AnimationFrame = 0
 
 		return tea.Batch(
-			tea.Tick(100*time.Millisecond, func(time.Time) tea.Msg {
-				return SpinnerTickMsg{}
+			// Progress ticker - increments percentage while analysis runs
+			tea.Tick(200*time.Millisecond, func(time.Time) tea.Msg {
+				return ProgressTickMsg{}
 			}),
-			performAnalysisWithProgress(m.GemfileLockPath),
+			performAnalysis(m.GemfileLockPath, m.NoCache),
 			checkLatestVersion(m.Version),
 		)
 	}
@@ -263,15 +266,19 @@ func (m *Model) loadProject(path string) {
 // Async Tasks
 // ============================================================================
 
-func performAnalysis(gemfilePath string) tea.Cmd {
+type ProgressTickMsg struct{}
+
+func performAnalysis(gemfilePath string, noCache bool) tea.Cmd {
 	return func() tea.Msg {
-		// Try to load from cache first
-		cacheEntry, cacheErr := cache.Read(gemfilePath)
-		if cacheErr == nil && cacheEntry != nil && cacheEntry.Result != nil {
-			// Cache hit! Return cached result
-			return AnalysisCompleteMsg{
-				Result: cacheEntry.Result,
-				Error:  nil,
+		// Try to load from cache first (unless --no-cache flag is set)
+		if !noCache {
+			cacheEntry, cacheErr := cache.Read(gemfilePath)
+			if cacheErr == nil && cacheEntry != nil && cacheEntry.Result != nil {
+				// Cache hit! Return cached result
+				return AnalysisCompleteMsg{
+					Result: cacheEntry.Result,
+					Error:  nil,
+				}
 			}
 		}
 
@@ -297,8 +304,7 @@ func performAnalysis(gemfilePath string) tea.Cmd {
 }
 
 // performAnalysisWithProgress does analysis with progress reporting
-// For now, this does the full analysis and returns results
-// Future improvement: break into true stages with background processing
+// Emits ProgressMsg messages to show stages, then AnalysisCompleteMsg with results
 func performAnalysisWithProgress(gemfilePath string) tea.Cmd {
 	return func() tea.Msg {
 		// Try to load from cache first
@@ -311,7 +317,7 @@ func performAnalysisWithProgress(gemfilePath string) tea.Cmd {
 			}
 		}
 
-		// Do full analysis
+		// Stage 1: Parse Gemfile.lock (0-40%)
 		gf, err := gemfile.Parse(gemfilePath)
 		if err != nil {
 			return AnalysisCompleteMsg{
@@ -324,14 +330,65 @@ func performAnalysisWithProgress(gemfilePath string) tea.Cmd {
 		dir := filepath.Dir(gemfilePath)
 		gf.LoadGroupsFromGemfile(dir)
 
-		// Analyze gems
+		// Stage 2: Analyze gems (40-70%)
 		result := gemfile.Analyze(gf)
 
+		// Stage 3: Return complete results (100%)
 		return AnalysisCompleteMsg{
 			Result: result,
 			Error:  nil,
 		}
 	}
+}
+
+// performAnalysisWithProgressStages returns a batch of commands that emit progress
+// This chains multiple progress updates through the message system
+func performAnalysisWithProgressStages(gemfilePath string) tea.Cmd {
+	return tea.Batch(
+		// Emit initial parsing message
+		func() tea.Msg {
+			return ProgressMsg{
+				Stage:      "parsing",
+				Percentage: 10,
+				Message:    "Parsing Gemfile.lock...",
+			}
+		},
+		// Do the actual analysis after a small delay
+		func() tea.Msg {
+			time.Sleep(100 * time.Millisecond)
+
+			// Try to load from cache first
+			cacheEntry, cacheErr := cache.Read(gemfilePath)
+			if cacheErr == nil && cacheEntry != nil && cacheEntry.Result != nil {
+				// Cache hit! Return complete analysis
+				return AnalysisCompleteMsg{
+					Result: cacheEntry.Result,
+					Error:  nil,
+				}
+			}
+
+			// Do full analysis
+			gf, err := gemfile.Parse(gemfilePath)
+			if err != nil {
+				return AnalysisCompleteMsg{
+					Result: nil,
+					Error:  err,
+				}
+			}
+
+			// Load group information from Gemfile
+			dir := filepath.Dir(gemfilePath)
+			gf.LoadGroupsFromGemfile(dir)
+
+			// Analyze gems
+			result := gemfile.Analyze(gf)
+
+			return AnalysisCompleteMsg{
+				Result: result,
+				Error:  nil,
+			}
+		},
+	)
 }
 
 func performDependencyAnalysis(gemfilePath string, gemName string) tea.Cmd {

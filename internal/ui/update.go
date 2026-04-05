@@ -31,6 +31,31 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case ProgressTickMsg:
+		if m.Loading && m.AnalysisPercentage < 90 {
+			// Increment progress with slight acceleration
+			increment := 3 + (m.AnalysisPercentage / 20)
+			if increment < 1 {
+				increment = 1
+			}
+			m.AnalysisPercentage += increment
+
+			// Update stage based on progress
+			if m.AnalysisPercentage < 50 {
+				m.AnalysisStage = "parsing"
+				m.LoadingMessage = "Parsing Gemfile.lock..."
+			} else {
+				m.AnalysisStage = "checking-updates"
+				m.LoadingMessage = "Checking for updates..."
+			}
+
+			// Continue ticking
+			return m, tea.Tick(time.Millisecond*200, func(time.Time) tea.Msg {
+				return ProgressTickMsg{}
+			})
+		}
+		return m, nil
+
 	case tea.KeyMsg:
 		return m.handleKeyPress(msg)
 
@@ -447,13 +472,15 @@ func (m *Model) handlePathInputKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.PathInput.Reset()
 			m.CurrentView = ViewLoading
 			m.Loading = true
-			m.LoadingMessage = "Analyzing Gemfile.lock..."
+			m.LoadingMessage = "Parsing Gemfile.lock..."
+			m.AnalysisStage = "parsing"
+			m.AnalysisPercentage = 0
 			m.AnimationFrame = 0
 			return m, tea.Batch(
-				tea.Tick(time.Millisecond*100, func(time.Time) tea.Msg {
-					return SpinnerTickMsg{}
+				tea.Tick(time.Millisecond*200, func(time.Time) tea.Msg {
+					return ProgressTickMsg{}
 				}),
-				performAnalysis(m.GemfileLockPath),
+				performAnalysis(m.GemfileLockPath, m.NoCache),
 			)
 		}
 		return m, nil
@@ -559,6 +586,9 @@ func (m *Model) handleAnalysisComplete(msg AnalysisCompleteMsg) (tea.Model, tea.
 
 	m.GemListCursor = 0
 	m.GemListOffset = 0
+	m.AnalysisPercentage = 100
+	m.AnalysisStage = "complete"
+	m.LoadingMessage = "Analysis complete - CVE scanning in background..."
 	m.CurrentView = m.ActiveTab
 
 	return m, nil

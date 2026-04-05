@@ -39,6 +39,7 @@ func main() {
 
 	showVersion := flag.Bool("v", false, "Show version")
 	flag.BoolVar(showVersion, "version", false, "Show version")
+	noCache := flag.Bool("no-cache", false, "Skip cache and force fresh analysis")
 	flag.Parse()
 
 	if *showVersion {
@@ -56,7 +57,7 @@ func main() {
 	}
 
 	// Start the interactive TUI
-	model := ui.NewModel(version, commit, date, projectPath)
+	model := ui.NewModel(version, commit, date, projectPath, *noCache)
 	p := tea.NewProgram(model, tea.WithAltScreen())
 
 	if _, err := p.Run(); err != nil {
