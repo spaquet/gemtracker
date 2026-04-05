@@ -78,6 +78,7 @@ brews:
       owner: spaquet
       name: homebrew-gemtracker
       token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+    directory: Formula
     commit_msg_template: "chore(brew): update gemtracker to {{ .Version }}"
     homepage: "https://github.com/spaquet/gemtracker"
     description: "An interactive TUI for analyzing Ruby gem dependencies and security risks"
