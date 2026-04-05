@@ -198,7 +198,7 @@ func (m *Model) viewLoading() string {
 	tabbar := m.renderTabBar()
 	statusbar := m.renderStatusBar()
 
-	contentHeight := m.Height - FixedChrome - m.updateBarHeight() - 2
+	contentHeight := m.Height - FixedChrome - m.updateBarHeight()
 	if contentHeight < 1 {
 		contentHeight = 1
 	}
@@ -268,7 +268,7 @@ func (m *Model) viewGemList() string {
 	tabbar := m.renderTabBar()
 	statusbar := m.renderStatusBar()
 
-	contentHeight := m.Height - FixedChrome - m.updateBarHeight() - 2
+	contentHeight := m.Height - FixedChrome - m.updateBarHeight()
 	gemListContent := m.renderGemListTable(contentHeight)
 
 	return lipgloss.JoinVertical(
@@ -443,7 +443,7 @@ func (m *Model) viewGemDetail() string {
 		return ""
 	}
 
-	contentHeight := m.Height - FixedChrome - m.updateBarHeight() - 5
+	contentHeight := m.Height - FixedChrome - m.updateBarHeight() - 2
 
 	// Format version info
 	versionDisplay := "Latest"
@@ -847,7 +847,7 @@ func (m *Model) viewSearch() string {
 	searchLine := lipgloss.JoinHorizontal(lipgloss.Top, searchPrompt, searchInput)
 
 	// Search results
-	contentHeight := m.Height - FixedChrome - m.updateBarHeight() - 3
+	contentHeight := m.Height - FixedChrome - m.updateBarHeight() - 1
 	resultContent := m.renderSearchResults(contentHeight)
 
 	content := lipgloss.JoinVertical(lipgloss.Left,
@@ -937,7 +937,7 @@ func (m *Model) viewCVE() string {
 	tabbar := m.renderTabBar()
 	statusbar := m.renderStatusBar()
 
-	contentHeight := m.Height - FixedChrome - m.updateBarHeight() - 2
+	contentHeight := m.Height - FixedChrome - m.updateBarHeight()
 	cveContent := m.renderCVETable(contentHeight)
 
 	return lipgloss.JoinVertical(
@@ -1023,7 +1023,7 @@ func (m *Model) viewProjectInfo() string {
 	tabbar := m.renderTabBar()
 	statusbar := m.renderStatusBar()
 
-	contentHeight := m.Height - FixedChrome - m.updateBarHeight() - 2
+	contentHeight := m.Height - FixedChrome - m.updateBarHeight()
 	projectContent := m.renderProjectInfo(contentHeight)
 
 	return lipgloss.JoinVertical(
@@ -1155,7 +1155,7 @@ func (m *Model) viewFilterMenu() string {
 	tabbar := m.renderTabBar()
 	statusbar := m.renderStatusBar()
 
-	contentHeight := m.Height - FixedChrome - m.updateBarHeight() - 2
+	contentHeight := m.Height - FixedChrome - m.updateBarHeight()
 	filterContent := m.renderFilterMenu(contentHeight)
 
 	return lipgloss.JoinVertical(

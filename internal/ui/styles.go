@@ -22,7 +22,7 @@ const (
 
 // Layout constants
 const (
-	FixedChrome     = 5 // header + tabbar + statusbar + 2 separators
+	FixedChrome     = 3 // header (1) + tabbar (1) + statusbar (1)
 	HeaderHeight    = 3
 	TabBarHeight    = 1
 	StatusBarHeight = 1
