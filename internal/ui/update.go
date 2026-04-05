@@ -9,8 +9,10 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/getsentry/sentry-go"
 	"github.com/spaquet/gemtracker/internal/cache"
 	"github.com/spaquet/gemtracker/internal/gemfile"
+	"github.com/spaquet/gemtracker/internal/telemetry"
 )
 
 func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -87,7 +89,16 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case HealthRateLimitedMsg:
 		m.HealthRateLimited = true
 		m.HealthLoading = false
+		// Report rate limiting to Sentry
+		err := fmt.Errorf("health check rate limited at gem: %s", msg.StoppedAt)
+		telemetry.CaptureException(err, sentry.LevelWarning)
 		return m, nil
+
+	case OutdatedItemMsg:
+		return m.handleOutdatedItem(msg)
+
+	case OutdatedCompleteMsg:
+		return m.handleOutdatedComplete()
 	}
 
 	return m, nil
@@ -607,6 +618,11 @@ func (m *Model) handleAnalysisComplete(msg AnalysisCompleteMsg) (tea.Model, tea.
 		m.OutdatedChecker = msg.OutdatedChecker
 	}
 
+	// Start outdated checking for first-level gems
+	m.OutdatedLoading = true
+	m.OutdatedPending = make([]*gemfile.GemStatus, len(m.FirstLevelGems))
+	copy(m.OutdatedPending, m.FirstLevelGems)
+
 	// Start health data loading for first-level gems
 	m.HealthLoading = true
 	m.HealthTotalCount = len(m.FirstLevelGems)
@@ -614,7 +630,10 @@ func (m *Model) handleAnalysisComplete(msg AnalysisCompleteMsg) (tea.Model, tea.
 	m.HealthPending = make([]*gemfile.GemStatus, len(m.FirstLevelGems))
 	copy(m.HealthPending, m.FirstLevelGems)
 
-	return m, fetchNextHealthItem(m.FirstLevelGems, m.OutdatedChecker)
+	return m, tea.Batch(
+		fetchNextOutdatedItem(m.OutdatedPending, m.OutdatedChecker),
+		fetchNextHealthItem(m.FirstLevelGems, m.OutdatedChecker),
+	)
 }
 
 func (m *Model) handleDependencyComplete(msg DependencyCompleteMsg) (tea.Model, tea.Cmd) {
@@ -643,6 +662,12 @@ func (m *Model) handleDependencyComplete(msg DependencyCompleteMsg) (tea.Model, 
 }
 
 func (m *Model) handleHealthItem(msg HealthItemMsg) (tea.Model, tea.Cmd) {
+	// Report error to Sentry if health check failed
+	if msg.Error != nil {
+		err := fmt.Errorf("failed to fetch health for gem %q: %w", msg.GemName, msg.Error)
+		telemetry.CaptureException(err, sentry.LevelError)
+	}
+
 	// Find and update the gem with health data
 	for _, gem := range m.FirstLevelGems {
 		if gem.Name == msg.GemName {
@@ -689,6 +714,57 @@ func (m *Model) handleHealthComplete() (tea.Model, tea.Cmd) {
 	// Fire-and-forget cache write
 	go cache.WriteHealth(m.GemfileLockPath, healthCache)
 
+	return m, nil
+}
+
+func (m *Model) handleOutdatedItem(msg OutdatedItemMsg) (tea.Model, tea.Cmd) {
+	if msg.Error != nil {
+		// Check if rate limited
+		if isRateLimited(msg.Error) {
+			m.OutdatedRateLimited = true
+			m.OutdatedLoading = false
+			// Report rate limiting to Sentry as a warning
+			telemetry.CaptureException(msg.Error, sentry.LevelWarning)
+			return m, nil // stop queue on rate limit
+		}
+		// Network/timeout error: mark gem as failed, continue queue
+		for _, gem := range m.AnalysisResult.GemStatuses {
+			if gem.Name == msg.GemName {
+				gem.OutdatedFailed = true
+				break
+			}
+		}
+		m.OutdatedErrorCount++
+		// Report individual gem check failure to Sentry
+		err := fmt.Errorf("failed to check outdated version for gem %q: %w", msg.GemName, msg.Error)
+		telemetry.CaptureException(err, sentry.LevelError)
+	} else {
+		// Success: update gem fields
+		for _, gem := range m.AnalysisResult.GemStatuses {
+			if gem.Name == msg.GemName {
+				gem.IsOutdated = msg.IsOutdated
+				gem.LatestVersion = msg.LatestVersion
+				gem.HomepageURL = msg.HomepageURL
+				gem.Description = msg.Description
+				break
+			}
+		}
+	}
+
+	// Pop the first pending gem
+	if len(m.OutdatedPending) > 0 {
+		m.OutdatedPending = m.OutdatedPending[1:]
+	}
+
+	if len(m.OutdatedPending) > 0 {
+		return m, fetchNextOutdatedItem(m.OutdatedPending, m.OutdatedChecker)
+	}
+
+	return m, func() tea.Msg { return OutdatedCompleteMsg{} }
+}
+
+func (m *Model) handleOutdatedComplete() (tea.Model, tea.Cmd) {
+	m.OutdatedLoading = false
 	return m, nil
 }
 

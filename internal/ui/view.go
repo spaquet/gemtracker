@@ -134,11 +134,32 @@ func (m *Model) renderStatusBar() string {
 
 	content := strings.Join(rendered, "  ")
 
+	// Add outdated checking indicator if needed
+	if m.OutdatedLoading {
+		doneCount := len(m.FirstLevelGems) - len(m.OutdatedPending)
+		outdatedStatus := fmt.Sprintf("Checking updates... (%d/%d)", doneCount, len(m.FirstLevelGems))
+		statusStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(ColorWarning))
+		content = content + "  " + statusStyle.Render(outdatedStatus)
+	}
+
 	// Add health loading indicator if needed
 	if m.HealthLoading {
-		healthStatus := fmt.Sprintf("  Fetching health... (%d/%d)", m.HealthLoadedCount, m.HealthTotalCount)
+		healthStatus := fmt.Sprintf("Fetching health... (%d/%d)", m.HealthLoadedCount, m.HealthTotalCount)
 		healthStatusStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(ColorWarning))
 		content = content + "  " + healthStatusStyle.Render(healthStatus)
+	}
+
+	// Add error warnings
+	errorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(ColorDanger))
+	if m.OutdatedRateLimited {
+		content = content + "  " + errorStyle.Render("updates: rate limited")
+	}
+	if m.HealthRateLimited {
+		content = content + "  " + errorStyle.Render("health: rate limited")
+	}
+	if m.OutdatedErrorCount > 0 {
+		errMsg := fmt.Sprintf("%d update errors", m.OutdatedErrorCount)
+		content = content + "  " + errorStyle.Render(errMsg)
 	}
 
 	status := StatusBarStyle.Width(m.Width - 4).Render(content)
@@ -332,14 +353,25 @@ func (m *Model) formatGemListRow(idx int, gem *gemfile.GemStatus, selected bool)
 		status = BadgeVulnerableStyle.Render("⚠ CVE")
 	} else if gem.IsOutdated {
 		status = BadgeOutdatedStyle.Render("↑ " + gem.LatestVersion)
+	} else if gem.OutdatedFailed {
+		status = BadgeErrorStyle.Render("! err")
+	} else if gem.LatestVersion == "" {
+		status = BadgeLoadingStyle.Render("…")
 	} else {
 		status = BadgeOKStyle.Render("✓")
 	}
 
 	// Latest version display
-	latestDisplay := "latest"
-	if gem.IsOutdated {
+	var latestDisplay string
+	switch {
+	case gem.OutdatedFailed:
+		latestDisplay = "-"
+	case gem.LatestVersion == "":
+		latestDisplay = "…"
+	case gem.IsOutdated:
 		latestDisplay = gem.LatestVersion
+	default:
+		latestDisplay = "latest"
 	}
 
 	// Groups display
@@ -362,7 +394,7 @@ func (m *Model) formatGemListRow(idx int, gem *gemfile.GemStatus, selected bool)
 			case gemfile.HealthCritical:
 				healthDisplay = BadgeCriticalDotStyle.Render("●")
 			default:
-				healthDisplay = "?"
+				healthDisplay = BadgeErrorStyle.Render("!")
 			}
 		}
 		healthDisplay = fmt.Sprintf("%-3s", healthDisplay)

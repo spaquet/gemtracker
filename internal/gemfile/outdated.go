@@ -42,18 +42,18 @@ func NewOutdatedChecker() *OutdatedChecker {
 	}
 }
 
-// IsOutdated checks if a gem version is outdated and returns the latest version
-func (oc *OutdatedChecker) IsOutdated(gemName, currentVersion string) (bool, string) {
+// IsOutdated checks if a gem version is outdated and returns the latest version and any error
+func (oc *OutdatedChecker) IsOutdated(gemName, currentVersion string) (bool, string, error) {
 	// Get latest version from cache or API
 	latestVersion, err := oc.getLatestVersion(gemName)
 	if err != nil {
-		// If we can't check, assume it's not outdated
-		return false, ""
+		// Return error instead of silently failing
+		return false, "", err
 	}
 
 	// Compare versions: if current is different from latest, it's outdated
 	isOutdated := currentVersion != latestVersion && isVersionLess(currentVersion, latestVersion)
-	return isOutdated, latestVersion
+	return isOutdated, latestVersion, nil
 }
 
 // getLatestVersion fetches the latest version of a gem from rubygems.org
@@ -71,8 +71,11 @@ func (oc *OutdatedChecker) getLatestVersion(gemName string) (string, error) {
 	}
 	defer resp.Body.Close()
 
+	if resp.StatusCode == 429 {
+		return "", fmt.Errorf("rate limited (429) by rubygems.org")
+	}
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("gem not found on rubygems.org")
+		return "", fmt.Errorf("gem not found on rubygems.org (status %d)", resp.StatusCode)
 	}
 
 	body, err := io.ReadAll(resp.Body)

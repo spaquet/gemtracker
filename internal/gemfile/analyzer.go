@@ -17,6 +17,7 @@ type GemStatus struct {
 	HomepageURL       string // Homepage or source code URL
 	Description       string // Gem description from rubygems.org
 	Health            *GemHealth // Gem health data (nil until fetched)
+	OutdatedFailed    bool   // true if outdated check failed with an error
 }
 
 type AnalysisResult struct {
@@ -31,7 +32,6 @@ type AnalysisResult struct {
 }
 
 func Analyze(gemfile *Gemfile) *AnalysisResult {
-	outdatedChecker := NewOutdatedChecker()
 	vulnChecker := NewVulnerabilityChecker()
 
 	allGems := gemfile.GetGemsAsList()
@@ -48,14 +48,6 @@ func Analyze(gemfile *Gemfile) *AnalysisResult {
 			Groups:  gem.Groups, // Copy group information
 		}
 
-		// Check if outdated
-		isOutdated, latestVersion := outdatedChecker.IsOutdated(gem.Name, gem.Version)
-		if isOutdated {
-			status.IsOutdated = true
-			status.LatestVersion = latestVersion
-			outdatedList = append(outdatedList, gem.Name)
-		}
-
 		// Check if vulnerable
 		hasVuln, cveID, vulnDesc := vulnChecker.HasVulnerability(gem.Name, gem.Version)
 		if hasVuln {
@@ -63,12 +55,6 @@ func Analyze(gemfile *Gemfile) *AnalysisResult {
 			status.VulnerabilityInfo = fmt.Sprintf("%s: %s", cveID, vulnDesc)
 			vulnerableList = append(vulnerableList, gem.Name)
 		}
-
-		// Get homepage URL
-		status.HomepageURL = outdatedChecker.GetHomepage(gem.Name)
-
-		// Get description
-		status.Description = outdatedChecker.GetDescription(gem.Name)
 
 		// Track first-level gems (those with groups from Gemfile, not transitive deps)
 		if len(gem.Groups) > 0 {

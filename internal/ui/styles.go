@@ -112,6 +112,12 @@ var BadgeOutdatedStyle = lipgloss.NewStyle().
 var BadgeVulnerableStyle = lipgloss.NewStyle().
 	Foreground(lipgloss.Color(ColorDanger))
 
+var BadgeLoadingStyle = lipgloss.NewStyle().
+	Foreground(lipgloss.Color(ColorTextMuted))
+
+var BadgeErrorStyle = lipgloss.NewStyle().
+	Foreground(lipgloss.Color(ColorDanger))
+
 var BadgeHealthyDotStyle = lipgloss.NewStyle().
 	Foreground(lipgloss.Color(ColorSuccess))
 

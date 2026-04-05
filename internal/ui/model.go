@@ -88,6 +88,17 @@ type HealthRateLimitedMsg struct {
 	StoppedAt string // gem name where rate limiting occurred
 }
 
+type OutdatedItemMsg struct {
+	GemName       string
+	IsOutdated    bool
+	LatestVersion string
+	HomepageURL   string
+	Description   string
+	Error         error
+}
+
+type OutdatedCompleteMsg struct{}
+
 // ============================================================================
 // Model
 // ============================================================================
@@ -170,6 +181,12 @@ type Model struct {
 	HealthPending       []*gemfile.GemStatus    // Queue for sequential fetching
 	HealthChecker       *gemfile.HealthChecker
 	OutdatedChecker     *gemfile.OutdatedChecker // Reused for health data extraction
+
+	// Outdated checking state
+	OutdatedLoading    bool
+	OutdatedPending    []*gemfile.GemStatus // Queue for sequential fetching
+	OutdatedErrorCount int
+	OutdatedRateLimited bool
 
 	// Error state
 	ErrorMessage string
@@ -326,18 +343,8 @@ func performAnalysis(gemfilePath string, noCache bool) tea.Cmd {
 		// Create the outdated checker once and reuse it
 		outdatedChecker := gemfile.NewOutdatedChecker()
 
-		// Note: Analyze() internally creates its own OutdatedChecker, but we need
-		// the one with populated cache for health data extraction.
-		// For now, we'll use the one from Analyze internally, then create a fresh one
-		// and warm it up by calling GetSourceCodeURI on all gems
 		result := gemfile.Analyze(gf)
-
-		// Warm up the outdated checker cache for health data extraction
-		if result != nil {
-			for _, gem := range result.FirstLevelGems {
-				outdatedChecker.GetSourceCodeURI(gem)
-			}
-		}
+		// Lazy load source code URIs during health fetching to keep UI responsive
 
 		return AnalysisCompleteMsg{
 			Result:          result,
@@ -663,4 +670,26 @@ func isRateLimited(err error) bool {
 		return false
 	}
 	return strings.Contains(err.Error(), "403") || strings.Contains(err.Error(), "429")
+}
+
+func fetchNextOutdatedItem(gems []*gemfile.GemStatus, checker *gemfile.OutdatedChecker) tea.Cmd {
+	if len(gems) == 0 {
+		return func() tea.Msg { return OutdatedCompleteMsg{} }
+	}
+	return func() tea.Msg {
+		gem := gems[0]
+		isOutdated, latest, err := checker.IsOutdated(gem.Name, gem.Version)
+		if err != nil {
+			return OutdatedItemMsg{GemName: gem.Name, Error: err}
+		}
+		homepage := checker.GetHomepage(gem.Name)
+		desc := checker.GetDescription(gem.Name)
+		return OutdatedItemMsg{
+			GemName:       gem.Name,
+			IsOutdated:    isOutdated,
+			LatestVersion: latest,
+			HomepageURL:   homepage,
+			Description:   desc,
+		}
+	}
 }
