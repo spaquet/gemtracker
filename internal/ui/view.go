@@ -21,6 +21,25 @@ func (m *Model) updateBarHeight() int {
 	return 0
 }
 
+// statusBarTotalHeight calculates the total height of the status bar including
+// all lines: hints + optional status indicators + optional update notification
+func (m *Model) statusBarTotalHeight() int {
+	height := 1 // Base height for hints line
+
+	// Add height for status indicators line if any are present
+	if m.OutdatedLoading || m.HealthLoading || m.OutdatedRateLimited ||
+		m.HealthRateLimited || m.OutdatedErrorCount > 0 {
+		height += 1
+	}
+
+	// Add height for update notification bar if present
+	if m.NewVersionAvailable != "" {
+		height += 1
+	}
+
+	return height
+}
+
 // ============================================================================
 // View Rendering
 // ============================================================================
@@ -69,7 +88,7 @@ func (m *Model) assembleViewWithChrome(contentString string) string {
 	allLines = append(allLines, m.renderTabBar())
 
 	// Calculate available space for content and statusbar
-	statusbarLines := 1 + m.updateBarHeight()
+	statusbarLines := m.statusBarTotalHeight()
 	availableForContent := m.Height - 2 - statusbarLines
 	if availableForContent < 1 {
 		availableForContent = 1
@@ -270,7 +289,7 @@ func (m *Model) renderUpdateBar() string {
 // ============================================================================
 
 func (m *Model) viewLoading() string {
-	statusbarLines := 1 + m.updateBarHeight()
+	statusbarLines := m.statusBarTotalHeight()
 	contentHeight := m.Height - 2 - statusbarLines
 	if contentHeight < 1 {
 		contentHeight = 1
@@ -342,7 +361,7 @@ func (m *Model) viewGemList() string {
 
 	// Calculate content height: total height minus header, tabbar, and statusbar
 	// Statusbar can be 1 or 2 lines depending on update notification
-	statusbarLines := 1 + m.updateBarHeight()
+	statusbarLines := m.statusBarTotalHeight()
 	contentHeight := m.Height - 2 - statusbarLines
 	if contentHeight < 1 {
 		contentHeight = 1
@@ -547,7 +566,7 @@ func (m *Model) viewGemDetail() string {
 		return ""
 	}
 
-	statusbarLines := 1 + m.updateBarHeight()
+	statusbarLines := m.statusBarTotalHeight()
 	contentHeight := m.Height - 2 - statusbarLines
 	if contentHeight < 1 {
 		contentHeight = 1
@@ -945,7 +964,7 @@ func (m *Model) viewSearch() string {
 	searchLine := lipgloss.JoinHorizontal(lipgloss.Top, searchPrompt, searchInput)
 
 	// Search results - account for header (1), tabbar (1), searchLine (1), and statusbar (1-2)
-	statusbarLines := 1 + m.updateBarHeight()
+	statusbarLines := m.statusBarTotalHeight()
 	contentHeight := m.Height - 3 - statusbarLines
 	if contentHeight < 1 {
 		contentHeight = 1
@@ -1029,7 +1048,7 @@ func (m *Model) renderSearchResults(height int) string {
 // ============================================================================
 
 func (m *Model) viewUpgradeable() string {
-	statusbarLines := 1 + m.updateBarHeight()
+	statusbarLines := m.statusBarTotalHeight()
 	contentHeight := m.Height - 2 - statusbarLines
 	if contentHeight < 1 {
 		contentHeight = 1
@@ -1176,7 +1195,7 @@ func (m *Model) renderUpgradeableTable(height int) string {
 // ============================================================================
 
 func (m *Model) viewCVE() string {
-	statusbarLines := 1 + m.updateBarHeight()
+	statusbarLines := m.statusBarTotalHeight()
 	contentHeight := m.Height - 2 - statusbarLines
 	if contentHeight < 1 {
 		contentHeight = 1
@@ -1256,7 +1275,7 @@ func (m *Model) renderCVETable(height int) string {
 // ============================================================================
 
 func (m *Model) viewProjectInfo() string {
-	statusbarLines := 1 + m.updateBarHeight()
+	statusbarLines := m.statusBarTotalHeight()
 	contentHeight := m.Height - 2 - statusbarLines
 	if contentHeight < 1 {
 		contentHeight = 1
@@ -1371,7 +1390,7 @@ func (m *Model) viewSelectPath() string {
 // ============================================================================
 
 func (m *Model) viewFilterMenu() string {
-	statusbarLines := 1 + m.updateBarHeight()
+	statusbarLines := m.statusBarTotalHeight()
 	contentHeight := m.Height - 2 - statusbarLines
 	if contentHeight < 1 {
 		contentHeight = 1
