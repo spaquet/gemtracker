@@ -64,26 +64,39 @@ func (m *Model) assembleViewWithChrome(contentString string) string {
 	// Helper function to assemble any view with proper header, tabbar, and statusbar
 	var allLines []string
 
-	// Add header
+	// Add header and tabbar (2 lines)
 	allLines = append(allLines, m.renderAppHeader())
-
-	// Add tab bar
 	allLines = append(allLines, m.renderTabBar())
+
+	// Calculate available space for content and statusbar
+	statusbarLines := 1 + m.updateBarHeight()
+	availableForContent := m.Height - 2 - statusbarLines
+	if availableForContent < 1 {
+		availableForContent = 1
+	}
 
 	// Add content (split into lines if it's a pre-joined string)
 	if contentString != "" {
-		contentLines := strings.Split(strings.TrimSuffix(contentString, "\n"), "\n")
+		contentLines := strings.Split(strings.Trim(contentString, "\n"), "\n")
+		// Limit to available space
+		if len(contentLines) > availableForContent {
+			contentLines = contentLines[:availableForContent]
+		}
 		allLines = append(allLines, contentLines...)
 	}
 
 	// Add status bar (can be multi-line)
 	statusbarContent := m.renderStatusBar()
 	if statusbarContent != "" {
-		statusbarLines := strings.Split(strings.TrimSuffix(statusbarContent, "\n"), "\n")
-		allLines = append(allLines, statusbarLines...)
+		statusbarLines2 := strings.Split(strings.Trim(statusbarContent, "\n"), "\n")
+		// Limit to expected statusbar height
+		if len(statusbarLines2) > statusbarLines {
+			statusbarLines2 = statusbarLines2[:statusbarLines]
+		}
+		allLines = append(allLines, statusbarLines2...)
 	}
 
-	// Ensure we don't exceed terminal height
+	// Final safety check - ensure we don't exceed terminal height
 	if len(allLines) > m.Height {
 		allLines = allLines[:m.Height]
 	}
@@ -328,17 +341,40 @@ func (m *Model) viewGemList() string {
 	}
 
 	// Add gem list content
-	gemListLines := strings.Split(strings.TrimSuffix(m.renderGemListTable(contentHeight), "\n"), "\n")
-	allLines = append(allLines, gemListLines...)
+	gemTableStr := m.renderGemListTable(contentHeight)
+	if gemTableStr != "" {
+		gemListLines := strings.Split(strings.Trim(gemTableStr, "\n"), "\n")
+		// Limit to contentHeight to prevent overflow
+		if len(gemListLines) > contentHeight {
+			gemListLines = gemListLines[:contentHeight]
+		}
+		allLines = append(allLines, gemListLines...)
+	}
 
 	// Add status bar (can be multi-line)
 	statusbarContent := m.renderStatusBar()
-	statusbarLines2 := strings.Split(strings.TrimSuffix(statusbarContent, "\n"), "\n")
-	allLines = append(allLines, statusbarLines2...)
+	if statusbarContent != "" {
+		statusbarLines2 := strings.Split(strings.Trim(statusbarContent, "\n"), "\n")
+		// Limit statusbar to its expected height
+		if len(statusbarLines2) > statusbarLines {
+			statusbarLines2 = statusbarLines2[:statusbarLines]
+		}
+		allLines = append(allLines, statusbarLines2...)
+	}
 
-	// Ensure we don't exceed terminal height
+	// Ensure we don't exceed terminal height - trim content if needed to preserve statusbar
 	if len(allLines) > m.Height {
-		allLines = allLines[:m.Height]
+		// Preserve last statusbarLines entries (the statusbar)
+		excessLines := len(allLines) - m.Height
+		if excessLines >= len(allLines) {
+			// If removing excess would remove statusbar, trim from content instead
+			contentEndIdx := len(allLines) - statusbarLines
+			if contentEndIdx > 2 { // Keep at least header + tabbar
+				allLines = append(allLines[:2+contentEndIdx-excessLines], allLines[len(allLines)-statusbarLines:]...)
+			}
+		} else {
+			allLines = allLines[:m.Height]
+		}
 	}
 
 	return lipgloss.JoinVertical(lipgloss.Left, allLines...)
