@@ -1,4 +1,4 @@
-.PHONY: build build-dev build-release test clean help
+.PHONY: build build-dev build-release test lint clean help
 
 # Version information
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
@@ -15,6 +15,7 @@ help:
 	@echo "  build           Build the gemtracker binary (development)"
 	@echo "  build-release   Build release binaries for macOS (amd64 + arm64)"
 	@echo "  test            Run tests"
+	@echo "  lint            Run linter (golangci-lint)"
 	@echo "  clean           Remove build artifacts"
 	@echo "  help            Show this help message"
 	@echo ""
@@ -58,6 +59,9 @@ build-release:
 
 test:
 	go test -v ./...
+
+lint:
+	golangci-lint run
 
 clean:
 	rm -f gemtracker

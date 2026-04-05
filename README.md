@@ -316,30 +316,57 @@ make test
 
 ### Code Quality Checks
 
-Before submitting a PR, ensure your code passes all quality checks:
+gemtracker uses `golangci-lint` for comprehensive code quality checks. These run **automatically before pushing** via a git hook to catch issues early.
+
+#### Installation
+
+First, install golangci-lint:
 
 ```bash
+# Using Homebrew (macOS)
+brew install golangci-lint
+
+# Or using the official installer
+curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin
+```
+
+#### Running Checks Locally
+
+```bash
+# Run linter
+make lint
+
 # Run tests
 make test
 
-# Check code formatting (auto-fix with -w flag)
-gofmt -s -l .
+# Or run both before committing
+make lint && make test
+```
 
-# Run linter
-go vet ./...
+#### Automatic Pre-Push Hook
+
+A git `pre-push` hook automatically runs tests and linter before pushing to prevent CI failures:
+
+```bash
+git push
+# Output:
+# 🔍 Running linter...
+# ✓ Linter passed
+# 🧪 Running tests...
+# ✓ Tests passed
+# ✅ All checks passed! Pushing...
+```
+
+To skip the hook (not recommended):
+```bash
+git push --no-verify
 ```
 
 **Required before PR submission:**
 - ✅ All tests must pass: `make test`
-- ✅ Code must be formatted: `gofmt -s -w .` (fixes automatically)
-- ✅ No vet warnings: `go vet ./...`
+- ✅ Linter must pass: `make lint`
 
-These checks run automatically in GitHub Actions when you push, but fixing them locally first prevents CI failures:
-
-```bash
-# Quick pre-PR checklist (one command)
-make test && gofmt -s -w . && go vet ./... && echo "✓ Ready for PR!"
-```
+These checks run automatically in GitHub Actions when you push, but fixing them locally first via the pre-push hook prevents CI failures.
 
 ### Project Structure
 ```
