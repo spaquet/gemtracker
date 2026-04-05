@@ -150,6 +150,45 @@ The CVE screen shows all known vulnerabilities:
 - **Description** - What the vulnerability does
 - **Status** - Whether gem is directly used or transitive
 
+### Understanding Gem Health Status
+
+Each gem in the [Gems] tab shows a health indicator (colored dot) that reflects the gem's maintenance status. gemtracker fetches this data from RubyGems and GitHub APIs to help you assess dependency health:
+
+**Health Levels:**
+
+- **🟢 HEALTHY** - Actively maintained gem
+  - Recent releases (within last 6 months)
+  - Responsive maintainers
+  - Healthy community engagement
+  - Low number of open issues relative to usage
+
+- **🟡 WARNING** - Gem showing signs of age or reduced activity
+  - Older releases (6-12 months since last update)
+  - Occasional maintenance
+  - Some open issues
+  - Still receiving updates but not actively developed
+
+- **🔴 CRITICAL** - Potentially dead or unmaintained gem
+  - No releases in over a year
+  - Few or no maintainers
+  - Many open issues
+  - No recent activity
+
+**Gem Details** include full health statistics:
+- Last release date
+- GitHub stars and watchers
+- Open issues count
+- Number of active maintainers
+- Archived status (if applicable)
+
+**Why Health Matters:**
+- A "CRITICAL" gem may indicate security risks if vulnerabilities go unpatched
+- Unmaintained gems may have compatibility issues with new Ruby/Rails versions
+- "HEALTHY" gems are more likely to receive timely security updates
+- Different tolerance levels apply: a test-only gem's health matters less than a production core dependency
+
+> **Note**: Health data is fetched asynchronously in the background. If GitHub rate-limited, cached data from the last 24 hours is used.
+
 ## Performance & Caching
 
 ### Automatic Analysis Caching
