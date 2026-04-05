@@ -317,7 +317,7 @@ func (m *Model) renderGemListTable(height int) string {
 	lines = append(lines, header)
 
 	// Table rows
-	visibleRows := height - len(lines) - 2
+	visibleRows := height - len(lines)
 	if visibleRows < 0 {
 		visibleRows = 0
 	}
