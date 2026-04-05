@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v1.0.3] - 2026-04-04
+
 ### Added
 - New version available notification at bottom of UI (similar to Claude Code)
   - Asynchronously checks GitHub for latest releases on startup
@@ -21,7 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - App header displaying duplicate 'v' in version string (was showing "gemtracker vv1.0.0")
 
-## [1.0.0] - 2026-04-04
+## [v1.0.2] - 2026-04-04
 
 ### Added
 - Initial public release
