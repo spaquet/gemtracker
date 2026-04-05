@@ -59,11 +59,19 @@ type VersionCheckMsg struct {
 }
 
 type ProgressMsg struct {
-	Stage      string // "parsing", "checking-updates", "scanning-cves"
-	Current    int    // Current item number
-	Total      int    // Total items
-	Message    string // Status message
+	Stage      string // "parsing", "checking-updates", "scanning-cves", "complete"
 	Percentage int    // 0-100
+	Message    string // Status message
+}
+
+type StageUpdateMsg struct {
+	Stage          string                 // "parsing", "checking-updates", "scanning-cves"
+	CurrentCount   int                    // Current gems processed
+	TotalCount     int                    // Total gems to process
+	Percentage     int                    // 0-100
+	Result         *gemfile.AnalysisResult // Accumulated results so far
+	OutdatedGems   []*gemfile.GemStatus   // Updated gems with version info
+	VulnerableGems []*gemfile.GemStatus   // Updated with CVE info
 }
 
 // ============================================================================
@@ -132,9 +140,13 @@ type Model struct {
 	PathInput textinput.Model
 
 	// Loading state
-	Loading        bool
-	LoadingMessage string
-	AnimationFrame int
+	Loading              bool
+	LoadingMessage       string
+	AnimationFrame       int
+	AnalysisStage        string // "parsing", "checking-updates", "scanning-cves"
+	AnalysisPercentage   int    // 0-100
+	AnalysisCurrentCount int    // Current item in stage
+	AnalysisTotalCount   int    // Total items for stage
 
 	// Error state
 	ErrorMessage string
@@ -194,14 +206,16 @@ func (m *Model) Init() tea.Cmd {
 		m.CurrentView = ViewLoading
 		m.ActiveTab = ViewGemList
 		m.Loading = true
-		m.LoadingMessage = "Analyzing Gemfile.lock..."
+		m.LoadingMessage = "Parsing Gemfile.lock..."
+		m.AnalysisStage = "parsing"
+		m.AnalysisPercentage = 0
 		m.AnimationFrame = 0
 
 		return tea.Batch(
 			tea.Tick(100*time.Millisecond, func(time.Time) tea.Msg {
 				return SpinnerTickMsg{}
 			}),
-			performAnalysis(m.GemfileLockPath),
+			performAnalysisWithProgress(m.GemfileLockPath),
 			checkLatestVersion(m.Version),
 		)
 	}
@@ -275,6 +289,44 @@ func performAnalysis(gemfilePath string) tea.Cmd {
 		gf.LoadGroupsFromGemfile(dir)
 
 		result := gemfile.Analyze(gf)
+		return AnalysisCompleteMsg{
+			Result: result,
+			Error:  nil,
+		}
+	}
+}
+
+// performAnalysisWithProgress does analysis with progress reporting
+// For now, this does the full analysis and returns results
+// Future improvement: break into true stages with background processing
+func performAnalysisWithProgress(gemfilePath string) tea.Cmd {
+	return func() tea.Msg {
+		// Try to load from cache first
+		cacheEntry, cacheErr := cache.Read(gemfilePath)
+		if cacheErr == nil && cacheEntry != nil && cacheEntry.Result != nil {
+			// Cache hit! Return complete analysis immediately
+			return AnalysisCompleteMsg{
+				Result: cacheEntry.Result,
+				Error:  nil,
+			}
+		}
+
+		// Do full analysis
+		gf, err := gemfile.Parse(gemfilePath)
+		if err != nil {
+			return AnalysisCompleteMsg{
+				Result: nil,
+				Error:  err,
+			}
+		}
+
+		// Load group information from Gemfile
+		dir := filepath.Dir(gemfilePath)
+		gf.LoadGroupsFromGemfile(dir)
+
+		// Analyze gems
+		result := gemfile.Analyze(gf)
+
 		return AnalysisCompleteMsg{
 			Result: result,
 			Error:  nil,

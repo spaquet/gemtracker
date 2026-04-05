@@ -45,6 +45,13 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.NewVersionAvailable = msg.LatestVersion
 		}
 		return m, nil
+
+	case ProgressMsg:
+		// Update progress state
+		m.AnalysisStage = msg.Stage
+		m.AnalysisPercentage = msg.Percentage
+		m.LoadingMessage = msg.Message
+		return m, nil
 	}
 
 	return m, nil

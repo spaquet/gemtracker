@@ -168,23 +168,57 @@ func (m *Model) viewLoading() string {
 	tabbar := m.renderTabBar()
 	statusbar := m.renderStatusBar()
 
-	spinner := spinnerFrames[m.AnimationFrame%len(spinnerFrames)]
-	spinnerText := SpinnerStyle.Render(spinner + " " + m.LoadingMessage)
-
 	contentHeight := m.Height - FixedChrome - m.updateBarHeight() - 2
 	if contentHeight < 1 {
 		contentHeight = 1
 	}
 
-	contentLines := (contentHeight - 1) / 2
+	// Build progress display
+	var progressLines []string
+
+	// Stage indicator
+	stageText := m.AnalysisStage
+	if stageText == "" {
+		stageText = "initializing"
+	}
+	progressLines = append(progressLines, lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color(ColorPrimary)).
+		Render(fmt.Sprintf("Stage: %s", stageText)))
+
+	// Progress bar
+	barWidth := 40
+	filledWidth := (m.AnalysisPercentage * barWidth) / 100
+	if filledWidth > barWidth {
+		filledWidth = barWidth
+	}
+
+	progressBar := strings.Repeat("█", filledWidth) + strings.Repeat("░", barWidth-filledWidth)
+	progressBar = fmt.Sprintf("[%s] %d%%", progressBar, m.AnalysisPercentage)
+	progressLines = append(progressLines, progressBar)
+
+	// Message
+	if m.LoadingMessage != "" {
+		progressLines = append(progressLines, "")
+		progressLines = append(progressLines, SpinnerStyle.Render(m.LoadingMessage))
+	}
+
+	// Center the progress display
+	contentLines := (contentHeight - len(progressLines)) / 2
 	if contentLines < 0 {
 		contentLines = 0
 	}
 
 	padding := strings.Repeat("\n", contentLines)
+	allLines := []string{padding}
+	allLines = append(allLines, progressLines...)
 
-	content := lipgloss.JoinVertical(lipgloss.Center, padding, spinnerText)
-	content = lipgloss.NewStyle().Height(contentHeight).Render(content)
+	// Pad to fill height
+	for len(allLines) < contentHeight {
+		allLines = append(allLines, "")
+	}
+
+	content := strings.Join(allLines[:contentHeight], "\n")
 
 	return lipgloss.JoinVertical(
 		lipgloss.Left,
