@@ -1076,11 +1076,7 @@ func (m *Model) renderUpgradeableTable(height int) string {
 	// Build all visible lines first, then apply offset
 	var allLines []string
 
-	// Title
-	totalUpgradeable := len(m.UpgradeableGems) + len(m.UpgradeableFrameworkGems)
-	title := fmt.Sprintf("Updates Available (%d)", totalUpgradeable)
-	title = lipgloss.NewStyle().Bold(true).Render(title)
-	allLines = append(allLines, title)
+	// Add top spacing
 	allLines = append(allLines, "")
 
 	lineIndex := 0 // Track line number for cursor comparison
