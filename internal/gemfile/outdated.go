@@ -216,17 +216,43 @@ func (oc *OutdatedChecker) GetVersionCreatedAt(gemName string) string {
 }
 
 // isVersionLess compares two semantic versions
-// Returns true if v1 < v2 (simplified comparison)
+// Returns true if v1 < v2
+// Handles pre-release versions (1.0.0-alpha < 1.0.0)
 func isVersionLess(v1, v2 string) bool {
-	// Split versions into parts
-	parts1 := strings.Split(strings.Split(v1, "-")[0], ".")
-	parts2 := strings.Split(strings.Split(v2, "-")[0], ".")
+	// Normalize versions: remove leading 'v' if present
+	v1 = strings.TrimPrefix(v1, "v")
+	v2 = strings.TrimPrefix(v2, "v")
 
-	// Compare major, minor, patch
-	for i := 0; i < 3 && i < len(parts1) && i < len(parts2); i++ {
+	// Strip build metadata (everything after '+')
+	v1 = strings.Split(v1, "+")[0]
+	v2 = strings.Split(v2, "+")[0]
+
+	// Split on pre-release indicator
+	v1Parts := strings.Split(v1, "-")
+	v2Parts := strings.Split(v2, "-")
+
+	v1Base := v1Parts[0]
+	v2Base := v2Parts[0]
+
+	// Compare base versions (major.minor.patch...)
+	v1Nums := strings.Split(v1Base, ".")
+	v2Nums := strings.Split(v2Base, ".")
+
+	// Compare numeric parts
+	maxLen := len(v1Nums)
+	if len(v2Nums) > maxLen {
+		maxLen = len(v2Nums)
+	}
+
+	for i := 0; i < maxLen; i++ {
 		var num1, num2 int
-		fmt.Sscanf(parts1[i], "%d", &num1)
-		fmt.Sscanf(parts2[i], "%d", &num2)
+
+		if i < len(v1Nums) {
+			fmt.Sscanf(v1Nums[i], "%d", &num1)
+		}
+		if i < len(v2Nums) {
+			fmt.Sscanf(v2Nums[i], "%d", &num2)
+		}
 
 		if num1 < num2 {
 			return true
@@ -234,6 +260,18 @@ func isVersionLess(v1, v2 string) bool {
 		if num1 > num2 {
 			return false
 		}
+	}
+
+	// Base versions are equal; if v1 has pre-release and v2 doesn't, v1 is less
+	// e.g., 1.0.0-alpha < 1.0.0
+	hasV1Prerelease := len(v1Parts) > 1
+	hasV2Prerelease := len(v2Parts) > 1
+
+	if hasV1Prerelease && !hasV2Prerelease {
+		return true
+	}
+	if !hasV1Prerelease && hasV2Prerelease {
+		return false
 	}
 
 	return false
