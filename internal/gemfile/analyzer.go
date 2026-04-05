@@ -40,6 +40,12 @@ func Analyze(gemfile *Gemfile) *AnalysisResult {
 	firstLevelList := []string{}
 	gemStatuses := make([]*GemStatus, 0, len(allGems))
 
+	// Build a map of first-level gems for quick lookup
+	firstLevelMap := make(map[string]bool)
+	for _, name := range gemfile.FirstLevelGems {
+		firstLevelMap[name] = true
+	}
+
 	// Check each gem for outdated and vulnerable status
 	for _, gem := range allGems {
 		status := &GemStatus{
@@ -56,8 +62,11 @@ func Analyze(gemfile *Gemfile) *AnalysisResult {
 			vulnerableList = append(vulnerableList, gem.Name)
 		}
 
-		// Track first-level gems (those with groups from Gemfile, not transitive deps)
-		if len(gem.Groups) > 0 {
+		// Track first-level gems (those in DEPENDENCIES section of Gemfile.lock, not transitive deps)
+		// First, check if it was explicitly marked in DEPENDENCIES section
+		// Fall back to checking for group information (for compatibility with Gemfile parsing)
+		isFirstLevel := gem.IsFirstLevel || firstLevelMap[gem.Name] || len(gem.Groups) > 0
+		if isFirstLevel {
 			firstLevelList = append(firstLevelList, gem.Name)
 		}
 

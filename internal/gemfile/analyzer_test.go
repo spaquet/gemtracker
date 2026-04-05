@@ -333,3 +333,60 @@ func TestAnalyze_GroupsPreserved(t *testing.T) {
 		t.Error("expected 'test' group in status")
 	}
 }
+
+func TestAnalyze_ListopiaGemfile(t *testing.T) {
+	// Test parsing and analyzing the listopia Gemfile.lock
+	gf, err := Parse("/Users/spaquet/Sites/listopia/Gemfile.lock")
+	if err != nil {
+		t.Fatalf("Failed to parse listopia Gemfile.lock: %v", err)
+	}
+
+	// Check that key gems are present
+	checkGems := []string{
+		"acts-as-taggable-on",
+		"rails",
+		"actioncable",
+		"actionmailbox",
+		"action_text-trix",
+		"actiontext",
+		"addressable",
+	}
+
+	for _, gemName := range checkGems {
+		if _, ok := gf.Gems[gemName]; !ok {
+			t.Errorf("Expected gem %q to be parsed from listopia Gemfile.lock", gemName)
+		}
+	}
+
+	// Verify acts-as-taggable-on is marked as first-level (from DEPENDENCIES section with !)
+	if atsGem, ok := gf.Gems["acts-as-taggable-on"]; ok {
+		if !atsGem.IsFirstLevel {
+			t.Error("Expected acts-as-taggable-on to be marked as first-level (from GIT+DEPENDENCIES)")
+		}
+	}
+
+	// Verify rails is marked as first-level
+	if railsGem, ok := gf.Gems["rails"]; ok {
+		if !railsGem.IsFirstLevel {
+			t.Error("Expected rails to be marked as first-level")
+		}
+	}
+
+	// Analyze the gemfile
+	result := Analyze(gf)
+
+	// Rails should definitely be in first-level gems
+	foundRails := false
+	for _, name := range result.FirstLevelGems {
+		if name == "rails" {
+			foundRails = true
+			break
+		}
+	}
+	if !foundRails {
+		t.Error("Expected rails in first-level gems from Analyze result")
+	}
+
+	t.Logf("Successfully parsed %d gems from listopia Gemfile.lock", gf.GetGemCount())
+	t.Logf("First-level gems: %d", len(result.FirstLevelGems))
+}
