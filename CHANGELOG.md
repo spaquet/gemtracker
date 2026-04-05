@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v1.0.8] - 2026-04-05
+
+### Added
+- **Gem Health Indicators** - Maintenance status tracking for first-level gems
+  - Shows health status (🟢 HEALTHY, 🟡 WARNING, 🔴 CRITICAL) as colored dot in gem list
+  - Health section in gem detail view with detailed statistics
+  - Last release date, GitHub stars, open issues, maintainer count, archived status
+  - Health data fetched from RubyGems and GitHub APIs asynchronously
+- **Health Data Caching** with 24-hour TTL
+  - Separate cache at `~/.cache/gemtracker/{hash}_health.json`
+  - Instant results on subsequent runs within 24 hours
+  - Graceful fallback if GitHub rate limited (60 req/hr anonymous limit)
+- **Improved CLI Help**
+  - Display version information at top of help
+  - Show GitHub repository link
+  - Document `--no-cache` option
+  - Better organized options section
+
+### Technical
+- Sequential async health data loading (one gem at a time)
+- Respects GitHub's anonymous API rate limits
+- Progressive health dot filling in gem list as data arrives
+- Robust error handling for network and rate limit scenarios
+
 ## [v1.0.6] - 2026-04-05
 
 ### Added
