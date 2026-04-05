@@ -180,6 +180,12 @@ func ComputeHealthScore(h *GemHealth) HealthScore {
 		lastActivity = h.GitHubPushedAt
 	}
 
+	// If we have no activity data (zero time), we couldn't assess health
+	// Return Unknown instead of assuming it's critical
+	if lastActivity.IsZero() {
+		return HealthUnknown
+	}
+
 	now := time.Now()
 	threeYearsAgo := now.AddDate(-3, 0, 0)
 	oneYearAgo := now.AddDate(-1, 0, 0)
