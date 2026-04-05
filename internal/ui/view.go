@@ -934,7 +934,7 @@ func (m *Model) renderSearchResults(height int) string {
 		lines = append(lines, "")
 	}
 
-	return strings.Join(lines[:height], "\n")
+	return lipgloss.JoinVertical(lipgloss.Left, lines[:height]...)
 }
 
 // ============================================================================
@@ -1087,7 +1087,7 @@ func (m *Model) renderUpgradeableTable(height int) string {
 		visibleLines = append(visibleLines, "")
 	}
 
-	return strings.Join(visibleLines[:height], "\n")
+	return lipgloss.JoinVertical(lipgloss.Left, visibleLines[:height]...)
 }
 
 // ============================================================================
@@ -1173,7 +1173,7 @@ func (m *Model) renderCVETable(height int) string {
 		lines = append(lines, "")
 	}
 
-	return strings.Join(lines[:height], "\n")
+	return lipgloss.JoinVertical(lipgloss.Left, lines[:height]...)
 }
 
 // ============================================================================
@@ -1247,13 +1247,12 @@ func (m *Model) renderProjectInfo(height int) string {
 	}
 
 	// Padding to fill height
-	content := strings.Join(sections, "\n")
-	lines := strings.Split(content, "\n")
+	lines := sections
 	for len(lines) < height {
 		lines = append(lines, "")
 	}
 
-	return strings.Join(lines[:height], "\n")
+	return lipgloss.JoinVertical(lipgloss.Left, lines[:height]...)
 }
 
 func (m *Model) formatInfoLine(label string, value string) string {
