@@ -150,6 +150,37 @@ The CVE screen shows all known vulnerabilities:
 - **Description** - What the vulnerability does
 - **Status** - Whether gem is directly used or transitive
 
+## Performance & Caching
+
+### Automatic Analysis Caching
+
+gemtracker automatically caches analysis results for faster subsequent loads:
+
+- **Cache Location**: `~/.cache/gemtracker/`
+- **Cache Per Project**: Each project's Gemfile.lock gets its own cache file
+- **Smart Invalidation**: Cache is automatically invalidated when Gemfile.lock is modified
+- **No Manual Cleanup**: Old cache files are harmless and can be safely ignored
+
+**Example with multiple projects:**
+```
+~/.cache/gemtracker/
+├── Gemfile.lock_1234.json    # Project A cache
+├── Gemfile.lock_5678.json    # Project B cache
+└── Gemfile.lock_9012.json    # Project C cache
+```
+
+When you re-open a project you've analyzed before, if `Gemfile.lock` hasn't changed, analysis loads **instantly** from cache ⚡
+
+**Cache is refreshed when:**
+- You run `bundle install` or `bundle update`
+- You edit your `Gemfile` (which updates Gemfile.lock)
+- The Gemfile.lock file modification time changes
+
+To manually clear cache for a specific project:
+```bash
+rm ~/.cache/gemtracker/Gemfile.lock_*.json
+```
+
 ## Quick Start
 
 1. Navigate to a Ruby project with `Gemfile.lock`:
@@ -176,6 +207,26 @@ The CVE screen shows all known vulnerabilities:
    - Click **[CVE]** tab to see all vulnerabilities
    - Filter by gem in [Search] tab
    - Check if vulnerable gems are in production
+
+## Optional: Error Tracking with Sentry
+
+gemtracker includes **optional** error tracking via Sentry to help improve reliability:
+
+- **Completely Optional** - Not enabled by default
+- **No Data Without Your Consent** - Only enabled if you set `SENTRY_DSN` environment variable
+- **Works Offline** - If Sentry is unavailable, gemtracker continues normally
+- **Not Required** - Development and self-built versions work perfectly without it
+
+To enable error tracking (usually only in official releases):
+```bash
+export SENTRY_DSN="your-sentry-dsn"
+gemtracker
+```
+
+If the env var is not set, error tracking is completely disabled. This is the default for:
+- Self-built versions from source
+- Development installations
+- Local development
 
 ## Building
 
