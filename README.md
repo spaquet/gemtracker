@@ -157,22 +157,19 @@ Each gem in the [Gems] tab shows a health indicator (colored dot) that reflects 
 **Health Levels:**
 
 - **🟢 HEALTHY** - Actively maintained gem
-  - Recent releases (within last 6 months)
-  - Responsive maintainers
-  - Healthy community engagement
-  - Low number of open issues relative to usage
+  - Activity within the last year (release or GitHub commit)
+  - Multiple maintainers (2+)
+  - Regular updates and engagement
 
-- **🟡 WARNING** - Gem showing signs of age or reduced activity
-  - Older releases (6-12 months since last update)
-  - Occasional maintenance
-  - Some open issues
-  - Still receiving updates but not actively developed
+- **🟡 WARNING** - Gem with maintenance concerns
+  - No activity in the last 1-3 years, OR
+  - Single maintainer (even if recent activity)
+  - May still receive occasional updates
 
 - **🔴 CRITICAL** - Potentially dead or unmaintained gem
-  - No releases in over a year
-  - Few or no maintainers
-  - Many open issues
-  - No recent activity
+  - No activity for 3+ years
+  - Archived or disabled on GitHub
+  - Essentially abandoned
 
 **Gem Details** include full health statistics:
 - Last release date

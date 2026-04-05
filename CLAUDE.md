@@ -85,12 +85,12 @@ gemtracker/
 
 **Gem Health Checking** (`internal/gemfile/health.go`)
 - Fetches maintenance health metrics from:
-  - RubyGems API (release frequency, downloads, ratings)
-  - GitHub API (stars, maintainers, open issues, last commit)
-- Evaluates health into three tiers:
-  - **HEALTHY** (🟢) - Recently updated, active maintainers
-  - **WARNING** (🟡) - Showing age, some activity
-  - **CRITICAL** (🔴) - Dormant, unmaintained, or archived
+  - RubyGems API (last release date, maintainer count)
+  - GitHub API (stars, maintainers, open issues, last push)
+- Evaluates health into three tiers based on `ComputeHealthScore()`:
+  - **HEALTHY** (🟢) - Activity within 1 year AND 2+ maintainers
+  - **WARNING** (🟡) - No activity for 1-3 years OR single maintainer
+  - **CRITICAL** (🔴) - No activity for 3+ years, archived, or disabled
 - Runs one gem at a time (sequential) to avoid rate limiting
 - Caches results for 24 hours per gem (`~/.cache/gemtracker/{hash}_health.json`)
 - Shows health dots in gem list as data loads in background
