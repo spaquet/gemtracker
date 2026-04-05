@@ -28,10 +28,10 @@ builds:
       - arm64
 
 archives:
-  - format: tar.gz
+  - formats: [ 'tar.gz' ]
     format_overrides:
       - goos: windows
-        format: zip
+        formats: [ 'zip' ]
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     files:
       - README.md
@@ -42,7 +42,7 @@ checksum:
   algorithm: sha256
 
 snapshot:
-  name_template: "{{ .Version }}-snapshot-{{ .ShortCommit }}"
+  version_template: "{{ .Version }}-snapshot-{{ .ShortCommit }}"
 
 release:
   github:
@@ -73,24 +73,13 @@ changelog:
       - '^test:'
       - typo
 
-brews:
+homebrew_casks:
   - repository:
       owner: spaquet
       name: homebrew-gemtracker
       token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
-    commit_msg_template: "chore(brew): update gemtracker formula to {{ .Version }}"
+    commit_msg_template: "chore(brew): update gemtracker cask to {{ .Version }}"
     homepage: "https://github.com/spaquet/gemtracker"
     description: "An interactive TUI for analyzing Ruby gem dependencies and security risks"
     license: MIT
-    dependencies:
-      - name: go
-        type: build
-    caveats: |
-      gemtracker analyzes Gemfile.lock files in Ruby projects.
-
-      To use it:
-        gemtracker
-        gemtracker /path/to/project
-    test: |
-      system "#{bin}/gemtracker", "--version"
-    skip_upload: false
+    directory: Casks

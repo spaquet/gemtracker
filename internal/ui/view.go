@@ -2,11 +2,27 @@ package ui
 
 import (
 	"fmt"
+	"runtime"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/spaquet/gemtracker/internal/gemfile"
 )
+
+// ============================================================================
+// Helper Methods
+// ============================================================================
+
+func (m *Model) updateBarHeight() int {
+	if m.NewVersionAvailable != "" {
+		return 1
+	}
+	return 0
+}
+
+// ============================================================================
+// View Rendering
+// ============================================================================
 
 func (m *Model) View() string {
 	if m.Quitting {
@@ -38,7 +54,7 @@ func (m *Model) View() string {
 // ============================================================================
 
 func (m *Model) renderAppHeader() string {
-	appName := fmt.Sprintf("gemtracker v%s", m.Version)
+	appName := fmt.Sprintf("gemtracker %s", m.Version)
 	projectPath := m.ProjectPath
 	if projectPath == "" {
 		projectPath = "(no project)"
@@ -65,6 +81,10 @@ func (m *Model) renderTabBar() string {
 	var tabs []string
 	for i, label := range tabLabels {
 		mode := tabModes[i]
+		// Add CVE count to the CVE label
+		if mode == ViewCVE && len(m.VulnerableGems) > 0 {
+			label = fmt.Sprintf("%s (%d)", label, len(m.VulnerableGems))
+		}
 		if mode == m.ActiveTab {
 			tabs = append(tabs, TabActiveStyle.Render(label))
 		} else {
@@ -105,7 +125,30 @@ func (m *Model) renderStatusBar() string {
 
 	content := strings.Join(rendered, "  ")
 	status := StatusBarStyle.Width(m.Width - 4).Render(content)
-	return status
+
+	// Add update notification bar if a new version is available
+	var lines []string
+	lines = append(lines, status)
+
+	if m.NewVersionAvailable != "" {
+		updateMsg := m.renderUpdateBar()
+		lines = append(lines, updateMsg)
+	}
+
+	return strings.Join(lines, "\n")
+}
+
+func (m *Model) renderUpdateBar() string {
+	var updateMsg string
+
+	switch runtime.GOOS {
+	case "darwin":
+		updateMsg = fmt.Sprintf("  ↑ New version available (%s) — brew upgrade gemtracker", m.NewVersionAvailable)
+	default:
+		updateMsg = fmt.Sprintf("  ↑ New version available (%s) — https://github.com/spaquet/gemtracker/releases", m.NewVersionAvailable)
+	}
+
+	return UpdateBarStyle.Width(m.Width - 4).Render(updateMsg)
 }
 
 // ============================================================================
@@ -120,7 +163,7 @@ func (m *Model) viewLoading() string {
 	spinner := spinnerFrames[m.AnimationFrame%len(spinnerFrames)]
 	spinnerText := SpinnerStyle.Render(spinner + " " + m.LoadingMessage)
 
-	contentHeight := m.Height - FixedChrome - 2
+	contentHeight := m.Height - FixedChrome - m.updateBarHeight() - 2
 	if contentHeight < 1 {
 		contentHeight = 1
 	}
@@ -153,7 +196,7 @@ func (m *Model) viewGemList() string {
 	tabbar := m.renderTabBar()
 	statusbar := m.renderStatusBar()
 
-	contentHeight := m.Height - FixedChrome - 2
+	contentHeight := m.Height - FixedChrome - m.updateBarHeight() - 2
 	gemListContent := m.renderGemListTable(contentHeight)
 
 	return lipgloss.JoinVertical(
@@ -259,7 +302,7 @@ func (m *Model) viewGemDetail() string {
 		return ""
 	}
 
-	contentHeight := m.Height - FixedChrome - 5
+	contentHeight := m.Height - FixedChrome - m.updateBarHeight() - 5
 
 	// Format version info
 	versionDisplay := "Latest"
@@ -573,7 +616,7 @@ func (m *Model) viewSearch() string {
 	searchLine := lipgloss.JoinHorizontal(lipgloss.Top, searchPrompt, searchInput)
 
 	// Search results
-	contentHeight := m.Height - FixedChrome - 3
+	contentHeight := m.Height - FixedChrome - m.updateBarHeight() - 3
 	resultContent := m.renderSearchResults(contentHeight)
 
 	content := lipgloss.JoinVertical(lipgloss.Left,
@@ -663,7 +706,7 @@ func (m *Model) viewCVE() string {
 	tabbar := m.renderTabBar()
 	statusbar := m.renderStatusBar()
 
-	contentHeight := m.Height - FixedChrome - 2
+	contentHeight := m.Height - FixedChrome - m.updateBarHeight() - 2
 	cveContent := m.renderCVETable(contentHeight)
 
 	return lipgloss.JoinVertical(
@@ -786,6 +829,7 @@ func (m *Model) viewError() string {
 	statusbar := m.renderStatusBar()
 
 	errorBox := ErrorBoxStyle.Render("ERROR\n\n" + m.ErrorMessage)
+	_ = m.updateBarHeight() // Ensure update bar height is considered in layout
 
 	content := lipgloss.JoinVertical(
 		lipgloss.Center,

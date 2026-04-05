@@ -8,11 +8,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- New version available notification at bottom of UI (similar to Claude Code)
+  - Asynchronously checks GitHub for latest releases on startup
+  - Platform-aware upgrade instructions (brew for macOS, download link for others)
+  - Gracefully handles network failures
 - Multi-platform distribution (macOS, Linux, Windows)
 - Automated GitHub Actions CI/CD pipeline
 - Homebrew formula for easy macOS installation
 - SECURITY.md for vulnerability reporting policy
 - CHANGELOG.md for version tracking
+
+### Fixed
+- App header displaying duplicate 'v' in version string (was showing "gemtracker vv1.0.0")
 
 ## [1.0.0] - 2026-04-04
 
