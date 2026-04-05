@@ -801,8 +801,12 @@ func (m *Model) updateSearchResults() {
 func (m *Model) clampScrollOffsets() {
 	contentHeight := m.Height - FixedChrome - m.updateBarHeight()
 
+	// Account for header row which reduces available space
+	// renderGemListTable shows: header (1) + gems (contentHeight - 1)
+	availableGemsRows := contentHeight - 1
+
 	// Clamp gem list offset
-	maxOffset := len(m.FirstLevelGems) - contentHeight + 2
+	maxOffset := len(m.FirstLevelGems) - availableGemsRows
 	if maxOffset < 0 {
 		maxOffset = 0
 	}
@@ -810,8 +814,9 @@ func (m *Model) clampScrollOffsets() {
 		m.GemListOffset = maxOffset
 	}
 
-	// Clamp search offset
-	maxSearchOffset := len(m.SearchResults) - contentHeight + 2
+	// Clamp search offset (has title + header lines above results)
+	availableSearchRows := contentHeight - 2
+	maxSearchOffset := len(m.SearchResults) - availableSearchRows
 	if maxSearchOffset < 0 {
 		maxSearchOffset = 0
 	}
@@ -819,8 +824,9 @@ func (m *Model) clampScrollOffsets() {
 		m.SearchOffset = maxSearchOffset
 	}
 
-	// Clamp CVE offset
-	maxCVEOffset := len(m.VulnerableGems) - contentHeight + 2
+	// Clamp CVE offset (has title + header lines above results)
+	availableCVERows := contentHeight - 2
+	maxCVEOffset := len(m.VulnerableGems) - availableCVERows
 	if maxCVEOffset < 0 {
 		maxCVEOffset = 0
 	}
@@ -830,29 +836,35 @@ func (m *Model) clampScrollOffsets() {
 }
 
 func (m *Model) ensureGemListCursorVisible() {
-	contentHeight := m.Height - FixedChrome - m.updateBarHeight() - 2
+	contentHeight := m.Height - FixedChrome - m.updateBarHeight()
+	// renderGemListTable shows: header (1) + gems (contentHeight - 1)
+	availableGemsRows := contentHeight - 1
 	if m.GemListCursor < m.GemListOffset {
 		m.GemListOffset = m.GemListCursor
-	} else if m.GemListCursor >= m.GemListOffset+contentHeight {
-		m.GemListOffset = m.GemListCursor - contentHeight + 1
+	} else if m.GemListCursor >= m.GemListOffset+availableGemsRows {
+		m.GemListOffset = m.GemListCursor - availableGemsRows + 1
 	}
 }
 
 func (m *Model) ensureSearchCursorVisible() {
-	contentHeight := m.Height - FixedChrome - m.updateBarHeight() - 2
+	contentHeight := m.Height - FixedChrome - m.updateBarHeight()
+	// renderSearchResults shows: title (1) + header (1) + results (contentHeight - 2)
+	availableSearchRows := contentHeight - 2
 	if m.SearchCursor < m.SearchOffset {
 		m.SearchOffset = m.SearchCursor
-	} else if m.SearchCursor >= m.SearchOffset+contentHeight {
-		m.SearchOffset = m.SearchCursor - contentHeight + 1
+	} else if m.SearchCursor >= m.SearchOffset+availableSearchRows {
+		m.SearchOffset = m.SearchCursor - availableSearchRows + 1
 	}
 }
 
 func (m *Model) ensureCVECursorVisible() {
-	contentHeight := m.Height - FixedChrome - m.updateBarHeight() - 2
+	contentHeight := m.Height - FixedChrome - m.updateBarHeight()
+	// renderCVETable shows: title (1) + header (1) + results (contentHeight - 2)
+	availableCVERows := contentHeight - 2
 	if m.CVECursor < m.CVEOffset {
 		m.CVEOffset = m.CVECursor
-	} else if m.CVECursor >= m.CVEOffset+contentHeight {
-		m.CVEOffset = m.CVECursor - contentHeight + 1
+	} else if m.CVECursor >= m.CVEOffset+availableCVERows {
+		m.CVEOffset = m.CVECursor - availableCVERows + 1
 	}
 }
 
