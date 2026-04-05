@@ -21,6 +21,35 @@ import (
 var spinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧"}
 
 // ============================================================================
+// Framework Gems
+// ============================================================================
+
+// frameworkGems maps gem names to their framework families
+// Used for categorizing upgradeable gems
+var frameworkGems = map[string]string{
+	// Rails
+	"actioncable":      "rails",
+	"actionmailer":     "rails",
+	"actionpack":       "rails",
+	"actiontext":       "rails",
+	"actionview":       "rails",
+	"activejob":        "rails",
+	"activemodel":      "rails",
+	"activerecord":     "rails",
+	"activestorage":    "rails",
+	"activesupport":    "rails",
+	"railties":         "rails",
+	"activeconfig":     "rails",
+	// Sinatra
+	"sinatra-contrib": "sinatra",
+	"rack-protection": "sinatra",
+	// Hanami
+	"hanami-controller": "hanami",
+	"hanami-view":       "hanami",
+	"hanami-router":     "hanami",
+}
+
+// ============================================================================
 // View Modes
 // ============================================================================
 
@@ -31,6 +60,7 @@ const (
 	ViewGemList
 	ViewGemDetail
 	ViewSearch
+	ViewUpgradeable
 	ViewCVE
 	ViewProjectInfo
 	ViewFilterMenu
@@ -145,6 +175,13 @@ type Model struct {
 	SearchResults []*gemfile.GemStatus
 	SearchCursor  int
 	SearchOffset  int
+
+	// Upgradeable screen state
+	UpgradeableGems           []*gemfile.GemStatus
+	UpgradeableFrameworkGems  []*gemfile.GemStatus
+	UpgradeableTransitiveDeps []*gemfile.GemStatus // Transitive dependency gems that can be upgraded
+	UpgradeableCursor         int
+	UpgradeableOffset         int
 
 	// CVE screen state
 	VulnerableGems []*gemfile.GemStatus
@@ -605,6 +642,65 @@ func (m *Model) clearFilters() {
 // hasActiveFilters returns true if any filters are applied
 func (m *Model) hasActiveFilters() bool {
 	return len(m.SelectedGroups) > 0 || m.ShowOnlyUpgradable
+}
+
+// buildUpgradeableList categorizes outdated gems into first-level, framework, and transitive dependencies
+func (m *Model) buildUpgradeableList() {
+	if m.AnalysisResult == nil {
+		return
+	}
+
+	// Build a set of first-level gem names for quick lookup
+	firstLevelSet := make(map[string]bool)
+	for _, gem := range m.FirstLevelGems {
+		firstLevelSet[gem.Name] = true
+	}
+
+	// Clear the upgradeable lists
+	m.UpgradeableGems = make([]*gemfile.GemStatus, 0)
+	m.UpgradeableFrameworkGems = make([]*gemfile.GemStatus, 0)
+	m.UpgradeableTransitiveDeps = make([]*gemfile.GemStatus, 0)
+
+	// Categorize all outdated gems
+	for _, gs := range m.AnalysisResult.GemStatuses {
+		if !gs.IsOutdated {
+			continue
+		}
+
+		// Check if it's first-level
+		if firstLevelSet[gs.Name] {
+			m.UpgradeableGems = append(m.UpgradeableGems, gs)
+		} else if _, isFramework := frameworkGems[gs.Name]; isFramework {
+			// It's a framework gem
+			m.UpgradeableFrameworkGems = append(m.UpgradeableFrameworkGems, gs)
+		} else {
+			// It's a transitive dependency
+			m.UpgradeableTransitiveDeps = append(m.UpgradeableTransitiveDeps, gs)
+		}
+	}
+
+	// Sort all slices by name
+	sort.Slice(m.UpgradeableGems, func(i, j int) bool {
+		return m.UpgradeableGems[i].Name < m.UpgradeableGems[j].Name
+	})
+	sort.Slice(m.UpgradeableFrameworkGems, func(i, j int) bool {
+		return m.UpgradeableFrameworkGems[i].Name < m.UpgradeableFrameworkGems[j].Name
+	})
+	sort.Slice(m.UpgradeableTransitiveDeps, func(i, j int) bool {
+		return m.UpgradeableTransitiveDeps[i].Name < m.UpgradeableTransitiveDeps[j].Name
+	})
+
+	// Reset cursor if out of bounds
+	if m.UpgradeableCursor >= len(m.allUpgradeableGems()) {
+		m.UpgradeableCursor = 0
+	}
+	m.UpgradeableOffset = 0
+}
+
+// allUpgradeableGems returns a combined slice of all upgradeable gems (first-level + framework + transitive)
+func (m *Model) allUpgradeableGems() []*gemfile.GemStatus {
+	all := append(m.UpgradeableGems, m.UpgradeableFrameworkGems...)
+	return append(all, m.UpgradeableTransitiveDeps...)
 }
 
 // ============================================================================

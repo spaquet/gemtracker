@@ -39,6 +39,8 @@ func (m *Model) View() string {
 		return m.viewGemDetail()
 	case ViewSearch:
 		return m.viewSearch()
+	case ViewUpgradeable:
+		return m.viewUpgradeable()
 	case ViewCVE:
 		return m.viewCVE()
 	case ViewProjectInfo:
@@ -80,14 +82,19 @@ func (m *Model) renderAppHeader() string {
 }
 
 func (m *Model) renderTabBar() string {
-	tabLabels := []string{"Gems", "Search", "CVE", "Project"}
-	tabModes := []ViewMode{ViewGemList, ViewSearch, ViewCVE, ViewProjectInfo}
+	tabLabels := []string{"Gems", "Search", "Updates", "CVE", "Project"}
+	tabModes := []ViewMode{ViewGemList, ViewSearch, ViewUpgradeable, ViewCVE, ViewProjectInfo}
 
 	var tabs []string
 	for i, label := range tabLabels {
 		mode := tabModes[i]
-		// Add CVE count to the CVE label
-		if mode == ViewCVE && len(m.VulnerableGems) > 0 {
+		// Add count badges
+		if mode == ViewUpgradeable {
+			upgradableCount := len(m.UpgradeableGems) + len(m.UpgradeableFrameworkGems) + len(m.UpgradeableTransitiveDeps)
+			if upgradableCount > 0 {
+				label = fmt.Sprintf("%s (%d)", label, upgradableCount)
+			}
+		} else if mode == ViewCVE && len(m.VulnerableGems) > 0 {
 			label = fmt.Sprintf("%s (%d)", label, len(m.VulnerableGems))
 		}
 		if mode == m.ActiveTab {
@@ -110,6 +117,8 @@ func (m *Model) renderStatusBar() string {
 		hints = []string{"esc back", "tab section", "↑↓ navigate", "enter select", "o open url", "q quit"}
 	case ViewSearch:
 		hints = []string{"type search", "↑↓ navigate", "enter select", "esc clear"}
+	case ViewUpgradeable:
+		hints = []string{"↑↓ navigate", "enter select", "tab next", "q quit"}
 	case ViewCVE:
 		hints = []string{"↑↓ navigate", "enter select", "tab next", "q quit"}
 	case ViewProjectInfo:
@@ -929,6 +938,159 @@ func (m *Model) renderSearchResults(height int) string {
 }
 
 // ============================================================================
+// View: Upgradeable
+// ============================================================================
+
+func (m *Model) viewUpgradeable() string {
+	header := m.renderAppHeader()
+	tabbar := m.renderTabBar()
+	statusbar := m.renderStatusBar()
+
+	contentHeight := m.Height - FixedChrome - m.updateBarHeight()
+	upgradeContent := m.renderUpgradeableTable(contentHeight)
+
+	return lipgloss.JoinVertical(
+		lipgloss.Left,
+		header,
+		tabbar,
+		upgradeContent,
+		statusbar,
+	)
+}
+
+func (m *Model) renderUpgradeableTable(height int) string {
+	if height < 1 {
+		height = 1
+	}
+
+	allUpgradeable := m.allUpgradeableGems()
+	if len(allUpgradeable) == 0 {
+		msg := "All gems are up to date! ✓"
+		return lipgloss.NewStyle().
+			Foreground(lipgloss.Color(ColorSuccess)).
+			Bold(true).
+			Padding(2, 2).
+			Render(msg)
+	}
+
+	// Build all visible lines first, then apply offset
+	var allLines []string
+
+	// Title
+	totalUpgradeable := len(m.UpgradeableGems) + len(m.UpgradeableFrameworkGems)
+	title := fmt.Sprintf("Updates Available (%d)", totalUpgradeable)
+	title = lipgloss.NewStyle().Bold(true).Render(title)
+	allLines = append(allLines, title)
+	allLines = append(allLines, "")
+
+	lineIndex := 0 // Track line number for cursor comparison
+
+	// First-level gems section
+	if len(m.UpgradeableGems) > 0 {
+		allLines = append(allLines, lipgloss.NewStyle().
+			Bold(true).
+			Foreground(lipgloss.Color(ColorPrimary)).
+			Render("DIRECT DEPENDENCIES"))
+
+		headerRow := fmt.Sprintf("  %-24s %-11s %-11s %s",
+			"Gem Name", "Installed", "Latest", "")
+		header := TableHeaderStyle.Render(headerRow)
+		allLines = append(allLines, header)
+
+		for _, gem := range m.UpgradeableGems {
+			isSelected := lineIndex == m.UpgradeableCursor
+			row := fmt.Sprintf("  %-24s %-11s %-11s %s",
+				truncateStr(gem.Name, 24),
+				gem.Version,
+				gem.LatestVersion,
+				BadgeOutdatedStyle.Render("↑"),
+			)
+			if isSelected {
+				row = RowSelectedStyle.Render(row)
+			} else {
+				row = RowNormalStyle.Render(row)
+			}
+			allLines = append(allLines, row)
+			lineIndex++
+		}
+		allLines = append(allLines, "")
+		lineIndex++
+	}
+
+	// Framework gems section
+	if len(m.UpgradeableFrameworkGems) > 0 {
+		allLines = append(allLines, lipgloss.NewStyle().
+			Bold(true).
+			Foreground(lipgloss.Color(ColorPrimary)).
+			Render("FRAMEWORK COMPONENTS"))
+
+		headerRow := fmt.Sprintf("  %-24s %-11s %-11s %s",
+			"Gem Name", "Installed", "Latest", "")
+		header := TableHeaderStyle.Render(headerRow)
+		allLines = append(allLines, header)
+
+		for _, gem := range m.UpgradeableFrameworkGems {
+			isSelected := lineIndex == m.UpgradeableCursor
+			row := fmt.Sprintf("  %-24s %-11s %-11s %s",
+				truncateStr(gem.Name, 24),
+				gem.Version,
+				gem.LatestVersion,
+				BadgeOutdatedStyle.Render("↑"),
+			)
+			if isSelected {
+				row = RowSelectedStyle.Render(row)
+			} else {
+				row = RowNormalStyle.Render(row)
+			}
+			allLines = append(allLines, row)
+			lineIndex++
+		}
+		allLines = append(allLines, "")
+		lineIndex++
+	}
+
+	// Transitive dependencies section
+	if len(m.UpgradeableTransitiveDeps) > 0 {
+		allLines = append(allLines, lipgloss.NewStyle().
+			Bold(true).
+			Foreground(lipgloss.Color(ColorPrimary)).
+			Render("TRANSITIVE DEPENDENCIES"))
+
+		headerRow := fmt.Sprintf("  %-24s %-11s %-11s %s",
+			"Gem Name", "Installed", "Latest", "")
+		header := TableHeaderStyle.Render(headerRow)
+		allLines = append(allLines, header)
+
+		for _, gem := range m.UpgradeableTransitiveDeps {
+			isSelected := lineIndex == m.UpgradeableCursor
+			row := fmt.Sprintf("  %-24s %-11s %-11s %s",
+				truncateStr(gem.Name, 24),
+				gem.Version,
+				gem.LatestVersion,
+				BadgeOutdatedStyle.Render("↑"),
+			)
+			if isSelected {
+				row = RowSelectedStyle.Render(row)
+			} else {
+				row = RowNormalStyle.Render(row)
+			}
+			allLines = append(allLines, row)
+			lineIndex++
+		}
+	}
+
+	// Apply offset and return visible lines
+	visibleLines := allLines[m.UpgradeableOffset:]
+
+	// Ensure we have at least height lines
+	for len(visibleLines) < height {
+		visibleLines = append(visibleLines, "")
+	}
+
+	return strings.Join(visibleLines[:height], "\n")
+}
+
+// ============================================================================
 // View: CVE
 // ============================================================================
 
@@ -1284,6 +1446,13 @@ func truncateStr(s string, maxLen int) string {
 		return s[:maxLen-3] + "..."
 	}
 	return s
+}
+
+func pluralizeGem(count int) string {
+	if count == 1 {
+		return "gem"
+	}
+	return "gems"
 }
 
 func extractCVEID(vulnInfo string) string {

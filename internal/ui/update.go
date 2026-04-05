@@ -138,6 +138,9 @@ func (m *Model) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case ViewSearch:
 		return m.handleSearchKeys(msg)
 
+	case ViewUpgradeable:
+		return m.handleUpgradeableKeys(msg)
+
 	case ViewCVE:
 		return m.handleCVEKeys(msg)
 
@@ -324,8 +327,8 @@ func (m *Model) handleGemDetailKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 func (m *Model) handleSearchKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "tab":
-		m.CurrentView = ViewCVE
-		m.ActiveTab = ViewCVE
+		m.CurrentView = ViewUpgradeable
+		m.ActiveTab = ViewUpgradeable
 		return m, nil
 
 	case "shift+tab":
@@ -383,6 +386,54 @@ func (m *Model) handleSearchKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 }
 
+func (m *Model) handleUpgradeableKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "tab":
+		m.CurrentView = ViewCVE
+		m.ActiveTab = ViewCVE
+		return m, nil
+
+	case "shift+tab":
+		m.CurrentView = ViewSearch
+		m.ActiveTab = ViewSearch
+		return m, nil
+
+	case "up":
+		if m.UpgradeableCursor > 0 {
+			m.UpgradeableCursor--
+			m.ensureUpgradeableCursorVisible()
+		}
+		return m, nil
+
+	case "down":
+		allUpgradeable := m.allUpgradeableGems()
+		if m.UpgradeableCursor < len(allUpgradeable)-1 {
+			m.UpgradeableCursor++
+			m.ensureUpgradeableCursorVisible()
+		}
+		return m, nil
+
+	case "enter":
+		allUpgradeable := m.allUpgradeableGems()
+		if len(allUpgradeable) > 0 && m.UpgradeableCursor < len(allUpgradeable) {
+			m.SelectedGem = allUpgradeable[m.UpgradeableCursor]
+			m.CurrentView = ViewGemDetail
+			m.ActiveTab = ViewUpgradeable
+			m.Loading = true
+			m.LoadingMessage = "Loading dependencies..."
+			return m, tea.Batch(
+				tea.Tick(time.Millisecond*100, func(time.Time) tea.Msg {
+					return SpinnerTickMsg{}
+				}),
+				performDependencyAnalysis(m.GemfileLockPath, m.SelectedGem.Name),
+			)
+		}
+		return m, nil
+	}
+
+	return m, nil
+}
+
 func (m *Model) handleCVEKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "tab":
@@ -391,8 +442,8 @@ func (m *Model) handleCVEKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case "shift+tab":
-		m.CurrentView = ViewSearch
-		m.ActiveTab = ViewSearch
+		m.CurrentView = ViewUpgradeable
+		m.ActiveTab = ViewUpgradeable
 		return m, nil
 
 	case "up":
@@ -618,18 +669,18 @@ func (m *Model) handleAnalysisComplete(msg AnalysisCompleteMsg) (tea.Model, tea.
 		m.OutdatedChecker = msg.OutdatedChecker
 	}
 
-	// Start outdated checking for first-level gems
+	// Start outdated checking for all gems (not just first-level)
 	m.OutdatedLoading = true
-	m.OutdatedPending = make([]*gemfile.GemStatus, len(m.FirstLevelGems))
-	copy(m.OutdatedPending, m.FirstLevelGems)
+	m.OutdatedPending = make([]*gemfile.GemStatus, len(msg.Result.GemStatuses))
+	copy(m.OutdatedPending, msg.Result.GemStatuses)
 
 	// Initialize health data loading queue (but don't start fetching yet)
 	// Health checks will start after outdated checking completes to avoid race conditions
 	m.HealthLoading = true
-	m.HealthTotalCount = len(m.FirstLevelGems)
+	m.HealthTotalCount = len(msg.Result.GemStatuses)
 	m.HealthLoadedCount = 0
-	m.HealthPending = make([]*gemfile.GemStatus, len(m.FirstLevelGems))
-	copy(m.HealthPending, m.FirstLevelGems)
+	m.HealthPending = make([]*gemfile.GemStatus, len(msg.Result.GemStatuses))
+	copy(m.HealthPending, msg.Result.GemStatuses)
 
 	return m, fetchNextOutdatedItem(m.OutdatedPending, m.OutdatedChecker)
 }
@@ -764,6 +815,9 @@ func (m *Model) handleOutdatedItem(msg OutdatedItemMsg) (tea.Model, tea.Cmd) {
 func (m *Model) handleOutdatedComplete() (tea.Model, tea.Cmd) {
 	m.OutdatedLoading = false
 
+	// Rebuild the upgradeable gems list with updated outdated status
+	m.buildUpgradeableList()
+
 	// Start health checking now that outdated checker cache is fully populated
 	// This avoids race conditions with the outdated checker
 	if len(m.HealthPending) > 0 {
@@ -865,6 +919,21 @@ func (m *Model) ensureCVECursorVisible() {
 		m.CVEOffset = m.CVECursor
 	} else if m.CVECursor >= m.CVEOffset+availableCVERows {
 		m.CVEOffset = m.CVECursor - availableCVERows + 1
+	}
+}
+
+func (m *Model) ensureUpgradeableCursorVisible() {
+	contentHeight := m.Height - FixedChrome - m.updateBarHeight()
+	// renderUpgradeableTable shows sections with headers, so estimate visible rows as available height
+	// Rough estimate: title (1) + blank line (1) + headers and data
+	availableRows := contentHeight - 4
+	if availableRows < 1 {
+		availableRows = 1
+	}
+	if m.UpgradeableCursor < m.UpgradeableOffset {
+		m.UpgradeableOffset = m.UpgradeableCursor
+	} else if m.UpgradeableCursor >= m.UpgradeableOffset+availableRows {
+		m.UpgradeableOffset = m.UpgradeableCursor - availableRows + 1
 	}
 }
 
