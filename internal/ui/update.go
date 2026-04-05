@@ -86,6 +86,9 @@ func (m *Model) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case ViewCVE:
 		return m.handleCVEKeys(msg)
 
+	case ViewProjectInfo:
+		return m.handleProjectInfoKeys(msg)
+
 	case ViewSelectPath:
 		return m.handlePathInputKeys(msg)
 
@@ -143,8 +146,8 @@ func (m *Model) handleGemListKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case "shift+tab":
-		m.CurrentView = ViewCVE
-		m.ActiveTab = ViewCVE
+		m.CurrentView = ViewProjectInfo
+		m.ActiveTab = ViewProjectInfo
 		return m, nil
 	}
 
@@ -313,8 +316,8 @@ func (m *Model) handleSearchKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 func (m *Model) handleCVEKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "tab":
-		m.CurrentView = ViewGemList
-		m.ActiveTab = ViewGemList
+		m.CurrentView = ViewProjectInfo
+		m.ActiveTab = ViewProjectInfo
 		return m, nil
 
 	case "shift+tab":
@@ -350,6 +353,22 @@ func (m *Model) handleCVEKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				performDependencyAnalysis(m.GemfileLockPath, m.SelectedGem.Name),
 			)
 		}
+		return m, nil
+	}
+
+	return m, nil
+}
+
+func (m *Model) handleProjectInfoKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "tab":
+		m.CurrentView = ViewGemList
+		m.ActiveTab = ViewGemList
+		return m, nil
+
+	case "shift+tab":
+		m.CurrentView = ViewCVE
+		m.ActiveTab = ViewCVE
 		return m, nil
 	}
 
@@ -439,6 +458,23 @@ func (m *Model) handleAnalysisComplete(msg AnalysisCompleteMsg) (tea.Model, tea.
 	sort.Slice(m.VulnerableGems, func(i, j int) bool {
 		return m.VulnerableGems[i].Name < m.VulnerableGems[j].Name
 	})
+
+	// Populate project info fields
+	m.RubyVersion = gemfile.ExtractRubyVersion(m.GemfileLockPath)
+	m.BundleVersion = gemfile.ExtractBundleVersion(m.GemfileLockPath)
+
+	// Parse Gemfile for framework detection
+	gf, err := gemfile.Parse(m.GemfileLockPath)
+	if err == nil {
+		framework, version := gemfile.DetectFramework(gf)
+		m.FrameworkDetected = framework
+		m.RailsVersion = version
+	}
+
+	// Calculate statistics
+	m.TotalGems = len(msg.Result.GemStatuses)
+	m.FirstLevelCount = len(m.FirstLevelGems)
+	m.TransitiveDeps = m.TotalGems - m.FirstLevelCount
 
 	m.GemListCursor = 0
 	m.GemListOffset = 0

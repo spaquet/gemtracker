@@ -29,6 +29,7 @@ const (
 	ViewGemDetail
 	ViewSearch
 	ViewCVE
+	ViewProjectInfo
 	ViewSelectPath
 	ViewError
 )
@@ -98,6 +99,16 @@ type Model struct {
 	VulnerableGems []*gemfile.GemStatus
 	CVECursor      int
 	CVEOffset      int
+
+	// Project Info screen state
+	RubyVersion      string
+	RailsVersion     string
+	BundleVersion    string
+	OtherFramework   string            // For non-Rails projects
+	TotalGems        int
+	FirstLevelCount  int
+	TransitiveDeps   int
+	FrameworkDetected string           // The name of the framework detected
 
 	// Path selection modal
 	PathInput textinput.Model

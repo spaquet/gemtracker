@@ -214,3 +214,105 @@ func (g *Gemfile) LoadGroupsFromGemfile(gemfilePath string) error {
 
 	return nil
 }
+
+// ExtractRubyVersion extracts the Ruby version from Gemfile.lock
+func ExtractRubyVersion(path string) string {
+	// Expand ~ if needed
+	if strings.HasPrefix(path, "~") {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "Unknown"
+		}
+		path = filepath.Join(home, path[1:])
+	}
+
+	// Check if it's a directory, if so look for Gemfile.lock
+	info, err := os.Stat(path)
+	if err != nil {
+		return "Unknown"
+	}
+
+	if info.IsDir() {
+		path = filepath.Join(path, "Gemfile.lock")
+	}
+
+	file, err := os.Open(path)
+	if err != nil {
+		return "Unknown"
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	rubyVersionRegex := regexp.MustCompile(`(?i)^\s*ruby\s+(.+)$`)
+
+	for scanner.Scan() {
+		line := scanner.Text()
+		matches := rubyVersionRegex.FindStringSubmatch(line)
+		if len(matches) > 0 {
+			version := strings.TrimSpace(matches[1])
+			// Remove quotes if present
+			version = strings.Trim(version, "\"'")
+			return version
+		}
+	}
+
+	return "Unknown"
+}
+
+// ExtractBundleVersion extracts the Bundle version from Gemfile.lock
+func ExtractBundleVersion(path string) string {
+	// Expand ~ if needed
+	if strings.HasPrefix(path, "~") {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "Unknown"
+		}
+		path = filepath.Join(home, path[1:])
+	}
+
+	// Check if it's a directory, if so look for Gemfile.lock
+	info, err := os.Stat(path)
+	if err != nil {
+		return "Unknown"
+	}
+
+	if info.IsDir() {
+		path = filepath.Join(path, "Gemfile.lock")
+	}
+
+	file, err := os.Open(path)
+	if err != nil {
+		return "Unknown"
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	prevLine := ""
+
+	for scanner.Scan() {
+		line := scanner.Text()
+
+		// Check if previous line was "BUNDLED WITH"
+		if strings.Contains(strings.ToUpper(prevLine), "BUNDLED WITH") {
+			version := strings.TrimSpace(line)
+			return version
+		}
+
+		prevLine = line
+	}
+
+	return "Unknown"
+}
+
+// DetectFramework detects the primary framework (Rails, Sinatra, etc.) from installed gems
+func DetectFramework(gf *Gemfile) (framework string, version string) {
+	frameworkNames := []string{"rails", "sinatra", "hanami", "roda", "cuba", "grape"}
+
+	for _, name := range frameworkNames {
+		if gem, ok := gf.Gems[name]; ok {
+			return name, gem.Version
+		}
+	}
+
+	return "", ""
+}

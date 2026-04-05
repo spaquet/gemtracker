@@ -40,6 +40,8 @@ func (m *Model) View() string {
 		return m.viewSearch()
 	case ViewCVE:
 		return m.viewCVE()
+	case ViewProjectInfo:
+		return m.viewProjectInfo()
 	case ViewSelectPath:
 		return m.viewSelectPath()
 	case ViewError:
@@ -75,8 +77,8 @@ func (m *Model) renderAppHeader() string {
 }
 
 func (m *Model) renderTabBar() string {
-	tabLabels := []string{"Gems", "Search", "CVE"}
-	tabModes := []ViewMode{ViewGemList, ViewSearch, ViewCVE}
+	tabLabels := []string{"Gems", "Search", "CVE", "Project"}
+	tabModes := []ViewMode{ViewGemList, ViewSearch, ViewCVE, ViewProjectInfo}
 
 	var tabs []string
 	for i, label := range tabLabels {
@@ -107,6 +109,8 @@ func (m *Model) renderStatusBar() string {
 		hints = []string{"type search", "↑↓ navigate", "enter select", "esc clear"}
 	case ViewCVE:
 		hints = []string{"↑↓ navigate", "enter select", "tab next", "q quit"}
+	case ViewProjectInfo:
+		hints = []string{"tab next", "shift+tab prev", "q quit"}
 	case ViewSelectPath:
 		hints = []string{"enter confirm", "esc cancel"}
 	default:
@@ -781,6 +785,102 @@ func (m *Model) renderCVETable(height int) string {
 	}
 
 	return strings.Join(lines[:height], "\n")
+}
+
+// ============================================================================
+// View: Project Info
+// ============================================================================
+
+func (m *Model) viewProjectInfo() string {
+	header := m.renderAppHeader()
+	tabbar := m.renderTabBar()
+	statusbar := m.renderStatusBar()
+
+	contentHeight := m.Height - FixedChrome - m.updateBarHeight() - 2
+	projectContent := m.renderProjectInfo(contentHeight)
+
+	return lipgloss.JoinVertical(
+		lipgloss.Left,
+		header,
+		tabbar,
+		projectContent,
+		statusbar,
+	)
+}
+
+func (m *Model) renderProjectInfo(height int) string {
+	if height < 1 {
+		height = 1
+	}
+
+	title := "Project Information"
+	titleStyle := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color(ColorPrimary))
+
+	// Build info sections
+	var sections []string
+	sections = append(sections, titleStyle.Render(title))
+	sections = append(sections, "")
+
+	// Ruby version
+	sections = append(sections, m.formatInfoLine("Ruby Version", m.RubyVersion))
+
+	// Bundle version
+	sections = append(sections, m.formatInfoLine("Bundle Version", m.BundleVersion))
+
+	// Framework info
+	if m.FrameworkDetected != "" {
+		frameworkLabel := strings.ToTitle(m.FrameworkDetected)
+		sections = append(sections, m.formatInfoLine(frameworkLabel+" Version", m.RailsVersion))
+	}
+
+	// Gem statistics
+	sections = append(sections, "")
+	sections = append(sections, lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color(ColorPrimary)).
+		Render("Statistics"))
+	sections = append(sections, "")
+
+	sections = append(sections, m.formatInfoLine("Total Gems", fmt.Sprintf("%d", m.TotalGems)))
+	sections = append(sections, m.formatInfoLine("Direct Dependencies", fmt.Sprintf("%d", m.FirstLevelCount)))
+	sections = append(sections, m.formatInfoLine("Transitive Dependencies", fmt.Sprintf("%d", m.TransitiveDeps)))
+
+	// Vulnerabilities summary
+	if len(m.VulnerableGems) > 0 {
+		sections = append(sections, "")
+		vulnLabel := fmt.Sprintf("⚠ Vulnerabilities Found (%d)", len(m.VulnerableGems))
+		vulnStyle := lipgloss.NewStyle().
+			Bold(true).
+			Foreground(lipgloss.Color(ColorDanger))
+		sections = append(sections, vulnStyle.Render(vulnLabel))
+	}
+
+	// Padding to fill height
+	content := strings.Join(sections, "\n")
+	lines := strings.Split(content, "\n")
+	for len(lines) < height {
+		lines = append(lines, "")
+	}
+
+	return strings.Join(lines[:height], "\n")
+}
+
+func (m *Model) formatInfoLine(label string, value string) string {
+	if value == "" || value == "Unknown" {
+		value = "—"
+	}
+
+	labelStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color(ColorTextMuted))
+
+	valueStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color(ColorText))
+
+	return fmt.Sprintf("  %s: %s",
+		labelStyle.Render(label),
+		valueStyle.Render(value))
 }
 
 // ============================================================================
