@@ -16,6 +16,7 @@ type GemStatus struct {
 	VulnerabilityInfo string // Detailed vulnerability info
 	HomepageURL       string // Homepage or source code URL
 	Description       string // Gem description from rubygems.org
+	Health            *GemHealth // Gem health data (nil until fetched)
 }
 
 type AnalysisResult struct {

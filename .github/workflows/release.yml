@@ -46,3 +46,17 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+
+      - name: Create Sentry Release
+        run: |
+          VERSION="${GITHUB_REF#refs/tags/}"
+          echo "Creating Sentry release for version: $VERSION"
+          curl -sL https://sentry.io/get-cli/ | bash
+          sentry-cli releases new "$VERSION"
+          sentry-cli releases set-commits "$VERSION" --auto
+          sentry-cli releases finalize "$VERSION"
+          echo "✓ Sentry release created successfully"
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: gemtracker
+          SENTRY_PROJECT: gemtracker-tui

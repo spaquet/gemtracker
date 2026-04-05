@@ -112,6 +112,15 @@ var BadgeOutdatedStyle = lipgloss.NewStyle().
 var BadgeVulnerableStyle = lipgloss.NewStyle().
 	Foreground(lipgloss.Color(ColorDanger))
 
+var BadgeHealthyDotStyle = lipgloss.NewStyle().
+	Foreground(lipgloss.Color(ColorSuccess))
+
+var BadgeWarningDotStyle = lipgloss.NewStyle().
+	Foreground(lipgloss.Color(ColorWarning))
+
+var BadgeCriticalDotStyle = lipgloss.NewStyle().
+	Foreground(lipgloss.Color(ColorDanger))
+
 // ============================================================================
 // Panel/Container Styles
 // ============================================================================

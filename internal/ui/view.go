@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"runtime"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/spaquet/gemtracker/internal/gemfile"
@@ -132,6 +133,14 @@ func (m *Model) renderStatusBar() string {
 	}
 
 	content := strings.Join(rendered, "  ")
+
+	// Add health loading indicator if needed
+	if m.HealthLoading {
+		healthStatus := fmt.Sprintf("  Fetching health... (%d/%d)", m.HealthLoadedCount, m.HealthTotalCount)
+		healthStatusStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(ColorWarning))
+		content = content + "  " + healthStatusStyle.Render(healthStatus)
+	}
+
 	status := StatusBarStyle.Width(m.Width - 4).Render(content)
 
 	// Add update notification bar if a new version is available
@@ -281,8 +290,8 @@ func (m *Model) renderGemListTable(height int) string {
 	}
 
 	// Table header
-	headerRow := fmt.Sprintf("  %-4s %-24s %-11s %-11s %-14s %s",
-		"#", "Gem Name", "Installed", "Latest", "Groups", "Status")
+	headerRow := fmt.Sprintf("  %-4s %-24s %-11s %-11s %-14s %-3s %s",
+		"#", "Gem Name", "Installed", "Latest", "Groups", "H", "Status")
 	header := TableHeaderStyle.Render(headerRow)
 	lines = append(lines, header)
 
@@ -339,15 +348,48 @@ func (m *Model) formatGemListRow(idx int, gem *gemfile.GemStatus, selected bool)
 		groupsDisplay = groupsDisplay[:11] + "..."
 	}
 
+	// Health indicator (only on wide terminals)
+	healthDisplay := ""
+	if m.Width >= 80 {
+		if gem.Health == nil {
+			healthDisplay = "   " // 3 spaces for loading state
+		} else {
+			switch gem.Health.Score {
+			case gemfile.HealthHealthy:
+				healthDisplay = BadgeHealthyDotStyle.Render("●")
+			case gemfile.HealthWarning:
+				healthDisplay = BadgeWarningDotStyle.Render("●")
+			case gemfile.HealthCritical:
+				healthDisplay = BadgeCriticalDotStyle.Render("●")
+			default:
+				healthDisplay = "?"
+			}
+		}
+		healthDisplay = fmt.Sprintf("%-3s", healthDisplay)
+	}
+
 	// Format row
-	row := fmt.Sprintf("  %-4d %-24s %-11s %-11s %-14s %s",
-		idx,
-		truncateStr(gem.Name, 24),
-		gem.Version,
-		latestDisplay,
-		groupsDisplay,
-		status,
-	)
+	var row string
+	if m.Width >= 80 {
+		row = fmt.Sprintf("  %-4d %-24s %-11s %-11s %-14s %s %s",
+			idx,
+			truncateStr(gem.Name, 24),
+			gem.Version,
+			latestDisplay,
+			groupsDisplay,
+			healthDisplay,
+			status,
+		)
+	} else {
+		row = fmt.Sprintf("  %-4d %-24s %-11s %-11s %-14s %s",
+			idx,
+			truncateStr(gem.Name, 24),
+			gem.Version,
+			latestDisplay,
+			groupsDisplay,
+			status,
+		)
+	}
 
 	// Apply selection styling
 	if selected {
@@ -413,6 +455,18 @@ func (m *Model) viewGemDetail() string {
 		gemInfoLines = append(gemInfoLines, descLine)
 	}
 	gemInfoLines = append(gemInfoLines, urlLine)
+
+	// Health section
+	if m.SelectedGem.Health != nil {
+		healthLines := m.renderHealthSection(m.SelectedGem.Health, descMaxLen)
+		gemInfoLines = append(gemInfoLines, healthLines...)
+	} else if m.HealthLoading {
+		healthLine := lipgloss.NewStyle().Foreground(lipgloss.Color(ColorTextMuted)).Render("  Health: ⠙ fetching...")
+		gemInfoLines = append(gemInfoLines, healthLine)
+	} else if m.HealthRateLimited {
+		healthLine := lipgloss.NewStyle().Foreground(lipgloss.Color(ColorWarning)).Render("  Health: — GitHub rate limited")
+		gemInfoLines = append(gemInfoLines, healthLine)
+	}
 
 	// Two panels: forward deps and reverse deps (side by side)
 	panelHeight := contentHeight - len(gemInfoLines) - 1
@@ -660,6 +714,84 @@ func (m *Model) renderTreeNode(node *gemfile.DependencyNode, depth int, lines *[
 	}
 
 	return lineIdx
+}
+
+// ============================================================================
+// Health Section Rendering
+// ============================================================================
+
+func (m *Model) renderHealthSection(health *gemfile.GemHealth, maxLen int) []string {
+	var lines []string
+
+	// Health header with score
+	scoreStr := "●"
+	scoreStyle := BadgeHealthyDotStyle
+	switch health.Score {
+	case gemfile.HealthHealthy:
+		scoreStyle = BadgeHealthyDotStyle
+		scoreStr = "● HEALTHY"
+	case gemfile.HealthWarning:
+		scoreStyle = BadgeWarningDotStyle
+		scoreStr = "● WARNING"
+	case gemfile.HealthCritical:
+		scoreStyle = BadgeCriticalDotStyle
+		scoreStr = "● CRITICAL"
+	default:
+		scoreStr = "? UNKNOWN"
+	}
+
+	healthHeader := "  Health: " + scoreStyle.Render(scoreStr)
+	lines = append(lines, healthHeader)
+
+	// Health details line
+	var details []string
+
+	// Last release time
+	if !health.LastRelease.IsZero() {
+		daysAgo := int(time.Since(health.LastRelease).Hours() / 24)
+		var releaseStr string
+		if daysAgo < 1 {
+			releaseStr = "days ago"
+		} else if daysAgo < 30 {
+			releaseStr = fmt.Sprintf("%d days ago", daysAgo)
+		} else if daysAgo < 365 {
+			releaseStr = fmt.Sprintf("%d months ago", daysAgo/30)
+		} else {
+			releaseStr = fmt.Sprintf("%d years ago", daysAgo/365)
+		}
+		details = append(details, fmt.Sprintf("Last: %s", releaseStr))
+	}
+
+	// Stars
+	if health.Stars > 0 {
+		starsStr := fmt.Sprintf("⭐ %d", health.Stars)
+		details = append(details, starsStr)
+	}
+
+	// Open issues
+	if health.OpenIssues >= 0 {
+		issuesStr := fmt.Sprintf("Issues: %d", health.OpenIssues)
+		details = append(details, issuesStr)
+	}
+
+	// Archived status
+	if health.Archived {
+		details = append(details, "❌ Archived")
+	}
+
+	// Maintainers
+	if health.MaintainerCount > 0 {
+		maintStr := fmt.Sprintf("Maintainers: %d", health.MaintainerCount)
+		details = append(details, maintStr)
+	}
+
+	if len(details) > 0 {
+		detailsStr := "    " + strings.Join(details, "    ")
+		detailsFormatted := lipgloss.NewStyle().Foreground(lipgloss.Color(ColorTextMuted)).Render(detailsStr)
+		lines = append(lines, detailsFormatted)
+	}
+
+	return lines
 }
 
 // ============================================================================

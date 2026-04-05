@@ -77,6 +77,17 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.AnalysisPercentage = msg.Percentage
 		m.LoadingMessage = msg.Message
 		return m, nil
+
+	case HealthItemMsg:
+		return m.handleHealthItem(msg)
+
+	case HealthCompleteMsg:
+		return m.handleHealthComplete()
+
+	case HealthRateLimitedMsg:
+		m.HealthRateLimited = true
+		m.HealthLoading = false
+		return m, nil
 	}
 
 	return m, nil
@@ -588,10 +599,22 @@ func (m *Model) handleAnalysisComplete(msg AnalysisCompleteMsg) (tea.Model, tea.
 	m.GemListOffset = 0
 	m.AnalysisPercentage = 100
 	m.AnalysisStage = "complete"
-	m.LoadingMessage = "Analysis complete - CVE scanning in background..."
+	m.LoadingMessage = "Analysis complete"
 	m.CurrentView = m.ActiveTab
 
-	return m, nil
+	// Store the outdated checker for health data extraction
+	if msg.OutdatedChecker != nil {
+		m.OutdatedChecker = msg.OutdatedChecker
+	}
+
+	// Start health data loading for first-level gems
+	m.HealthLoading = true
+	m.HealthTotalCount = len(m.FirstLevelGems)
+	m.HealthLoadedCount = 0
+	m.HealthPending = make([]*gemfile.GemStatus, len(m.FirstLevelGems))
+	copy(m.HealthPending, m.FirstLevelGems)
+
+	return m, fetchNextHealthItem(m.FirstLevelGems, m.OutdatedChecker)
 }
 
 func (m *Model) handleDependencyComplete(msg DependencyCompleteMsg) (tea.Model, tea.Cmd) {
@@ -615,6 +638,56 @@ func (m *Model) handleDependencyComplete(msg DependencyCompleteMsg) (tea.Model, 
 	m.DetailReverseOffset = 0
 	m.DetailTreeCursor = 0
 	m.CurrentView = ViewGemDetail
+
+	return m, nil
+}
+
+func (m *Model) handleHealthItem(msg HealthItemMsg) (tea.Model, tea.Cmd) {
+	// Find and update the gem with health data
+	for _, gem := range m.FirstLevelGems {
+		if gem.Name == msg.GemName {
+			gem.Health = msg.Health
+			break
+		}
+	}
+	for _, gem := range m.UnfilteredGems {
+		if gem.Name == msg.GemName {
+			gem.Health = msg.Health
+			break
+		}
+	}
+
+	m.HealthLoadedCount++
+
+	// Pop the first pending gem and fetch the next
+	if len(m.HealthPending) > 0 {
+		m.HealthPending = m.HealthPending[1:]
+	}
+
+	if len(m.HealthPending) > 0 {
+		return m, fetchNextHealthItem(m.HealthPending, m.OutdatedChecker)
+	}
+
+	// All gems processed, emit complete message
+	return m, func() tea.Msg { return HealthCompleteMsg{} }
+}
+
+func (m *Model) handleHealthComplete() (tea.Model, tea.Cmd) {
+	m.HealthLoading = false
+
+	// Save health data to cache
+	healthCache := &cache.HealthCacheEntry{
+		Gems:     make(map[string]*gemfile.GemHealth),
+		CachedAt: time.Now(),
+	}
+	for _, gem := range m.FirstLevelGems {
+		if gem.Health != nil {
+			healthCache.Gems[gem.Name] = gem.Health
+		}
+	}
+
+	// Fire-and-forget cache write
+	go cache.WriteHealth(m.GemfileLockPath, healthCache)
 
 	return m, nil
 }
