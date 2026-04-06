@@ -441,6 +441,7 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 - **Want to contribute?** See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines
 - **Code quality requirements?** See [CONTRIBUTING.md — Code Quality](CONTRIBUTING.md#code-quality)
 - **Solo maintainer?** See [SOLO_CONTRIBUTOR_GUIDE.md](SOLO_CONTRIBUTOR_GUIDE.md) for PR workflow
+- **Follow updates?** Check out [@stpaquet](https://x.com/stpaquet) on X for regular updates and discussions about gemtracker
 
 ## Troubleshooting
 
