@@ -239,13 +239,14 @@ type Model struct {
 	NewVersionAvailable string // empty = no update, otherwise holds latest version tag
 	Quitting            bool
 	NoCache             bool // Skip cache and force fresh analysis
+	Verbose             bool // Enable verbose logging
 }
 
 // ============================================================================
 // Initialization
 // ============================================================================
 
-func NewModel(version, commit, date, projectPath string, noCache bool) *Model {
+func NewModel(version, commit, date, projectPath string, noCache, verbose bool) *Model {
 	m := &Model{
 		Version:         version,
 		Commit:          commit,
@@ -256,6 +257,7 @@ func NewModel(version, commit, date, projectPath string, noCache bool) *Model {
 		PathInput:       textinput.New(),
 		SelectedGroups:  make(map[string]bool),
 		NoCache:         noCache,
+		Verbose:         verbose,
 		HealthChecker:   gemfile.NewHealthChecker(),
 		OutdatedChecker: gemfile.NewOutdatedChecker(),
 		HealthPending:   make([]*gemfile.GemStatus, 0),
