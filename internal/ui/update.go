@@ -853,7 +853,10 @@ func (m *Model) updateSearchResults() {
 }
 
 func (m *Model) clampScrollOffsets() {
-	contentHeight := m.Height - FixedChrome - m.updateBarHeight()
+	// Use dynamic statusbar height instead of hardcoded FixedChrome
+	// This ensures offset calculation matches the actual rendered content
+	statusbarHeight := m.statusBarTotalHeight()
+	contentHeight := m.Height - 2 - statusbarHeight
 
 	// Account for header row which reduces available space
 	// renderGemListTable shows: header (1) + gems (contentHeight - 1)
@@ -890,7 +893,10 @@ func (m *Model) clampScrollOffsets() {
 }
 
 func (m *Model) ensureGemListCursorVisible() {
-	contentHeight := m.Height - FixedChrome - m.updateBarHeight()
+	// Use dynamic statusbar height instead of hardcoded FixedChrome
+	// This ensures cursor visibility calculation matches the actual rendered content
+	statusbarHeight := m.statusBarTotalHeight()
+	contentHeight := m.Height - 2 - statusbarHeight
 	// renderGemListTable shows: header (1) + gems (contentHeight - 1)
 	availableGemsRows := contentHeight - 1
 	if m.GemListCursor < m.GemListOffset {

@@ -360,9 +360,13 @@ func (m *Model) viewGemList() string {
 	allLines = append(allLines, m.renderTabBar())
 
 	// Calculate content height: total height minus header, tabbar, and statusbar
-	// Statusbar can be 1 or 2 lines depending on update notification
-	statusbarLines := m.statusBarTotalHeight()
-	contentHeight := m.Height - 2 - statusbarLines
+	// Reserve minimum 1 line for statusbar, but statusBarTotalHeight gives actual needed height
+	statusbarHeight := m.statusBarTotalHeight()
+	// Ensure at least 1 line is reserved for status bar
+	if statusbarHeight < 1 {
+		statusbarHeight = 1
+	}
+	contentHeight := m.Height - 2 - statusbarHeight
 	if contentHeight < 1 {
 		contentHeight = 1
 	}
@@ -371,36 +375,33 @@ func (m *Model) viewGemList() string {
 	gemTableStr := m.renderGemListTable(contentHeight)
 	if gemTableStr != "" {
 		gemListLines := strings.Split(strings.Trim(gemTableStr, "\n"), "\n")
-		// Limit to contentHeight to prevent overflow
-		if len(gemListLines) > contentHeight {
-			gemListLines = gemListLines[:contentHeight]
-		}
+		// Don't limit to contentHeight - if we have more content, let it spill over temporarily
+		// The overflow handling below will trim it properly while preserving statusbar
 		allLines = append(allLines, gemListLines...)
 	}
 
 	// Add status bar (can be multi-line)
 	statusbarContent := m.renderStatusBar()
 	if statusbarContent != "" {
-		statusbarLines2 := strings.Split(strings.Trim(statusbarContent, "\n"), "\n")
+		statusbarLines := strings.Split(strings.Trim(statusbarContent, "\n"), "\n")
 		// Limit statusbar to its expected height
-		if len(statusbarLines2) > statusbarLines {
-			statusbarLines2 = statusbarLines2[:statusbarLines]
+		if len(statusbarLines) > statusbarHeight {
+			statusbarLines = statusbarLines[:statusbarHeight]
 		}
-		allLines = append(allLines, statusbarLines2...)
+		allLines = append(allLines, statusbarLines...)
 	}
 
 	// Ensure we don't exceed terminal height - trim content if needed to preserve statusbar
+	// Only trim if there's significant overflow (more than 1 line) to avoid cutting off last gems
 	if len(allLines) > m.Height {
-		// Preserve last statusbarLines entries (the statusbar)
 		excessLines := len(allLines) - m.Height
-		if excessLines >= len(allLines) {
-			// If removing excess would remove statusbar, trim from content instead
-			contentEndIdx := len(allLines) - statusbarLines
-			if contentEndIdx > 2 { // Keep at least header + tabbar
-				allLines = append(allLines[:2+contentEndIdx-excessLines], allLines[len(allLines)-statusbarLines:]...)
+		// Only trim if overflow is more than 1 line (accounts for small statusbar fluctuations)
+		if excessLines > 1 && len(allLines) > 2+statusbarHeight {
+			gemContentEnd := len(allLines) - statusbarHeight
+			trimPoint := gemContentEnd - (excessLines - 1) // Keep 1 extra line to preserve last gems
+			if trimPoint > 2 {                             // Keep at least header + tabbar
+				allLines = append(allLines[:trimPoint], allLines[gemContentEnd:]...)
 			}
-		} else {
-			allLines = allLines[:m.Height]
 		}
 	}
 
