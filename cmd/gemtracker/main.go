@@ -45,19 +45,40 @@ func main() {
 	showVersion := flag.Bool("v", false, "Show version")
 	flag.BoolVar(showVersion, "version", false, "Show version")
 	noCache := flag.Bool("no-cache", false, "Skip cache and force fresh analysis")
-	flag.Parse()
+
+	// Manually parse arguments to support flags in any position
+	var projectPath string
+	for i := 1; i < len(os.Args); i++ {
+		arg := os.Args[i]
+
+		// Handle flags
+		if arg == "-v" || arg == "--version" {
+			*showVersion = true
+		} else if arg == "--no-cache" {
+			*noCache = true
+		} else if arg == "-h" || arg == "--help" {
+			flag.Usage()
+			os.Exit(0)
+		} else if arg[0:1] == "-" {
+			// Unknown flag
+			fmt.Fprintf(os.Stderr, "Unknown flag: %s\n", arg)
+			flag.Usage()
+			os.Exit(1)
+		} else {
+			// First non-flag argument is the path
+			if projectPath == "" {
+				projectPath = arg
+			}
+		}
+	}
 
 	if *showVersion {
 		printVersion()
 		os.Exit(0)
 	}
 
-	// Get project path from arguments or use current directory
-	var projectPath string
-	args := flag.Args()
-	if len(args) > 0 {
-		projectPath = args[0]
-	} else {
+	// Default to current directory if no path provided
+	if projectPath == "" {
 		projectPath = "."
 	}
 
