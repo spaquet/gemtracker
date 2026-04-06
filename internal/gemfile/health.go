@@ -90,11 +90,11 @@ type githubRepo struct {
 
 // githubGraphQLRepo is the GraphQL response structure for a single repo
 type githubGraphQLRepo struct {
-	PushedAt        string `json:"pushedAt"`
-	StargazerCount  int    `json:"stargazerCount"`
-	IsArchived      bool   `json:"isArchived"`
-	IsDisabled      bool   `json:"isDisabled"`
-	OpenIssues      struct {
+	PushedAt       string `json:"pushedAt"`
+	StargazerCount int    `json:"stargazerCount"`
+	IsArchived     bool   `json:"isArchived"`
+	IsDisabled     bool   `json:"isDisabled"`
+	OpenIssues     struct {
 		TotalCount int `json:"totalCount"`
 	} `json:"openIssues"`
 }

@@ -119,11 +119,11 @@ func TestComputeHealthScore(t *testing.T) {
 
 func TestExtractGitHubOwnerRepo(t *testing.T) {
 	tests := []struct {
-		name        string
-		uri         string
-		wantOwner   string
-		wantRepo    string
-		wantOk      bool
+		name      string
+		uri       string
+		wantOwner string
+		wantRepo  string
+		wantOk    bool
 	}{
 		{
 			name:      "https URL",
