@@ -1,11 +1,14 @@
 package gemfile
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
 	"regexp"
+	"strings"
+	"sync"
 	"time"
 )
 
@@ -46,9 +49,18 @@ type GemHealth struct {
 	FetchedAt       time.Time   `json:"fetched_at"`
 }
 
+// RepoOwnerPair represents a gem and its GitHub owner/repo for batch fetching
+type RepoOwnerPair struct {
+	GemName string
+	Owner   string
+	Repo    string
+}
+
 // HealthChecker fetches health data from RubyGems and GitHub APIs
 type HealthChecker struct {
-	client *http.Client
+	client      *http.Client
+	githubCache map[string]*githubRepo
+	mu          sync.Mutex
 }
 
 // NewHealthChecker creates a new health checker
@@ -57,6 +69,7 @@ func NewHealthChecker() *HealthChecker {
 		client: &http.Client{
 			Timeout: 10 * time.Second,
 		},
+		githubCache: make(map[string]*githubRepo),
 	}
 }
 
@@ -66,13 +79,30 @@ type rubygemsOwner struct {
 	Role   string `json:"role"`
 }
 
-// github repo response struct
+// github repo response struct (REST API)
 type githubRepo struct {
 	StargazersCount int       `json:"stargazers_count"`
 	OpenIssuesCount int       `json:"open_issues_count"`
 	PushedAt        time.Time `json:"pushed_at"`
 	Archived        bool      `json:"archived"`
 	Disabled        bool      `json:"disabled"`
+}
+
+// githubGraphQLRepo is the GraphQL response structure for a single repo
+type githubGraphQLRepo struct {
+	PushedAt       string `json:"pushedAt"`
+	StargazerCount int    `json:"stargazerCount"`
+	IsArchived     bool   `json:"isArchived"`
+	IsDisabled     bool   `json:"isDisabled"`
+	OpenIssues     struct {
+		TotalCount int `json:"totalCount"`
+	} `json:"openIssues"`
+}
+
+// githubGraphQLResponse is the top-level GraphQL response with aliases
+type githubGraphQLResponse struct {
+	Data   map[string]*githubGraphQLRepo `json:"data"`
+	Errors []map[string]interface{}      `json:"errors,omitempty"`
 }
 
 // FetchHealth fetches health data for a gem from RubyGems and GitHub
@@ -98,6 +128,7 @@ func (hc *HealthChecker) FetchHealth(gemName, sourceCodeURI, homepageURI, versio
 	}
 
 	// Fetch GitHub stats if source URI provided, fallback to homepage URI
+	// First check cache (populated by FetchGitHubBatch), then fall back to REST API if available
 	githubURI := sourceCodeURI
 	if githubURI == "" {
 		githubURI = homepageURI
@@ -105,21 +136,172 @@ func (hc *HealthChecker) FetchHealth(gemName, sourceCodeURI, homepageURI, versio
 	if githubURI != "" {
 		owner, repo, ok := ExtractGitHubOwnerRepo(githubURI)
 		if ok {
-			githubHealth, rateLimited := hc.fetchGitHubRepo(owner, repo)
-			if rateLimited {
-				health.RateLimited = true
-			} else if githubHealth != nil {
+			// Check GraphQL batch cache first
+			hc.mu.Lock()
+			key := strings.ToLower(owner + "/" + repo)
+			if githubHealth, cached := hc.githubCache[key]; cached {
+				hc.mu.Unlock()
 				health.GitHubPushedAt = githubHealth.PushedAt
 				health.Stars = githubHealth.StargazersCount
 				health.OpenIssues = githubHealth.OpenIssuesCount
 				health.Archived = githubHealth.Archived
 				health.Disabled = githubHealth.Disabled
+				health.Score = ComputeHealthScore(health)
+				return health, nil
 			}
+			hc.mu.Unlock()
+
+			// If no cache hit and we have a GITHUB_TOKEN, try REST API (fallback)
+			if os.Getenv("GITHUB_TOKEN") != "" {
+				githubHealth, rateLimited := hc.fetchGitHubRepo(owner, repo)
+				if rateLimited {
+					health.RateLimited = true
+				} else if githubHealth != nil {
+					health.GitHubPushedAt = githubHealth.PushedAt
+					health.Stars = githubHealth.StargazersCount
+					health.OpenIssues = githubHealth.OpenIssuesCount
+					health.Archived = githubHealth.Archived
+					health.Disabled = githubHealth.Disabled
+				}
+			}
+			// If no GITHUB_TOKEN, we just skip GitHub data (no error)
 		}
 	}
 
 	health.Score = ComputeHealthScore(health)
 	return health, nil
+}
+
+// FetchGitHubBatch fetches GitHub data for multiple repos in one or more GraphQL requests
+// Uses owner/repo pairs extracted from gem metadata
+// If GITHUB_TOKEN is not set, silently returns nil (GitHub data is optional)
+func (hc *HealthChecker) FetchGitHubBatch(pairs []RepoOwnerPair) error {
+	// If no token, skip GitHub entirely
+	token := os.Getenv("GITHUB_TOKEN")
+	if token == "" {
+		return nil
+	}
+
+	if len(pairs) == 0 {
+		return nil
+	}
+
+	// Batch requests in groups of 50 (GraphQL API limit)
+	batchSize := 50
+	for i := 0; i < len(pairs); i += batchSize {
+		end := i + batchSize
+		if end > len(pairs) {
+			end = len(pairs)
+		}
+
+		batch := pairs[i:end]
+		if err := hc.fetchGitHubBatchGroup(batch, token); err != nil {
+			// Log but don't fail completely - partial data is still useful
+			fmt.Printf("Warning: GitHub batch fetch failed: %v\n", err)
+		}
+	}
+
+	return nil
+}
+
+// fetchGitHubBatchGroup fetches a single batch (up to 50 repos) via GraphQL
+func (hc *HealthChecker) fetchGitHubBatchGroup(pairs []RepoOwnerPair, token string) error {
+	// Build GraphQL query with aliases (r0, r1, ...)
+	var queryBuilder strings.Builder
+	queryBuilder.WriteString("query {")
+	for i, pair := range pairs {
+		alias := fmt.Sprintf("r%d", i)
+		queryBuilder.WriteString(fmt.Sprintf(
+			`%s: repository(owner: "%s", name: "%s") {
+				pushedAt
+				stargazerCount
+				isArchived
+				isDisabled
+				openIssues: issues(states: OPEN) { totalCount }
+			}`,
+			alias, pair.Owner, pair.Repo,
+		))
+	}
+	queryBuilder.WriteString("}")
+
+	query := queryBuilder.String()
+
+	// Execute GraphQL request
+	reqBody := map[string]string{"query": query}
+	bodyBytes, _ := json.Marshal(reqBody)
+
+	req, err := http.NewRequest("POST", "https://api.github.com/graphql", bytes.NewReader(bodyBytes))
+	if err != nil {
+		return err
+	}
+
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := hc.client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	// Handle rate limiting gracefully (don't error, just skip)
+	if resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusTooManyRequests {
+		return fmt.Errorf("github rate limited")
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("github returned status %d", resp.StatusCode)
+	}
+
+	var result githubGraphQLResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return err
+	}
+
+	// Check for GraphQL errors
+	if len(result.Errors) > 0 {
+		// Log but don't fail - some repos may be private or deleted
+		fmt.Printf("Warning: GraphQL errors in batch fetch: %v\n", result.Errors)
+	}
+
+	// Store results in cache (keyed by owner/repo)
+	hc.mu.Lock()
+	defer hc.mu.Unlock()
+
+	for alias, repoData := range result.Data {
+		if repoData == nil {
+			continue
+		}
+
+		// Find the corresponding pair by alias index
+		idx := 0
+		fmt.Sscanf(alias, "r%d", &idx)
+		if idx >= len(pairs) {
+			continue
+		}
+
+		pair := pairs[idx]
+		key := strings.ToLower(pair.Owner + "/" + pair.Repo)
+
+		// Convert GraphQL response to githubRepo struct
+		ghRepo := &githubRepo{
+			StargazersCount: repoData.StargazerCount,
+			OpenIssuesCount: repoData.OpenIssues.TotalCount,
+			Archived:        repoData.IsArchived,
+			Disabled:        repoData.IsDisabled,
+		}
+
+		// Parse pushed_at timestamp
+		if repoData.PushedAt != "" {
+			if t, err := time.Parse(time.RFC3339, repoData.PushedAt); err == nil {
+				ghRepo.PushedAt = t
+			}
+		}
+
+		hc.githubCache[key] = ghRepo
+	}
+
+	return nil
 }
 
 // fetchRubyGemsOwners returns the count of gem owners

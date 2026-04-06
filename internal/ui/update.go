@@ -86,6 +86,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case HealthCompleteMsg:
 		return m.handleHealthComplete()
 
+	case GitHubBatchCompleteMsg:
+		return m.handleGitHubBatchComplete(msg)
+
 	case HealthRateLimitedMsg:
 		m.HealthRateLimited = true
 		m.HealthLoading = false
@@ -222,6 +225,38 @@ func (m *Model) handleGemListKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "f":
 		m.CurrentView = ViewFilterMenu
 		return m, nil
+
+	case "r":
+		// Manual health refresh (issue #28)
+		if m.HealthLoading || m.OutdatedLoading {
+			// Don't start another refresh while already loading
+			return m, nil
+		}
+
+		// Clear all health data
+		for _, gem := range m.UnfilteredGems {
+			gem.Health = nil
+		}
+		for _, gem := range m.FirstLevelGems {
+			gem.Health = nil
+		}
+		for _, gem := range m.AnalysisResult.GemStatuses {
+			gem.Health = nil
+		}
+
+		// Reset health loading state
+		m.HealthPending = make([]*gemfile.GemStatus, len(m.AnalysisResult.GemStatuses))
+		copy(m.HealthPending, m.AnalysisResult.GemStatuses)
+		m.HealthLoadedCount = 0
+		m.HealthTotalCount = len(m.HealthPending)
+		m.HealthLoading = true
+		m.HealthRateLimited = false
+
+		// Clear the on-disk health cache
+		cache.ClearHealth(m.GemfileLockPath)
+
+		// Start GitHub batch fetch
+		return m, fetchGitHubBatchHealth(m.AnalysisResult.GemStatuses, m.OutdatedChecker, m.HealthChecker)
 	}
 
 	return m, nil
@@ -682,6 +717,37 @@ func (m *Model) handleAnalysisComplete(msg AnalysisCompleteMsg) (tea.Model, tea.
 	m.HealthPending = make([]*gemfile.GemStatus, len(msg.Result.GemStatuses))
 	copy(m.HealthPending, msg.Result.GemStatuses)
 
+	// Try to load health data from cache first (fixes issue #29 - dots disappearing on tab switch)
+	if healthCache, err := cache.ReadHealth(m.GemfileLockPath); err == nil {
+		remaining := m.HealthPending[:0]
+		for _, gem := range m.HealthPending {
+			if cached, ok := healthCache.Gems[gem.Name]; ok && cached != nil {
+				gem.Health = cached
+				m.HealthLoadedCount++
+			} else {
+				remaining = append(remaining, gem)
+			}
+		}
+		m.HealthPending = remaining
+
+		// Also set on UnfilteredGems and FirstLevelGems for consistency
+		for _, gem := range m.UnfilteredGems {
+			if cached, ok := healthCache.Gems[gem.Name]; ok && cached != nil && gem.Health == nil {
+				gem.Health = cached
+			}
+		}
+		for _, gem := range m.FirstLevelGems {
+			if cached, ok := healthCache.Gems[gem.Name]; ok && cached != nil && gem.Health == nil {
+				gem.Health = cached
+			}
+		}
+
+		// If all gems loaded from cache, stop health loading now
+		if m.HealthLoadedCount == m.HealthTotalCount {
+			m.HealthLoading = false
+		}
+	}
+
 	return m, fetchNextOutdatedItem(m.OutdatedPending, m.OutdatedChecker)
 }
 
@@ -711,13 +777,23 @@ func (m *Model) handleDependencyComplete(msg DependencyCompleteMsg) (tea.Model, 
 }
 
 func (m *Model) handleHealthItem(msg HealthItemMsg) (tea.Model, tea.Cmd) {
-	// Report error to Sentry if health check failed
-	if msg.Error != nil {
+	// Report error to Sentry if health check failed (but skip rate limit errors - they're expected)
+	if msg.Error != nil && !isRateLimited(msg.Error) {
 		err := fmt.Errorf("failed to fetch health for gem %q: %w", msg.GemName, msg.Error)
 		telemetry.CaptureException(err, sentry.LevelError)
 	}
 
 	// Find and update the gem with health data
+	// If health is nil due to rate limit, still set it (with RateLimited flag)
+	if msg.Health == nil && msg.Error != nil && isRateLimited(msg.Error) {
+		msg.Health = &gemfile.GemHealth{
+			Score:       gemfile.HealthUnknown,
+			RateLimited: true,
+			FetchedAt:   time.Now(),
+		}
+	}
+
+	// Update all gem lists
 	for _, gem := range m.FirstLevelGems {
 		if gem.Name == msg.GemName {
 			gem.Health = msg.Health
@@ -725,6 +801,12 @@ func (m *Model) handleHealthItem(msg HealthItemMsg) (tea.Model, tea.Cmd) {
 		}
 	}
 	for _, gem := range m.UnfilteredGems {
+		if gem.Name == msg.GemName {
+			gem.Health = msg.Health
+			break
+		}
+	}
+	for _, gem := range m.AnalysisResult.GemStatuses {
 		if gem.Name == msg.GemName {
 			gem.Health = msg.Health
 			break
@@ -746,15 +828,27 @@ func (m *Model) handleHealthItem(msg HealthItemMsg) (tea.Model, tea.Cmd) {
 	return m, func() tea.Msg { return HealthCompleteMsg{} }
 }
 
+func (m *Model) handleGitHubBatchComplete(msg GitHubBatchCompleteMsg) (tea.Model, tea.Cmd) {
+	// GitHub batch fetch completed (or was skipped if no token)
+	// Now start fetching per-gem data (RubyGems owners)
+	if len(m.HealthPending) > 0 {
+		return m, fetchNextHealthItem(m.HealthPending, m.HealthChecker, m.OutdatedChecker)
+	}
+
+	// All health data already loaded from cache
+	m.HealthLoading = false
+	return m, nil
+}
+
 func (m *Model) handleHealthComplete() (tea.Model, tea.Cmd) {
 	m.HealthLoading = false
 
-	// Save health data to cache
+	// Save health data to cache (including all gems, not just first-level)
 	healthCache := &cache.HealthCacheEntry{
 		Gems:     make(map[string]*gemfile.GemHealth),
 		CachedAt: time.Now(),
 	}
-	for _, gem := range m.FirstLevelGems {
+	for _, gem := range m.AnalysisResult.GemStatuses {
 		if gem.Health != nil {
 			healthCache.Gems[gem.Name] = gem.Health
 		}
@@ -818,10 +912,11 @@ func (m *Model) handleOutdatedComplete() (tea.Model, tea.Cmd) {
 	// Rebuild the upgradeable gems list with updated outdated status
 	m.buildUpgradeableList()
 
-	// Start health checking now that outdated checker cache is fully populated
-	// This avoids race conditions with the outdated checker
+	// Start GitHub batch fetch first (collects all repos and fetches in one GraphQL call)
+	// Then health checking will continue after batch complete
 	if len(m.HealthPending) > 0 {
-		return m, fetchNextHealthItem(m.HealthPending, m.HealthChecker, m.OutdatedChecker)
+		// Use all gems (not just pending) to collect all unique GitHub repos for batching
+		return m, fetchGitHubBatchHealth(m.AnalysisResult.GemStatuses, m.OutdatedChecker, m.HealthChecker)
 	}
 
 	return m, nil

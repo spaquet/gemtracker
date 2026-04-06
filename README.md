@@ -244,6 +244,100 @@ rm ~/.cache/gemtracker/Gemfile.lock_*.json
    - Filter by gem in [Search] tab
    - Check if vulnerable gems are in production
 
+## GitHub API Rate Limits & GITHUB_TOKEN
+
+### How gemtracker Uses GitHub
+
+gemtracker fetches repository metadata (push date, stars, issues, archive status) from GitHub to assess gem health. This requires API calls, which have rate limits:
+
+| Scenario | Rate Limit | Requests Needed |
+|----------|-----------|-----------------|
+| Without token | 60 requests/hour | Up to 189+ (one per gem) |
+| With GITHUB_TOKEN | 5,000 requests/hour | 1-2 (batched GraphQL) |
+
+**For projects with 100+ gems, a token is highly recommended** to avoid hitting rate limits.
+
+### Creating a GITHUB_TOKEN (Fine-Grained)
+
+GitHub recommends **fine-grained personal access tokens** over classic tokens. They're more secure and easier to manage.
+
+**Steps:**
+
+1. Go to [GitHub Settings → Personal Access Tokens → Fine-grained tokens](https://github.com/settings/personal-access-tokens)
+   - Or: Click your profile → Settings → Developer settings → Personal access tokens → Fine-grained tokens
+
+2. Click **"Generate new token"**
+
+3. Configure the token:
+   - **Token name**: `gemtracker` (or any descriptive name)
+   - **Expiration**: Choose 30/60/90 days or non-expiring (for regular use)
+   - **Resource owner**: Your GitHub account (or organization if using org repos)
+   - **Repository access**: Select **"Public Repositories (read-only)"**
+     - gemtracker only needs to read public repository metadata, not write
+
+4. **Permissions**: Leave all permissions unchecked
+   - Public repository metadata is accessible without explicit permissions
+   - No additional scopes needed
+
+5. Click **"Generate token"** and copy the token (you'll only see it once!)
+
+6. **Store safely**:
+   - Don't commit to git or share
+   - Keep in a secure password manager
+   - You can revoke it anytime at the same URL
+
+### Using GITHUB_TOKEN
+
+Set the token as an environment variable before running gemtracker:
+
+**macOS/Linux:**
+```bash
+export GITHUB_TOKEN="github_pat_xxxxxxxxxxxx"
+gemtracker
+```
+
+**Persistent (add to your shell profile):**
+```bash
+# Add to ~/.zshrc, ~/.bashrc, or ~/.bash_profile
+export GITHUB_TOKEN="github_pat_xxxxxxxxxxxx"
+```
+
+Then reload:
+```bash
+source ~/.zshrc  # or ~/.bashrc
+```
+
+**Windows (PowerShell):**
+```powershell
+$env:GITHUB_TOKEN = "github_pat_xxxxxxxxxxxx"
+gemtracker
+```
+
+**Verify it's working:**
+```bash
+# Check if token is set
+echo $GITHUB_TOKEN
+
+# Run gemtracker - health check should now fetch GitHub data much faster
+gemtracker
+```
+
+### Security Notes
+
+- **Fine-grained tokens** limit access to public repos only (safer than classic tokens)
+- **No write permissions** needed - token can only read repository metadata
+- **Automatic expiration** - GitHub automatically removes unused tokens after 1 year
+- **Easy to revoke** - Delete token anytime from GitHub Settings
+- **Never commit** - Keep out of git repositories and config files
+
+### If You Hit Rate Limits
+
+Even with a token, rate limits can be hit if analyzing very large projects (500+ gems) rapidly. If this happens:
+
+- Wait 1 hour for limits to reset
+- Or reduce analysis frequency (health data is cached for 12 days)
+- Or spread analysis across multiple sessions
+
 ## Optional: Error Tracking with Sentry
 
 gemtracker includes **optional** error tracking via Sentry to help improve reliability:
@@ -436,11 +530,11 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 ## Support & Contributing
 
-- **Questions?** Open a [discussion](https://github.com/spaquet/gemtracker/discussions)
 - **Found a bug?** Open an [issue](https://github.com/spaquet/gemtracker/issues)
+- **Feature request?** Open a [request](https://github.com/spaquet/gemtracker/issues)
 - **Want to contribute?** See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines
 - **Code quality requirements?** See [CONTRIBUTING.md — Code Quality](CONTRIBUTING.md#code-quality)
-- **Solo maintainer?** See [SOLO_CONTRIBUTOR_GUIDE.md](SOLO_CONTRIBUTOR_GUIDE.md) for PR workflow
+- **Follow updates?** Check out [@stpaquet](https://x.com/stpaquet) on X
 
 ## Troubleshooting
 
