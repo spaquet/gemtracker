@@ -1,6 +1,7 @@
 package gemfile
 
 import (
+	"os"
 	"strings"
 	"testing"
 )
@@ -336,7 +337,13 @@ func TestAnalyze_GroupsPreserved(t *testing.T) {
 
 func TestAnalyze_ListopiaGemfile(t *testing.T) {
 	// Test parsing and analyzing the listopia Gemfile.lock
-	gf, err := Parse("/Users/spaquet/Sites/listopia/Gemfile.lock")
+	// Skip if file doesn't exist (common in CI/different machines)
+	listopiaPath := "/Users/spaquet/Sites/listopia/Gemfile.lock"
+	if _, err := os.Stat(listopiaPath); err != nil {
+		t.Skipf("Skipping listopia test - file not found at %s", listopiaPath)
+	}
+
+	gf, err := Parse(listopiaPath)
 	if err != nil {
 		t.Fatalf("Failed to parse listopia Gemfile.lock: %v", err)
 	}
