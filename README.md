@@ -414,11 +414,8 @@ Once gemtracker has stable releases, we plan to submit it to [homebrew/homebrew-
 ## Documentation
 
 - **[CONTRIBUTING.md](CONTRIBUTING.md)** — How to contribute and code quality requirements
-- **[SOLO_CONTRIBUTOR_GUIDE.md](SOLO_CONTRIBUTOR_GUIDE.md)** — How to work with branch protection as a solo maintainer
 - **[CHANGELOG.md](CHANGELOG.md)** — Version history and what's new in each release
 - **[RELEASE_GUIDE.md](RELEASE_GUIDE.md)** — How to make releases and manage the distribution pipeline
-- **[DISTRIBUTION_SETUP.md](DISTRIBUTION_SETUP.md)** — GitHub setup instructions for distribution
-- **[BRANCH_PROTECTION_SETUP.md](BRANCH_PROTECTION_SETUP.md)** — GitHub branch protection configuration
 - **[SECURITY.md](SECURITY.md)** — Security policy and vulnerability reporting
 - **[CLAUDE.md](CLAUDE.md)** — Development guidelines for contributors
 
@@ -436,11 +433,10 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 ## Support & Contributing
 
-- **Questions?** Open a [discussion](https://github.com/spaquet/gemtracker/discussions)
+- **Feature request?** Open a [request](https://github.com/spaquet/gemtracker/issues)
 - **Found a bug?** Open an [issue](https://github.com/spaquet/gemtracker/issues)
 - **Want to contribute?** See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines
 - **Code quality requirements?** See [CONTRIBUTING.md — Code Quality](CONTRIBUTING.md#code-quality)
-- **Solo maintainer?** See [SOLO_CONTRIBUTOR_GUIDE.md](SOLO_CONTRIBUTOR_GUIDE.md) for PR workflow
 
 ## Troubleshooting
 
