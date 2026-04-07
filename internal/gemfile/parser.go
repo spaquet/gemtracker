@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+
+	"github.com/spaquet/gemtracker/internal/logger"
 )
 
 type Gem struct {
@@ -21,6 +23,34 @@ type Gemfile struct {
 	Path           string
 	Gems           map[string]*Gem
 	FirstLevelGems []string // Names of gems listed in DEPENDENCIES section
+}
+
+// FindLockFile searches for a lock file in the given directory.
+// It probes in priority order: gems.locked, Gemfile.lock
+// Returns the filename if found, empty string otherwise.
+func FindLockFile(dir string) string {
+	candidates := []string{"gems.locked", "Gemfile.lock"}
+	for _, filename := range candidates {
+		path := filepath.Join(dir, filename)
+		if _, err := os.Stat(path); err == nil {
+			return path
+		}
+	}
+	return ""
+}
+
+// FindGemfile searches for a Gemfile in the given directory.
+// It probes in priority order: gems.rb, Gemfile
+// Returns the filename if found, empty string otherwise.
+func FindGemfile(dir string) string {
+	candidates := []string{"gems.rb", "Gemfile"}
+	for _, filename := range candidates {
+		path := filepath.Join(dir, filename)
+		if _, err := os.Stat(path); err == nil {
+			return path
+		}
+	}
+	return ""
 }
 
 func Parse(path string) (*Gemfile, error) {
@@ -40,13 +70,20 @@ func Parse(path string) (*Gemfile, error) {
 	}
 
 	if info.IsDir() {
-		path = filepath.Join(path, "Gemfile.lock")
+		lockFile := FindLockFile(path)
+		if lockFile == "" {
+			logger.Warn("No lock file found (gems.locked or Gemfile.lock) in %s", path)
+			return nil, fmt.Errorf("no lock file found (gems.locked or Gemfile.lock) in %s", path)
+		}
+		path = lockFile
+		logger.Info("Using lock file: %s", filepath.Base(lockFile))
 	}
 
 	// Read the file
 	file, err := os.Open(path)
 	if err != nil {
-		return nil, fmt.Errorf("failed to open Gemfile.lock: %w", err)
+		logger.Error("Failed to open lock file %s: %v", path, err)
+		return nil, fmt.Errorf("failed to open lock file: %w", err)
 	}
 	defer file.Close()
 
@@ -144,9 +181,11 @@ func Parse(path string) (*Gemfile, error) {
 	}
 
 	if err := scanner.Err(); err != nil {
+		logger.Error("Error reading lock file: %v", err)
 		return nil, fmt.Errorf("error reading file: %w", err)
 	}
 
+	logger.Info("Successfully parsed lock file: %d total gems, %d first-level", len(gf.Gems), len(gf.FirstLevelGems))
 	return gf, nil
 }
 
@@ -182,7 +221,11 @@ func (g *Gemfile) LoadGroupsFromGemfile(gemfilePath string) error {
 	}
 
 	if info.IsDir() {
-		gemfilePath = filepath.Join(gemfilePath, "Gemfile")
+		gemfilePath = FindGemfile(gemfilePath)
+		if gemfilePath == "" {
+			// No Gemfile found, which is okay - just return
+			return nil
+		}
 	}
 
 	// Try to read the Gemfile
@@ -270,7 +313,11 @@ func ExtractRubyVersion(path string) string {
 	}
 
 	if info.IsDir() {
-		path = filepath.Join(path, "Gemfile.lock")
+		lockFile := FindLockFile(path)
+		if lockFile == "" {
+			return "Unknown"
+		}
+		path = lockFile
 	}
 
 	file, err := os.Open(path)
@@ -314,7 +361,11 @@ func ExtractBundleVersion(path string) string {
 	}
 
 	if info.IsDir() {
-		path = filepath.Join(path, "Gemfile.lock")
+		lockFile := FindLockFile(path)
+		if lockFile == "" {
+			return "Unknown"
+		}
+		path = lockFile
 	}
 
 	file, err := os.Open(path)
