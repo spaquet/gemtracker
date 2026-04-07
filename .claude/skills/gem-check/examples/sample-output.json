@@ -1,0 +1,132 @@
+{
+  "generated_at": "2026-04-07T14:30:00Z",
+  "project_path": "/home/dev/my-rails-app",
+  "summary": {
+    "total_gems": 189,
+    "first_level_gems": 63,
+    "outdated_count": 23,
+    "vulnerable_count": 2
+  },
+  "gems": [
+    {
+      "Name": "rails",
+      "Version": "7.0.0",
+      "Groups": ["default"],
+      "IsFirstLevel": true,
+      "IsOutdated": true,
+      "LatestVersion": "8.1.3",
+      "IsVulnerable": false,
+      "VulnerabilityInfo": "",
+      "HomepageURL": "https://rubyonrails.org",
+      "Description": "Web development framework for Ruby"
+    },
+    {
+      "Name": "devise",
+      "Version": "4.8.0",
+      "Groups": ["default"],
+      "IsFirstLevel": true,
+      "IsOutdated": true,
+      "LatestVersion": "4.9.3",
+      "IsVulnerable": false,
+      "VulnerabilityInfo": "",
+      "HomepageURL": "https://github.com/heartcombo/devise",
+      "Description": "Flexible authentication solution for Rails"
+    },
+    {
+      "Name": "rack",
+      "Version": "2.1.2",
+      "Groups": ["default"],
+      "IsFirstLevel": false,
+      "IsOutdated": true,
+      "LatestVersion": "3.0.8",
+      "IsVulnerable": true,
+      "VulnerabilityInfo": "CVE-2021-22942: HTTP request smuggling",
+      "HomepageURL": "https://github.com/rack/rack",
+      "Description": "A modular Ruby web server interface"
+    },
+    {
+      "Name": "jwt",
+      "Version": "2.3.0",
+      "Groups": ["default"],
+      "IsFirstLevel": true,
+      "IsOutdated": true,
+      "LatestVersion": "2.8.1",
+      "IsVulnerable": true,
+      "VulnerabilityInfo": "CVE-2022-1234: Algorithm confusion in JWT validation",
+      "HomepageURL": "https://github.com/jwt/ruby-jwt",
+      "Description": "JSON Web Token implementation in Ruby"
+    },
+    {
+      "Name": "pg",
+      "Version": "1.3.0",
+      "Groups": ["default"],
+      "IsFirstLevel": true,
+      "IsOutdated": true,
+      "LatestVersion": "1.5.4",
+      "IsVulnerable": false,
+      "VulnerabilityInfo": "",
+      "HomepageURL": "https://github.com/ged/ruby-pg",
+      "Description": "PostgreSQL library for Ruby"
+    },
+    {
+      "Name": "rspec",
+      "Version": "3.10.0",
+      "Groups": ["development", "test"],
+      "IsFirstLevel": true,
+      "IsOutdated": true,
+      "LatestVersion": "3.13.0",
+      "IsVulnerable": false,
+      "VulnerabilityInfo": "",
+      "HomepageURL": "https://github.com/rspec/rspec",
+      "Description": "Testing tool for Ruby"
+    },
+    {
+      "Name": "pry",
+      "Version": "0.14.0",
+      "Groups": ["development"],
+      "IsFirstLevel": true,
+      "IsOutdated": true,
+      "LatestVersion": "0.14.2",
+      "IsVulnerable": false,
+      "VulnerabilityInfo": "",
+      "HomepageURL": "https://github.com/pry/pry",
+      "Description": "Interactive Ruby shell"
+    },
+    {
+      "Name": "bundler",
+      "Version": "2.1.0",
+      "Groups": ["default"],
+      "IsFirstLevel": false,
+      "IsOutdated": true,
+      "LatestVersion": "2.5.1",
+      "IsVulnerable": false,
+      "VulnerabilityInfo": "",
+      "HomepageURL": "https://bundler.io",
+      "Description": "The Ruby dependency manager"
+    },
+    {
+      "Name": "json",
+      "Version": "2.6.0",
+      "Groups": ["default"],
+      "IsFirstLevel": false,
+      "IsOutdated": true,
+      "LatestVersion": "2.6.3",
+      "IsVulnerable": false,
+      "VulnerabilityInfo": "",
+      "HomepageURL": "https://github.com/flori/json",
+      "Description": "JSON implementation for Ruby"
+    },
+    {
+      "Name": "thin",
+      "Version": "1.8.1",
+      "Groups": ["development"],
+      "IsFirstLevel": true,
+      "IsOutdated": false,
+      "LatestVersion": "1.8.1",
+      "IsVulnerable": false,
+      "VulnerabilityInfo": "",
+      "HomepageURL": "https://github.com/macournoyer/thin",
+      "Description": "Fast and simple Ruby web server"
+    }
+  ]
+}
