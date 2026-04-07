@@ -12,27 +12,41 @@ import (
 	"github.com/spaquet/gemtracker/internal/logger"
 )
 
-// RubygemeInfo represents gem data from rubygems.org API
+// RubygemeInfo represents gem metadata from the rubygems.org API.
 type RubygemeInfo struct {
-	Version          string `json:"version"`
+	// Version is the latest available version of the gem
+	Version string `json:"version"`
+	// VersionCreatedAt is the timestamp when the latest version was released
 	VersionCreatedAt string `json:"version_created_at"`
-	HomepageURI      string `json:"homepage_uri"`
-	SourceCodeURI    string `json:"source_code_uri"`
-	Info             string `json:"info"`
+	// HomepageURI is the gem's official homepage URL
+	HomepageURI string `json:"homepage_uri"`
+	// SourceCodeURI is the source code repository URL
+	SourceCodeURI string `json:"source_code_uri"`
+	// Info is the gem's description
+	Info string `json:"info"`
 }
 
-// OutdatedChecker checks if gems are outdated by querying rubygems.org
+// OutdatedChecker checks if gems have newer versions available and fetches gem metadata
+// from the rubygems.org API. It caches all results to minimize API calls.
 type OutdatedChecker struct {
-	client            *http.Client
-	mu                sync.Mutex        // protects all maps below
-	cache             map[string]string // gem name -> latest version
-	homepages         map[string]string // gem name -> homepage URL
-	descriptions      map[string]string // gem name -> description
-	sourceCodeURIs    map[string]string // gem name -> source code URI
-	versionCreatedAts map[string]string // gem name -> version created at
+	// client is the HTTP client used for API requests
+	client *http.Client
+	// mu protects all maps below
+	mu sync.Mutex
+	// cache maps gem names to their latest available versions
+	cache map[string]string
+	// homepages maps gem names to their homepage URLs
+	homepages map[string]string
+	// descriptions maps gem names to their gem descriptions
+	descriptions map[string]string
+	// sourceCodeURIs maps gem names to source code repository URLs
+	sourceCodeURIs map[string]string
+	// versionCreatedAts maps gem names to the release timestamp of the latest version
+	versionCreatedAts map[string]string
 }
 
-// NewOutdatedChecker creates a new checker with HTTP client
+// NewOutdatedChecker creates a new OutdatedChecker with a 10-second HTTP timeout
+// and empty caches for gem metadata.
 func NewOutdatedChecker() *OutdatedChecker {
 	return &OutdatedChecker{
 		client: &http.Client{
@@ -46,7 +60,9 @@ func NewOutdatedChecker() *OutdatedChecker {
 	}
 }
 
-// IsOutdated checks if a gem version is outdated and returns the latest version and any error
+// IsOutdated checks if a gem has a newer version available. It handles platform suffixes
+// and pre-release versions correctly (e.g., "1.6.3-x86_64-linux" is compared as "1.6.3").
+// Returns (isOutdated, latestVersion, error).
 func (oc *OutdatedChecker) IsOutdated(gemName, currentVersion string) (bool, string, error) {
 	// Get latest version from cache or API
 	latestVersion, err := oc.getLatestVersion(gemName)
@@ -65,7 +81,9 @@ func (oc *OutdatedChecker) IsOutdated(gemName, currentVersion string) (bool, str
 	return isOutdated, latestVersion, nil
 }
 
-// getLatestVersion fetches the latest version of a gem from rubygems.org
+// getLatestVersion fetches the latest version and metadata for a gem from the rubygems.org API.
+// It caches all results, so subsequent calls for the same gem are instant. Returns an error
+// if the gem is not found or if the API request fails.
 func (oc *OutdatedChecker) getLatestVersion(gemName string) (string, error) {
 	// Check cache first (with lock)
 	oc.mu.Lock()
@@ -125,7 +143,8 @@ func (oc *OutdatedChecker) getLatestVersion(gemName string) (string, error) {
 	return info.Version, nil
 }
 
-// GetHomepage returns the homepage URL for a gem, using cached data or fetching if needed
+// GetHomepage returns the homepage URL for a gem from cache or fetches it if not cached.
+// Returns a fallback URL to rubygems.org if no homepage is available.
 func (oc *OutdatedChecker) GetHomepage(gemName string) string {
 	// If we have it cached, return it
 	oc.mu.Lock()
@@ -152,7 +171,8 @@ func (oc *OutdatedChecker) GetHomepage(gemName string) string {
 	return fmt.Sprintf("https://rubygems.org/gems/%s", gemName)
 }
 
-// GetDescription returns the description for a gem, using cached data or fetching if needed
+// GetDescription returns the gem's description from cache or fetches it if not cached.
+// Returns an empty string if no description is available.
 func (oc *OutdatedChecker) GetDescription(gemName string) string {
 	// If we have it cached, return it
 	oc.mu.Lock()
@@ -178,7 +198,8 @@ func (oc *OutdatedChecker) GetDescription(gemName string) string {
 	return ""
 }
 
-// GetSourceCodeURI returns the source code URI for a gem, using cached data or fetching if needed
+// GetSourceCodeURI returns the source code repository URL for a gem from cache or fetches it if not cached.
+// Returns an empty string if no source code URI is available.
 func (oc *OutdatedChecker) GetSourceCodeURI(gemName string) string {
 	// If we have it cached, return it
 	oc.mu.Lock()
@@ -204,7 +225,8 @@ func (oc *OutdatedChecker) GetSourceCodeURI(gemName string) string {
 	return ""
 }
 
-// GetVersionCreatedAt returns the version created at timestamp for a gem, using cached data or fetching if needed
+// GetVersionCreatedAt returns the release timestamp of the latest version from cache or fetches it if not cached.
+// Returns an empty string if the timestamp is not available.
 func (oc *OutdatedChecker) GetVersionCreatedAt(gemName string) string {
 	// If we have it cached, return it
 	oc.mu.Lock()
@@ -230,8 +252,9 @@ func (oc *OutdatedChecker) GetVersionCreatedAt(gemName string) string {
 	return ""
 }
 
-// stripPlatformSuffix removes platform/architecture identifiers from version strings
-// Keeps pre-release identifiers (alpha, beta, rc, etc.)
+// stripPlatformSuffix removes platform/architecture suffixes from version strings while preserving
+// pre-release identifiers (alpha, beta, rc, dev, etc.). This allows correct version comparison
+// for native gem versions like "1.6.3-x86_64-linux" which should compare as "1.6.3".
 // Examples: "1.6.3-x86_64-linux" -> "1.6.3", "1.0.0-beta.1" -> "1.0.0-beta.1"
 func stripPlatformSuffix(version string) string {
 	parts := strings.Split(version, "-")
@@ -269,9 +292,10 @@ func stripPlatformSuffix(version string) string {
 	return parts[0] // Return just the base version, discard platform suffix
 }
 
-// isVersionLess compares two semantic versions
-// Returns true if v1 < v2
-// Handles pre-release versions (1.0.0-alpha < 1.0.0) and platform suffixes (1.6.3-x86_64-linux)
+// isVersionLess compares two semantic versions and returns true if v1 < v2.
+// It handles pre-release versions (1.0.0-alpha < 1.0.0), platform suffixes (1.6.3-x86_64-linux),
+// build metadata (version+build), and leading 'v' prefixes. Only compares major.minor.patch
+// (first 3 numeric parts).
 func isVersionLess(v1, v2 string) bool {
 	// Normalize versions: remove leading 'v' if present
 	v1 = strings.TrimPrefix(v1, "v")
