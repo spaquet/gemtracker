@@ -45,9 +45,16 @@ end
 		if !rail.IsFirstLevel {
 			t.Error("Expected rails to be first-level")
 		}
-		// Rails should not be in development group
-		if len(rail.Groups) > 0 {
-			t.Errorf("Expected rails to have no groups, got %v", rail.Groups)
+		// Rails should be in production group
+		hasProduction := false
+		for _, g := range rail.Groups {
+			if g == "production" {
+				hasProduction = true
+				break
+			}
+		}
+		if !hasProduction {
+			t.Errorf("Expected rails to be in production group, got %v", rail.Groups)
 		}
 	}
 
@@ -101,6 +108,64 @@ end
 
 	if _, ok := gf.Gems["sinatra"]; !ok {
 		t.Error("Expected 'sinatra' gem to be parsed from spec. prefix")
+	}
+}
+
+func TestParseGemspec_WithSPrefix(t *testing.T) {
+	tmpDir := t.TempDir()
+	gemspecPath := filepath.Join(tmpDir, "test.gemspec")
+
+	// Test with s. prefix (most common pattern in real gemspecs)
+	gemspecContent := `Gem::Specification.new do |s|
+  s.name = "example-gem"
+  s.version = "1.0.0"
+  s.add_dependency "rails", "~> 7.0"
+  s.add_dependency "sqlite3", "~> 1.4"
+  s.add_development_dependency "rspec", "~> 3.0"
+end
+`
+
+	if err := os.WriteFile(gemspecPath, []byte(gemspecContent), 0644); err != nil {
+		t.Fatalf("Failed to write test gemspec: %v", err)
+	}
+
+	gf, err := ParseGemspec(gemspecPath)
+	if err != nil {
+		t.Fatalf("Failed to parse gemspec: %v", err)
+	}
+
+	// Should parse all 3 gems
+	if len(gf.Gems) != 3 {
+		t.Errorf("Expected 3 gems from s. prefix, got %d", len(gf.Gems))
+	}
+
+	// Check runtime dependencies
+	if rails, ok := gf.Gems["rails"]; !ok {
+		t.Error("Expected 'rails' gem from s.add_dependency")
+	} else if rails.Version != "~> 7.0" {
+		t.Errorf("Expected rails version '~> 7.0', got '%s'", rails.Version)
+	}
+
+	if sqlite3, ok := gf.Gems["sqlite3"]; !ok {
+		t.Error("Expected 'sqlite3' gem from s.add_dependency")
+	} else if sqlite3.Version != "~> 1.4" {
+		t.Errorf("Expected sqlite3 version '~> 1.4', got '%s'", sqlite3.Version)
+	}
+
+	// Check development dependency
+	if rspec, ok := gf.Gems["rspec"]; !ok {
+		t.Error("Expected 'rspec' gem from s.add_development_dependency")
+	} else {
+		hasDev := false
+		for _, g := range rspec.Groups {
+			if g == "development" {
+				hasDev = true
+				break
+			}
+		}
+		if !hasDev {
+			t.Error("Expected rspec to be in development group")
+		}
 	}
 }
 
