@@ -10,6 +10,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/spaquet/gemtracker/internal/logger"
 )
 
 // HealthScore represents the health tier of a gem
@@ -114,7 +116,9 @@ func (hc *HealthChecker) FetchHealth(gemName, sourceCodeURI, homepageURI, versio
 
 	// Parse version created at (rubygems returns with fractional seconds, use RFC3339Nano)
 	if versionCreatedAtStr != "" {
-		if t, err := time.Parse(time.RFC3339Nano, versionCreatedAtStr); err == nil {
+		if t, err := time.Parse(time.RFC3339Nano, versionCreatedAtStr); err != nil {
+			logger.Warn("Failed to parse version created at for gem %q: %v", gemName, err)
+		} else {
 			health.LastRelease = t
 		}
 	}
@@ -122,7 +126,9 @@ func (hc *HealthChecker) FetchHealth(gemName, sourceCodeURI, homepageURI, versio
 	// Fetch maintainer count from RubyGems
 	if ownersURL != "" {
 		owners, err := hc.fetchRubyGemsOwners(ownersURL)
-		if err == nil {
+		if err != nil {
+			logger.Warn("Failed to fetch gem owners for %q: %v", gemName, err)
+		} else {
 			health.MaintainerCount = owners
 		}
 	}

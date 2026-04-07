@@ -1,6 +1,8 @@
 package cache
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -123,19 +125,16 @@ func Clear(gemfileLockPath string) error {
 	return os.Remove(cachePath)
 }
 
-// hashPath creates a simple hash of the file path for cache filename
+// hashPath creates a hash of the file path for use in cache filenames
 func hashPath(path string) string {
 	abs, err := filepath.Abs(path)
 	if err != nil {
 		abs = path
 	}
 
-	// Simple hash: use last 16 chars of path converted to hex-like format
-	// This is not cryptographic, just for generating unique cache filenames
-	hash := 0
-	for _, c := range abs {
-		hash = ((hash << 5) - hash) + int(c)
-	}
+	// Use SHA256 for deterministic, readable filenames
+	hash := sha256.Sum256([]byte(abs))
+	hashStr := hex.EncodeToString(hash[:])[:8] // Use first 8 hex chars for brevity
 
-	return filepath.Base(abs) + "_" + string(rune(hash%9999))
+	return filepath.Base(abs) + "_" + hashStr
 }

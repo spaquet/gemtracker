@@ -12,6 +12,7 @@ import (
 	"github.com/getsentry/sentry-go"
 	"github.com/spaquet/gemtracker/internal/cache"
 	"github.com/spaquet/gemtracker/internal/gemfile"
+	"github.com/spaquet/gemtracker/internal/logger"
 	"github.com/spaquet/gemtracker/internal/telemetry"
 )
 
@@ -90,6 +91,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.handleGitHubBatchComplete(msg)
 
 	case HealthRateLimitedMsg:
+		logger.Warn("Health check rate limited at gem: %s", msg.StoppedAt)
 		m.HealthRateLimited = true
 		m.HealthLoading = false
 		// Report rate limiting to Sentry
@@ -613,6 +615,7 @@ func (m *Model) handleAnalysisComplete(msg AnalysisCompleteMsg) (tea.Model, tea.
 	m.Loading = false
 
 	if msg.Error != nil {
+		logger.Error("Gemfile.lock analysis failed: %v", msg.Error)
 		m.ErrorMessage = fmt.Sprintf("Error analyzing Gemfile.lock: %v", msg.Error)
 		m.CurrentView = ViewError
 		return m, nil
@@ -689,7 +692,7 @@ func (m *Model) handleAnalysisComplete(msg AnalysisCompleteMsg) (tea.Model, tea.
 	}
 	if err := cache.Write(m.GemfileLockPath, cacheEntry); err != nil {
 		// Log but don't fail - caching is optional
-		fmt.Printf("Warning: Failed to cache analysis: %v\n", err)
+		logger.Warn("Failed to cache analysis: %v", err)
 	}
 
 	m.GemListCursor = 0
@@ -755,6 +758,7 @@ func (m *Model) handleDependencyComplete(msg DependencyCompleteMsg) (tea.Model, 
 	m.Loading = false
 
 	if msg.Error != nil {
+		logger.Error("Dependency analysis failed: %v", msg.Error)
 		m.ErrorMessage = fmt.Sprintf("Error loading dependencies: %v", msg.Error)
 		m.CurrentView = ViewError
 		return m, nil
@@ -864,6 +868,7 @@ func (m *Model) handleOutdatedItem(msg OutdatedItemMsg) (tea.Model, tea.Cmd) {
 	if msg.Error != nil {
 		// Check if rate limited
 		if isRateLimited(msg.Error) {
+			logger.Warn("Outdated version check rate limited at gem: %s", msg.GemName)
 			m.OutdatedRateLimited = true
 			m.OutdatedLoading = false
 			// Report rate limiting to Sentry as a warning
@@ -871,6 +876,7 @@ func (m *Model) handleOutdatedItem(msg OutdatedItemMsg) (tea.Model, tea.Cmd) {
 			return m, nil // stop queue on rate limit
 		}
 		// Network/timeout error: mark gem as failed, continue queue
+		logger.Error("Outdated check failed for gem %q: %v", msg.GemName, msg.Error)
 		for _, gem := range m.AnalysisResult.GemStatuses {
 			if gem.Name == msg.GemName {
 				gem.OutdatedFailed = true

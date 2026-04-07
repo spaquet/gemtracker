@@ -8,6 +8,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/spaquet/gemtracker/internal/logger"
 )
 
 // RubygemeInfo represents gem data from rubygems.org API
@@ -134,7 +136,9 @@ func (oc *OutdatedChecker) GetHomepage(gemName string) string {
 	oc.mu.Unlock()
 
 	// Fetch it (this will populate the cache as a side effect)
-	oc.getLatestVersion(gemName)
+	if _, err := oc.getLatestVersion(gemName); err != nil {
+		logger.Warn("Failed to fetch homepage for gem %q: %v", gemName, err)
+	}
 
 	// Return cached value or fallback
 	oc.mu.Lock()
@@ -159,7 +163,9 @@ func (oc *OutdatedChecker) GetDescription(gemName string) string {
 	oc.mu.Unlock()
 
 	// Fetch it (this will populate the cache as a side effect)
-	oc.getLatestVersion(gemName)
+	if _, err := oc.getLatestVersion(gemName); err != nil {
+		logger.Warn("Failed to fetch description for gem %q: %v", gemName, err)
+	}
 
 	// Return cached value or empty string
 	oc.mu.Lock()
@@ -183,7 +189,9 @@ func (oc *OutdatedChecker) GetSourceCodeURI(gemName string) string {
 	oc.mu.Unlock()
 
 	// Fetch it (this will populate the cache as a side effect)
-	oc.getLatestVersion(gemName)
+	if _, err := oc.getLatestVersion(gemName); err != nil {
+		logger.Warn("Failed to fetch source code URI for gem %q: %v", gemName, err)
+	}
 
 	// Return cached value or empty string
 	oc.mu.Lock()
@@ -207,7 +215,9 @@ func (oc *OutdatedChecker) GetVersionCreatedAt(gemName string) string {
 	oc.mu.Unlock()
 
 	// Fetch it (this will populate the cache as a side effect)
-	oc.getLatestVersion(gemName)
+	if _, err := oc.getLatestVersion(gemName); err != nil {
+		logger.Warn("Failed to fetch version created at for gem %q: %v", gemName, err)
+	}
 
 	// Return cached value or empty string
 	oc.mu.Lock()

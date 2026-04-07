@@ -6,6 +6,7 @@ import (
 	"os"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/spaquet/gemtracker/internal/logger"
 	"github.com/spaquet/gemtracker/internal/telemetry"
 	"github.com/spaquet/gemtracker/internal/ui"
 )
@@ -35,6 +36,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "                    (default: current directory)\n\n")
 		fmt.Fprintf(os.Stderr, "Options:\n")
 		fmt.Fprintf(os.Stderr, "  --no-cache        Skip cache and force fresh analysis\n")
+		fmt.Fprintf(os.Stderr, "  --verbose         Write logs to ~/.cache/gemtracker/gemtracker.log\n")
 		fmt.Fprintf(os.Stderr, "  -v, --version     Show version information and exit\n\n")
 		fmt.Fprintf(os.Stderr, "Examples:\n")
 		fmt.Fprintf(os.Stderr, "  gemtracker .\n")
@@ -45,6 +47,7 @@ func main() {
 	showVersion := flag.Bool("v", false, "Show version")
 	flag.BoolVar(showVersion, "version", false, "Show version")
 	noCache := flag.Bool("no-cache", false, "Skip cache and force fresh analysis")
+	verbose := flag.Bool("verbose", false, "Write logs to ~/.cache/gemtracker/gemtracker.log")
 
 	// Manually parse arguments to support flags in any position
 	var projectPath string
@@ -56,6 +59,8 @@ func main() {
 			*showVersion = true
 		} else if arg == "--no-cache" {
 			*noCache = true
+		} else if arg == "--verbose" {
+			*verbose = true
 		} else if arg == "-h" || arg == "--help" {
 			flag.Usage()
 			os.Exit(0)
@@ -77,13 +82,20 @@ func main() {
 		os.Exit(0)
 	}
 
+	// Initialize logger (before TUI starts)
+	if err := logger.Init(*verbose); err != nil {
+		// Log error but continue - logger is optional
+		fmt.Fprintf(os.Stderr, "Warning: Failed to initialize logger: %v\n", err)
+	}
+	defer logger.Close()
+
 	// Default to current directory if no path provided
 	if projectPath == "" {
 		projectPath = "."
 	}
 
 	// Start the interactive TUI
-	model := ui.NewModel(version, commit, date, projectPath, *noCache)
+	model := ui.NewModel(version, commit, date, projectPath, *noCache, *verbose)
 	p := tea.NewProgram(model, tea.WithAltScreen())
 
 	if _, err := p.Run(); err != nil {
