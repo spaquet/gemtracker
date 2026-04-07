@@ -79,6 +79,38 @@ func (m *Model) View() string {
 // Chrome Components
 // ============================================================================
 
+var viewHints = map[ViewMode][]string{
+	ViewGemList:     {"↑↓ navigate", "enter select", "f filter", "u upgradable", "c clear", "r refresh", "tab next", "q quit"},
+	ViewGemDetail:   {"esc back", "tab section", "↑↓ navigate", "enter select", "o open url", "q quit"},
+	ViewSearch:      {"type search", "↑↓ navigate", "enter select", "esc clear"},
+	ViewUpgradeable: {"↑↓ navigate", "enter select", "tab next", "q quit"},
+	ViewCVE:         {"↑↓ navigate", "enter select", "tab next", "q quit"},
+	ViewProjectInfo: {"tab next", "shift+tab prev", "q quit"},
+	ViewFilterMenu:  {"↑↓ navigate", "space toggle", "enter back", "q quit"},
+	ViewSelectPath:  {"enter confirm", "esc cancel"},
+}
+
+func (m *Model) getHintsForView() []string {
+	if hints, ok := viewHints[m.CurrentView]; ok {
+		return hints
+	}
+	return []string{"type to filter", "q quit"}
+}
+
+func (m *Model) renderHintLine(hints []string) string {
+	var rendered []string
+	for _, hint := range hints {
+		parts := strings.SplitN(hint, " ", 2)
+		if len(parts) == 2 {
+			key := KeyHintKeyStyle.Render(parts[0])
+			desc := KeyHintDescStyle.Render(" " + parts[1])
+			rendered = append(rendered, key+desc)
+		}
+	}
+	hintContent := strings.Join(rendered, "  ")
+	return StatusBarStyle.Width(m.Width - 4).Render(hintContent)
+}
+
 func (m *Model) assembleViewWithChrome(contentString string) string {
 	// Helper function to assemble any view with proper header, tabbar, and statusbar
 	var allLines []string
@@ -203,42 +235,8 @@ func (m *Model) renderTabBar() string {
 }
 
 func (m *Model) renderStatusBar() string {
-	var hints []string
-
-	switch m.CurrentView {
-	case ViewGemList:
-		hints = []string{"↑↓ navigate", "enter select", "f filter", "u upgradable", "c clear", "r refresh", "tab next", "q quit"}
-	case ViewGemDetail:
-		hints = []string{"esc back", "tab section", "↑↓ navigate", "enter select", "o open url", "q quit"}
-	case ViewSearch:
-		hints = []string{"type search", "↑↓ navigate", "enter select", "esc clear"}
-	case ViewUpgradeable:
-		hints = []string{"↑↓ navigate", "enter select", "tab next", "q quit"}
-	case ViewCVE:
-		hints = []string{"↑↓ navigate", "enter select", "tab next", "q quit"}
-	case ViewProjectInfo:
-		hints = []string{"tab next", "shift+tab prev", "q quit"}
-	case ViewFilterMenu:
-		hints = []string{"↑↓ navigate", "space toggle", "enter back", "q quit"}
-	case ViewSelectPath:
-		hints = []string{"enter confirm", "esc cancel"}
-	default:
-		hints = []string{"type to filter", "q quit"}
-	}
-
-	var rendered []string
-	for _, hint := range hints {
-		parts := strings.SplitN(hint, " ", 2)
-		if len(parts) == 2 {
-			key := KeyHintKeyStyle.Render(parts[0])
-			desc := KeyHintDescStyle.Render(" " + parts[1])
-			rendered = append(rendered, key+desc)
-		}
-	}
-
-	// Render the hint line
-	hintContent := strings.Join(rendered, "  ")
-	hintLine := StatusBarStyle.Width(m.Width - 4).Render(hintContent)
+	hints := m.getHintsForView()
+	hintLine := m.renderHintLine(hints)
 
 	var lines []string
 	lines = append(lines, hintLine)
@@ -259,7 +257,6 @@ func (m *Model) renderStatusBar() string {
 		statusParts = append(statusParts, healthStatusStyle.Render(healthStatus))
 	}
 
-	// Add error warnings
 	errorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(ColorDanger))
 	if m.OutdatedRateLimited {
 		statusParts = append(statusParts, errorStyle.Render("updates: rate limited"))
@@ -272,14 +269,12 @@ func (m *Model) renderStatusBar() string {
 		statusParts = append(statusParts, errorStyle.Render(errMsg))
 	}
 
-	// Add status line if there are any indicators
 	if len(statusParts) > 0 {
 		statusContent := strings.Join(statusParts, "  ")
 		statusLine := StatusBarStyle.Width(m.Width - 4).Render(statusContent)
 		lines = append(lines, statusLine)
 	}
 
-	// Add update notification bar if a new version is available
 	if m.NewVersionAvailable != "" {
 		updateMsg := m.renderUpdateBar()
 		lines = append(lines, updateMsg)
@@ -491,20 +486,25 @@ func (m *Model) renderGemListTable(height int) string {
 	return lipgloss.JoinVertical(lipgloss.Left, lines...)
 }
 
+func (m *Model) gemStatusBadge(gem *gemfile.GemStatus) string {
+	if gem.IsVulnerable {
+		return BadgeVulnerableStyle.Render("⚠ CVE")
+	}
+	if gem.IsOutdated {
+		return BadgeOutdatedStyle.Render("↑ " + gem.LatestVersion)
+	}
+	if gem.OutdatedFailed {
+		return BadgeErrorStyle.Render("! err")
+	}
+	if gem.LatestVersion == "" {
+		return BadgeLoadingStyle.Render("…")
+	}
+	return BadgeOKStyle.Render("✓")
+}
+
 func (m *Model) formatGemListRow(idx int, gem *gemfile.GemStatus, selected bool) string {
 	// Status indicator
-	var status string
-	if gem.IsVulnerable {
-		status = BadgeVulnerableStyle.Render("⚠ CVE")
-	} else if gem.IsOutdated {
-		status = BadgeOutdatedStyle.Render("↑ " + gem.LatestVersion)
-	} else if gem.OutdatedFailed {
-		status = BadgeErrorStyle.Render("! err")
-	} else if gem.LatestVersion == "" {
-		status = BadgeLoadingStyle.Render("…")
-	} else {
-		status = BadgeOKStyle.Render("✓")
-	}
+	status := m.gemStatusBadge(gem)
 
 	// Latest version display
 	var latestDisplay string
@@ -575,6 +575,58 @@ func (m *Model) formatGemListRow(idx int, gem *gemfile.GemStatus, selected bool)
 	return RowNormalStyle.Render(row)
 }
 
+// buildGemInfoLines builds the header, description, and health info lines for gem detail view
+func (m *Model) buildGemInfoLines(descMaxLen int) []string {
+	// Format version info
+	versionDisplay := "Latest"
+	if m.SelectedGem.IsOutdated {
+		versionDisplay = m.SelectedGem.LatestVersion
+	}
+
+	// Build header line
+	updateMarker := ""
+	if m.SelectedGem.IsOutdated {
+		updateMarker = " (update available)"
+	}
+	headerLine1 := fmt.Sprintf("%s   Installed: %s  →  %s%s",
+		m.SelectedGem.Name,
+		m.SelectedGem.Version,
+		versionDisplay,
+		updateMarker,
+	)
+	headerLine1Formatted := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(ColorPrimary)).Render(headerLine1)
+
+	var gemInfoLines []string
+	gemInfoLines = append(gemInfoLines, headerLine1Formatted)
+
+	// Format description line
+	if m.SelectedGem.Description != "" {
+		descLine := truncateStr(m.SelectedGem.Description, descMaxLen)
+		descLine = "  " + descLine
+		descLine = lipgloss.NewStyle().Foreground(lipgloss.Color(ColorTextMuted)).Render(descLine)
+		gemInfoLines = append(gemInfoLines, descLine)
+	}
+
+	// URL line
+	urlLine := "  " + truncateStr(m.SelectedGem.HomepageURL, descMaxLen)
+	urlLine = lipgloss.NewStyle().Foreground(lipgloss.Color(ColorTextMuted)).Italic(true).Render(urlLine)
+	gemInfoLines = append(gemInfoLines, urlLine)
+
+	// Health section
+	if m.SelectedGem.Health != nil {
+		healthLines := m.renderHealthSection(m.SelectedGem.Health, descMaxLen)
+		gemInfoLines = append(gemInfoLines, healthLines...)
+	} else if m.HealthLoading {
+		healthLine := lipgloss.NewStyle().Foreground(lipgloss.Color(ColorTextMuted)).Render("  Health: ⠙ fetching...")
+		gemInfoLines = append(gemInfoLines, healthLine)
+	} else if m.HealthRateLimited {
+		healthLine := lipgloss.NewStyle().Foreground(lipgloss.Color(ColorWarning)).Render("  Health: — GitHub rate limited")
+		gemInfoLines = append(gemInfoLines, healthLine)
+	}
+
+	return gemInfoLines
+}
+
 // ============================================================================
 // View: Gem Detail
 // ============================================================================
@@ -590,60 +642,13 @@ func (m *Model) viewGemDetail() string {
 		contentHeight = 1
 	}
 
-	// Format version info
-	versionDisplay := "Latest"
-	if m.SelectedGem.IsOutdated {
-		versionDisplay = m.SelectedGem.LatestVersion
-	}
-
-	// Build header lines
-	headerLine1 := fmt.Sprintf("%s   Installed: %s  →  %s%s",
-		m.SelectedGem.Name,
-		m.SelectedGem.Version,
-		versionDisplay,
-		func() string {
-			if m.SelectedGem.IsOutdated {
-				return " (update available)"
-			}
-			return ""
-		}(),
-	)
-	headerLine1Formatted := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(ColorPrimary)).Render(headerLine1)
-
 	// Format description line
 	descMaxLen := m.Width - 4
 	if descMaxLen < 20 {
 		descMaxLen = 20
 	}
-	descLine := ""
-	if m.SelectedGem.Description != "" {
-		descLine = truncateStr(m.SelectedGem.Description, descMaxLen)
-		descLine = "  " + descLine
-		descLine = lipgloss.NewStyle().Foreground(lipgloss.Color(ColorTextMuted)).Render(descLine)
-	}
 
-	// URL line
-	urlLine := "  " + truncateStr(m.SelectedGem.HomepageURL, descMaxLen)
-	urlLine = lipgloss.NewStyle().Foreground(lipgloss.Color(ColorTextMuted)).Italic(true).Render(urlLine)
-
-	var gemInfoLines []string
-	gemInfoLines = append(gemInfoLines, headerLine1Formatted)
-	if descLine != "" {
-		gemInfoLines = append(gemInfoLines, descLine)
-	}
-	gemInfoLines = append(gemInfoLines, urlLine)
-
-	// Health section
-	if m.SelectedGem.Health != nil {
-		healthLines := m.renderHealthSection(m.SelectedGem.Health, descMaxLen)
-		gemInfoLines = append(gemInfoLines, healthLines...)
-	} else if m.HealthLoading {
-		healthLine := lipgloss.NewStyle().Foreground(lipgloss.Color(ColorTextMuted)).Render("  Health: ⠙ fetching...")
-		gemInfoLines = append(gemInfoLines, healthLine)
-	} else if m.HealthRateLimited {
-		healthLine := lipgloss.NewStyle().Foreground(lipgloss.Color(ColorWarning)).Render("  Health: — GitHub rate limited")
-		gemInfoLines = append(gemInfoLines, healthLine)
-	}
+	gemInfoLines := m.buildGemInfoLines(descMaxLen)
 
 	// Two panels: forward deps and reverse deps (side by side)
 	panelHeight := contentHeight - len(gemInfoLines) - 1
@@ -895,7 +900,7 @@ func (m *Model) renderHealthSection(health *gemfile.GemHealth, maxLen int) []str
 	var lines []string
 
 	// Health header with score
-	scoreStr := "●"
+	var scoreStr string
 	scoreStyle := BadgeHealthyDotStyle
 	switch health.Score {
 	case gemfile.HealthHealthy:
