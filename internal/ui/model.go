@@ -118,6 +118,10 @@ type HealthRateLimitedMsg struct {
 	StoppedAt string // gem name where rate limiting occurred
 }
 
+type GitHubBatchCompleteMsg struct {
+	Error error
+}
+
 type OutdatedItemMsg struct {
 	GemName       string
 	IsOutdated    bool
@@ -729,12 +733,59 @@ func fetchNextHealthItem(gems []*gemfile.GemStatus, hc *gemfile.HealthChecker, o
 		return func() tea.Msg { return HealthCompleteMsg{} }
 	}
 	return func() tea.Msg {
-		// Add delay to avoid hitting GitHub API rate limits (60 req/hr unauthenticated)
-		// This limits us to ~3 requests/sec which is well within rate limits
-		time.Sleep(300 * time.Millisecond)
 		gem := gems[0]
 		return fetchSingleHealth(gem, hc, outdatedChecker)
 	}
+}
+
+// fetchGitHubBatchHealth collects all repo owner/repo pairs and fetches them in a single GraphQL batch
+// Runs async in a goroutine to avoid blocking the TUI
+func fetchGitHubBatchHealth(gems []*gemfile.GemStatus, oc *gemfile.OutdatedChecker, hc *gemfile.HealthChecker) tea.Cmd {
+	return tea.Batch(
+		func() tea.Msg {
+			// Immediately return a message to unblock UI
+			return GitHubBatchCompleteMsg{Error: nil}
+		},
+		func() tea.Msg {
+			// Run the actual batch fetch in background
+			// Collect all unique (owner, repo) pairs from gems
+			pairs := make([]gemfile.RepoOwnerPair, 0)
+			seenPairs := make(map[string]bool)
+
+			for _, gem := range gems {
+				sourceCodeURI := oc.GetSourceCodeURI(gem.Name)
+				homepageURI := oc.GetHomepage(gem.Name)
+
+				githubURI := sourceCodeURI
+				if githubURI == "" {
+					githubURI = homepageURI
+				}
+
+				if githubURI != "" {
+					owner, repo, ok := gemfile.ExtractGitHubOwnerRepo(githubURI)
+					if ok {
+						key := strings.ToLower(owner + "/" + repo)
+						if !seenPairs[key] {
+							seenPairs[key] = true
+							pairs = append(pairs, gemfile.RepoOwnerPair{
+								GemName: gem.Name,
+								Owner:   owner,
+								Repo:    repo,
+							})
+						}
+					}
+				}
+			}
+
+			// Fetch all GitHub data in batch
+			// If no GITHUB_TOKEN, this returns immediately
+			// If GITHUB_TOKEN is set, this makes the GraphQL call and caches results
+			_ = hc.FetchGitHubBatch(pairs)
+
+			// Return completion message after fetch is done
+			return GitHubBatchCompleteMsg{Error: nil}
+		},
+	)
 }
 
 func isRateLimited(err error) bool {

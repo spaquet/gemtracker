@@ -190,7 +190,7 @@ func (m *Model) renderStatusBar() string {
 
 	switch m.CurrentView {
 	case ViewGemList:
-		hints = []string{"↑↓ navigate", "enter select", "f filter", "u upgradable", "c clear", "tab next", "q quit"}
+		hints = []string{"↑↓ navigate", "enter select", "f filter", "u upgradable", "c clear", "r refresh", "tab next", "q quit"}
 	case ViewGemDetail:
 		hints = []string{"esc back", "tab section", "↑↓ navigate", "enter select", "o open url", "q quit"}
 	case ViewSearch:

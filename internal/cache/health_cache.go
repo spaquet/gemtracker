@@ -9,13 +9,18 @@ import (
 	"github.com/spaquet/gemtracker/internal/gemfile"
 )
 
-// HealthCacheEntry stores gem health data with a 24-hour TTL
+// HealthCacheTTL is the time-to-live for cached health data
+// Health metrics change on a "years" timescale, so 12 days is conservative
+// while drastically reducing API calls on subsequent runs
+const HealthCacheTTL = 12 * 24 * time.Hour
+
+// HealthCacheEntry stores gem health data with a 12-day TTL
 type HealthCacheEntry struct {
 	Gems     map[string]*gemfile.GemHealth `json:"gems"`
 	CachedAt time.Time                     `json:"cached_at"`
 }
 
-// ReadHealth reads health cache for a Gemfile.lock if it exists and is less than 24 hours old
+// ReadHealth reads health cache for a Gemfile.lock if it exists and is less than 12 days old
 func ReadHealth(gemfileLockPath string) (*HealthCacheEntry, error) {
 	cachePath, err := getHealthCachePath(gemfileLockPath)
 	if err != nil {
@@ -39,8 +44,8 @@ func ReadHealth(gemfileLockPath string) (*HealthCacheEntry, error) {
 		return nil, err
 	}
 
-	// Check if cache is older than 24 hours
-	if time.Since(entry.CachedAt) > 24*time.Hour {
+	// Check if cache is older than HealthCacheTTL
+	if time.Since(entry.CachedAt) > HealthCacheTTL {
 		return nil, os.ErrNotExist
 	}
 
@@ -64,6 +69,16 @@ func WriteHealth(gemfileLockPath string, entry *HealthCacheEntry) error {
 
 	// Write to cache file
 	return os.WriteFile(cachePath, data, 0644)
+}
+
+// ClearHealth removes the health cache entry for a given Gemfile.lock
+func ClearHealth(gemfileLockPath string) error {
+	cachePath, err := getHealthCachePath(gemfileLockPath)
+	if err != nil {
+		return err
+	}
+
+	return os.Remove(cachePath)
 }
 
 // getHealthCachePath returns the health cache file path

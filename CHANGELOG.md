@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v1.1.1] - 2026-04-06
+
+### Added
+- **Manual Health Refresh** - Press `r` in gem list to manually refresh health data with progress indicator (Issue #28)
+- **GitHub GraphQL Batch Fetching** - All gem repositories fetched in single GraphQL batch request instead of sequential REST calls
+  - Dramatically reduces API calls (from ~189 to 1-2 GraphQL requests)
+  - Works without GITHUB_TOKEN using RubyGems data only
+  - With GITHUB_TOKEN: even richer data with higher rate limits (5000/hr vs 60/hr)
+
+### Fixed
+- **Health Indicators Disappearing on Tab Switch** - Fixed issue #29 where health dots would disappear when navigating between tabs during background fetch
+  - Health cache now loaded on startup, making cached data immediately available
+  - Dots persist when switching tabs mid-fetch
+- **Health Cache Never Used** - Cache was written but never read; now properly loaded on app startup for instant results
+
+### Changed
+- **Health Cache TTL Extended** - From 24 hours to 12 days
+  - Health metrics change on year timescale; unnecessary API calls reduced dramatically
+  - Next run within 12 days gets instant health indicators from cache
+- **Rate Limit Handling** - Rate-limited gems now marked as HealthUnknown; queue continues instead of halting
+  - Users see partial health data instead of complete halt when GitHub rate limit hit
+  - Gem health is now repo-level (cached by gem name), so version upgrades reuse cached data
+
+### Technical
+- Added `RepoOwnerPair` struct and `FetchGitHubBatch()` for GraphQL batching in health.go
+- Extended health cache TTL to 12 days, added `ClearHealth()` function
+- Cache now loaded during analysis startup (`handleAnalysisComplete`)
+- GitHub batch fetch runs before per-gem RubyGems owner fetching
+- Rate-limited gems set to HealthUnknown with RateLimited flag instead of halting queue
+- All gems (not just first-level) now get health data cached and searchable
+
+### Tests
+- Added comprehensive tests for `ComputeHealthScore` covering all health tiers
+- Added tests for `ExtractGitHubOwnerRepo` with various GitHub URL formats
+
 ## [v1.1.0] - 2026-04-05
 
 ### Added
