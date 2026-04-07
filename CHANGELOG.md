@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v1.1.2] - 2026-04-06
+
+### Added
+- **Support for Alternative Bundler Conventions** - Added support for `gems.locked` and `gems.rb` file naming (Issue #26)
+  - Detect and parse `gems.locked` (identical structure to Gemfile.lock)
+  - Detect and parse `gems.rb` (identical syntax to Gemfile)
+  - Search priority: gems.locked/gems.rb preferred over Gemfile.lock/Gemfile
+  - Display which file was loaded in the UI for transparency
+- **Gem Dependency Parsing from .gemspec Files** - Parse gem dependencies from `.gemspec` files for gem projects (Issue #37)
+  - Extract `add_runtime_dependency` and `add_development_dependency` declarations
+  - Support version constraints (e.g., `>= 2.0`, `~> 3.1`)
+  - Display dependencies with type badges (`[runtime]` vs `[dev]`)
+  - Show version constraints from unresolved gemspec declarations
+  - Automatic fallback to Gemfile.lock when available for resolved versions
+
+### Technical
+- Created `internal/gemfile/gemspec_parser.go` for `.gemspec` file parsing
+- Extended file detection logic to support alternative file naming conventions
+- Improved robustness of dependency tree structures to handle unresolved constraints
+
 ## [v1.1.1] - 2026-04-06
 
 ### Added
