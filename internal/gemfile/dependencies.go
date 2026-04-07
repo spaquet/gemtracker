@@ -1,31 +1,53 @@
 package gemfile
 
+// DependencyNode represents a node in a dependency tree, used for displaying forward
+// and reverse dependency chains with version information and nesting depth.
 type DependencyNode struct {
-	Name     string
-	Version  string
+	// Name is the gem name
+	Name string
+	// Version is the gem version at this node
+	Version string
+	// Children are the direct dependencies (or dependents for reverse trees)
 	Children []*DependencyNode
-	Depth    int
+	// Depth is the nesting level in the tree (0 for root, increments for each level)
+	Depth int
 }
 
+// DependencyInfo contains forward and reverse dependency information for a selected gem,
+// including both simple lists and tree structures for visualization.
 type DependencyInfo struct {
-	GemName          string
-	Version          string
-	ForwardDeps      []string // What this gem depends on
-	ReverseDeps      []string // What depends on this gem
+	// GemName is the selected gem name
+	GemName string
+	// Version is the selected gem's version
+	Version string
+	// ForwardDeps lists the gems that this gem depends on (direct dependencies only)
+	ForwardDeps []string
+	// ReverseDeps lists the gems that depend on this gem (direct dependents only)
+	ReverseDeps []string
+	// ForwardDepsCount is the count of direct forward dependencies
 	ForwardDepsCount int
+	// ReverseDepsCount is the count of direct reverse dependencies
 	ReverseDepsCount int
-	// Tree structures
-	ForwardTree *DependencyNode // Tree of what this gem depends on
-	ReverseTree *DependencyNode // Tree of what depends on this gem
+	// ForwardTree is a tree structure showing transitive dependencies of this gem
+	ForwardTree *DependencyNode
+	// ReverseTree is a tree structure showing what depends on this gem (up to 3 levels)
+	ReverseTree *DependencyNode
 }
 
+// DependencyResult contains the analysis result for a selected gem's dependencies.
 type DependencyResult struct {
-	SelectedGem    string
+	// SelectedGem is the name of the gem being analyzed
+	SelectedGem string
+	// DependencyInfo contains the dependency analysis for the selected gem
 	DependencyInfo *DependencyInfo
-	AllGems        map[string]*Gem // For version lookups
+	// AllGems is a reference to the full gem map for version lookups
+	AllGems map[string]*Gem
 }
 
-// AnalyzeDependencies analyzes dependencies for a selected gem
+// AnalyzeDependencies analyzes forward and reverse dependencies for a given gem.
+// It returns both lists of direct dependencies and tree structures showing transitive relationships.
+// Trees are limited to prevent circular dependencies: forward tree is capped at depth 5,
+// reverse tree is capped at depth 3.
 func AnalyzeDependencies(gemfile *Gemfile, selectedGemName string) *DependencyResult {
 	result := &DependencyResult{
 		SelectedGem: selectedGemName,
@@ -73,7 +95,9 @@ func AnalyzeDependencies(gemfile *Gemfile, selectedGemName string) *DependencyRe
 	return result
 }
 
-// buildDependencyTree recursively builds a tree of dependencies
+// buildDependencyTree recursively builds a tree of what a gem depends on (forward dependencies).
+// It prevents circular dependencies and infinite loops with a visited map and depth limit (max 5).
+// Returns nil if the gem is already visited at this branch or depth exceeds the limit.
 func buildDependencyTree(gemName string, gemfile *Gemfile, visited map[string]bool, depth int) *DependencyNode {
 	if visited[gemName] || depth > 5 { // Prevent infinite loops and limit depth
 		return nil
@@ -103,8 +127,8 @@ func buildDependencyTree(gemName string, gemfile *Gemfile, visited map[string]bo
 	return node
 }
 
-// GetReverseDependencies returns a list of gems that depend on the given gem
-// This is useful for local calculations without needing to rebuild the tree
+// GetReverseDependencies returns a list of gems that directly depend on the given gem.
+// This is a simple list of direct dependents, useful for quick lookups without building a tree.
 func GetReverseDependencies(gemName string, gemfile *Gemfile) []string {
 	reverseDeps := []string{}
 	for _, gem := range gemfile.Gems {
@@ -118,9 +142,10 @@ func GetReverseDependencies(gemName string, gemfile *Gemfile) []string {
 	return reverseDeps
 }
 
-// buildReverseDependencyTree recursively builds a tree of what depends on this gem
-// For reverse dependencies, we want to show: gem <- parent1 <- grandparent, etc.
-// Plus show the parent's OTHER dependencies for context
+// buildReverseDependencyTree recursively builds a tree showing what depends on a gem (reverse dependencies).
+// It prevents circular dependencies with a visited map and limits depth to 3 (shallower than forward tree
+// because reverse trees show less relevant context for deep nesting). For each parent gem, it also shows
+// the parent's other dependencies for context.
 func buildReverseDependencyTree(gemName string, gemfile *Gemfile, visited map[string]bool, depth int) *DependencyNode {
 	if visited[gemName] || depth > 3 { // Limit depth for reverse deps to prevent too much nesting
 		return nil
