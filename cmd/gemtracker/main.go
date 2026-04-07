@@ -1,3 +1,8 @@
+// Package main is the entry point for gemtracker, an interactive terminal user interface
+// for analyzing Ruby gem dependencies from Gemfile.lock files.
+//
+// It handles command-line flag parsing, initializes the telemetry and logging systems,
+// and either launches the interactive TUI or generates a report in non-interactive mode.
 package main
 
 import (
@@ -12,9 +17,12 @@ import (
 )
 
 var (
+	// version is the application version, injected at build time via -ldflags.
 	version = "dev"
-	commit  = "none"
-	date    = "unknown"
+	// commit is the git commit hash, injected at build time via -ldflags.
+	commit = "none"
+	// date is the build date in ISO format, injected at build time via -ldflags.
+	date = "unknown"
 )
 
 func main() {
@@ -128,6 +136,9 @@ func main() {
 	}
 }
 
+// generateReport generates a gem dependency report in the specified format (text, csv, or json)
+// and writes it to the specified output path or stdout if no path is provided.
+// It exits the program with a non-zero status if report generation fails.
 func generateReport(projectPath, format, outputPath string, noCache, verbose bool) {
 	reportGen := ui.NewReportGenerator(projectPath, noCache, verbose)
 	if err := reportGen.Generate(format, outputPath); err != nil {
@@ -137,6 +148,8 @@ func generateReport(projectPath, format, outputPath string, noCache, verbose boo
 	}
 }
 
+// printVersion outputs the gemtracker version string to stdout, including commit hash and build date
+// if available. If running a development build, it will display "(development)" after the version.
 func printVersion() {
 	output := "gemtracker"
 
