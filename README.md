@@ -15,6 +15,16 @@ A beautiful, interactive Terminal UI for analyzing Ruby gem dependencies and qui
 - **Group-Based Analysis**: Understand gem scope (default, development, test, production)
 - **Version Management**: See installed versions, latest available, and outdated gems
 - **Direct Links**: Quick links to rubygems.org and GitHub repositories
+- **AI-Ready Reports**: Export data in JSON format for AI agents and automated tools
+
+## For AI Agents & Automated Tools
+
+If you're integrating gemtracker into automated systems, CI/CD pipelines, or building AI-powered recommendations, see **[AI_GUIDE.md](AI_GUIDE.md)** for:
+- JSON parsing strategies
+- Status assessment frameworks
+- Recommendation decision trees
+- Integration patterns with code examples
+- Best practices for AI-powered analysis
 
 ## Installation
 
