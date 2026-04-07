@@ -1,3 +1,7 @@
+// Package logger provides optional file-based logging for gemtracker.
+//
+// When verbose mode is enabled, logs are written to ~/.cache/gemtracker/gemtracker.log.
+// When disabled, uses io.Discard for zero overhead. All logging functions are thread-safe.
 package logger
 
 import (
@@ -15,9 +19,9 @@ var (
 	file   *os.File
 )
 
-// Init initializes the logger. If verbose is false, uses io.Discard (zero overhead).
-// If verbose is true, opens ~/.cache/gemtracker/gemtracker.log for appending.
-// Returns error if log file cannot be opened.
+// Init initializes the logger. If verbose is false, logging is disabled using io.Discard with zero overhead.
+// If verbose is true, opens ~/.cache/gemtracker/gemtracker.log for appending with timestamps.
+// Returns an error if the log file cannot be created or opened.
 func Init(verbose bool) error {
 	mu.Lock()
 	defer mu.Unlock()
@@ -51,7 +55,8 @@ func Init(verbose bool) error {
 	return nil
 }
 
-// Info logs an info message
+// Info logs an informational message with [INFO] prefix. Thread-safe.
+// No-op if logger has not been initialized.
 func Info(format string, v ...interface{}) {
 	mu.Lock()
 	defer mu.Unlock()
@@ -62,7 +67,8 @@ func Info(format string, v ...interface{}) {
 	logger.Printf("[INFO] "+format, v...)
 }
 
-// Warn logs a warning message
+// Warn logs a warning message with [WARN] prefix. Thread-safe.
+// No-op if logger has not been initialized.
 func Warn(format string, v ...interface{}) {
 	mu.Lock()
 	defer mu.Unlock()
@@ -73,7 +79,8 @@ func Warn(format string, v ...interface{}) {
 	logger.Printf("[WARN] "+format, v...)
 }
 
-// Error logs an error message
+// Error logs an error message with [ERROR] prefix. Thread-safe.
+// No-op if logger has not been initialized.
 func Error(format string, v ...interface{}) {
 	mu.Lock()
 	defer mu.Unlock()
@@ -84,7 +91,8 @@ func Error(format string, v ...interface{}) {
 	logger.Printf("[ERROR] "+format, v...)
 }
 
-// Close flushes and closes the log file if it was opened
+// Close closes the log file if one was opened. Should be called via defer in main().
+// Returns an error if the file cannot be closed. Safe to call if logging is disabled.
 func Close() error {
 	mu.Lock()
 	defer mu.Unlock()
