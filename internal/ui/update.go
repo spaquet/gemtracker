@@ -16,6 +16,42 @@ import (
 	"github.com/spaquet/gemtracker/internal/telemetry"
 )
 
+func (m *Model) handleSpinnerTick() (tea.Model, tea.Cmd) {
+	if m.Loading {
+		m.AnimationFrame = (m.AnimationFrame + 1) % len(spinnerFrames)
+		return m, tea.Tick(time.Millisecond*100, func(time.Time) tea.Msg {
+			return SpinnerTickMsg{}
+		})
+	}
+	return m, nil
+}
+
+func (m *Model) handleProgressTick() (tea.Model, tea.Cmd) {
+	if m.Loading && m.AnalysisPercentage < 90 {
+		// Increment progress with slight acceleration
+		increment := 3 + (m.AnalysisPercentage / 20)
+		if increment < 1 {
+			increment = 1
+		}
+		m.AnalysisPercentage += increment
+
+		// Update stage based on progress
+		if m.AnalysisPercentage < 50 {
+			m.AnalysisStage = "parsing"
+			m.LoadingMessage = "Parsing Gemfile.lock..."
+		} else {
+			m.AnalysisStage = "checking-updates"
+			m.LoadingMessage = "Checking for updates..."
+		}
+
+		// Continue ticking
+		return m, tea.Tick(time.Millisecond*200, func(time.Time) tea.Msg {
+			return ProgressTickMsg{}
+		})
+	}
+	return m, nil
+}
+
 func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
@@ -26,38 +62,10 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case SpinnerTickMsg:
-		if m.Loading {
-			m.AnimationFrame = (m.AnimationFrame + 1) % len(spinnerFrames)
-			return m, tea.Tick(time.Millisecond*100, func(time.Time) tea.Msg {
-				return SpinnerTickMsg{}
-			})
-		}
-		return m, nil
+		return m.handleSpinnerTick()
 
 	case ProgressTickMsg:
-		if m.Loading && m.AnalysisPercentage < 90 {
-			// Increment progress with slight acceleration
-			increment := 3 + (m.AnalysisPercentage / 20)
-			if increment < 1 {
-				increment = 1
-			}
-			m.AnalysisPercentage += increment
-
-			// Update stage based on progress
-			if m.AnalysisPercentage < 50 {
-				m.AnalysisStage = "parsing"
-				m.LoadingMessage = "Parsing Gemfile.lock..."
-			} else {
-				m.AnalysisStage = "checking-updates"
-				m.LoadingMessage = "Checking for updates..."
-			}
-
-			// Continue ticking
-			return m, tea.Tick(time.Millisecond*200, func(time.Time) tea.Msg {
-				return ProgressTickMsg{}
-			})
-		}
-		return m, nil
+		return m.handleProgressTick()
 
 	case tea.KeyMsg:
 		return m.handleKeyPress(msg)
@@ -113,6 +121,14 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 // Key Handling
 // ============================================================================
 
+func (m *Model) handleErrorViewKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if msg.String() == "enter" || msg.String() == "esc" {
+		m.CurrentView = m.ActiveTab
+		m.ErrorMessage = ""
+	}
+	return m, nil
+}
+
 func (m *Model) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// Global keys
 	if msg.String() == "ctrl+c" || msg.String() == "q" {
@@ -131,7 +147,6 @@ func (m *Model) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// View-specific handling
 	switch m.CurrentView {
 	case ViewLoading:
-		// No keys allowed during loading
 		return m, nil
 
 	case ViewGemList:
@@ -159,11 +174,7 @@ func (m *Model) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.handlePathInputKeys(msg)
 
 	case ViewError:
-		if msg.String() == "enter" || msg.String() == "esc" {
-			m.CurrentView = m.ActiveTab
-			m.ErrorMessage = ""
-		}
-		return m, nil
+		return m.handleErrorViewKey(msg)
 	}
 
 	return m, nil
@@ -264,6 +275,40 @@ func (m *Model) handleGemListKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+func (m *Model) selectedGemNameFromDetail() string {
+	if m.DetailSection == 0 {
+		// Forward dependencies
+		if m.DetailTreeCursor < len(m.DetailForwardLines) {
+			return m.DetailForwardLines[m.DetailTreeCursor]
+		}
+	} else {
+		// Reverse dependencies (Used By)
+		if m.DetailTreeCursor < len(m.DetailReverseLines) {
+			return m.DetailReverseLines[m.DetailTreeCursor]
+		}
+	}
+	return ""
+}
+
+func (m *Model) openGemURL(url string) {
+	if url == "" {
+		return
+	}
+
+	var cmd *exec.Cmd
+	switch runtime.GOOS {
+	case "darwin":
+		cmd = exec.Command("open", url)
+	case "linux":
+		cmd = exec.Command("xdg-open", url)
+	case "windows":
+		cmd = exec.Command("cmd", "/c", "start", url)
+	default:
+		return
+	}
+	_ = cmd.Start()
+}
+
 func (m *Model) handleGemDetailKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "esc":
@@ -296,22 +341,8 @@ func (m *Model) handleGemDetailKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case "enter":
-		// Navigate to the selected gem in the tree
-		var selectedGemName string
-		if m.DetailSection == 0 {
-			// Forward dependencies
-			if m.DetailTreeCursor < len(m.DetailForwardLines) {
-				selectedGemName = m.DetailForwardLines[m.DetailTreeCursor]
-			}
-		} else {
-			// Reverse dependencies (Used By)
-			if m.DetailTreeCursor < len(m.DetailReverseLines) {
-				selectedGemName = m.DetailReverseLines[m.DetailTreeCursor]
-			}
-		}
-
+		selectedGemName := m.selectedGemNameFromDetail()
 		if selectedGemName != "" {
-			// Try to find the gem status for this name
 			var targetGem *gemfile.GemStatus
 			for _, gem := range m.AnalysisResult.GemStatuses {
 				if gem.Name == selectedGemName {
@@ -319,11 +350,9 @@ func (m *Model) handleGemDetailKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 					break
 				}
 			}
-			// Update SelectedGem if found, otherwise use the name anyway
 			if targetGem != nil {
 				m.SelectedGem = targetGem
 			}
-			// Always load dependency analysis for the selected gem, even if not in AnalysisResult
 			m.DetailTreeCursor = 0
 			m.DetailForwardOffset = 0
 			m.DetailReverseOffset = 0
@@ -339,21 +368,8 @@ func (m *Model) handleGemDetailKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case "o":
-		// Open the homepage URL in the default browser
-		if m.SelectedGem != nil && m.SelectedGem.HomepageURL != "" {
-			var cmd *exec.Cmd
-			switch runtime.GOOS {
-			case "darwin":
-				cmd = exec.Command("open", m.SelectedGem.HomepageURL)
-			case "linux":
-				cmd = exec.Command("xdg-open", m.SelectedGem.HomepageURL)
-			case "windows":
-				cmd = exec.Command("cmd", "/c", "start", m.SelectedGem.HomepageURL)
-			default:
-				return m, nil
-			}
-			// Run the command in the background
-			_ = cmd.Start()
+		if m.SelectedGem != nil {
+			m.openGemURL(m.SelectedGem.HomepageURL)
 		}
 		return m, nil
 	}

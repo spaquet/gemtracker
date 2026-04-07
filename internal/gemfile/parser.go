@@ -53,6 +53,87 @@ func FindGemfile(dir string) string {
 	return ""
 }
 
+// detectSection checks if a line starts a new section and returns the section name and whether to skip to next line
+func detectSection(line string) (string, bool) {
+	switch {
+	case strings.HasPrefix(line, "GIT"):
+		return "GIT", true
+	case strings.HasPrefix(line, "GEM"):
+		return "GEM", true
+	case strings.HasPrefix(line, "PLATFORMS"):
+		return "PLATFORMS", true
+	case strings.HasPrefix(line, "DEPENDENCIES"):
+		return "DEPENDENCIES", true
+	case strings.HasPrefix(line, "BUNDLED WITH"):
+		return "BUNDLED", true
+	}
+	return "", false
+}
+
+// shouldSkipLine checks if a line should be skipped during parsing
+func shouldSkipLine(line string, inSection string) bool {
+	trimmed := strings.TrimSpace(line)
+	if trimmed == "" {
+		return true
+	}
+	// Skip metadata lines
+	if strings.HasPrefix(line, "  remote:") || strings.HasPrefix(line, "  specs:") ||
+		strings.HasPrefix(line, "  revision:") || strings.HasPrefix(line, "  branch:") ||
+		strings.HasPrefix(line, "  tag:") {
+		return true
+	}
+	// Skip PLATFORMS section content
+	if inSection == "PLATFORMS" && (strings.HasPrefix(line, "  ") || strings.HasPrefix(line, " ")) {
+		return true
+	}
+	return false
+}
+
+// parseGemOrGitLine handles parsing gem lines in GIT/GEM sections
+func parseGemOrGitLine(line string, gf *Gemfile, currentGem *Gem, gemLineRegex, depRegex *regexp.Regexp) *Gem {
+	// Parse gem lines (4-space indent)
+	matches := gemLineRegex.FindStringSubmatch(line)
+	if len(matches) > 0 {
+		name := strings.ToLower(matches[1])
+		version := matches[2]
+		gem := &Gem{
+			Name:         name,
+			Version:      version,
+			Dependencies: []string{},
+			Groups:       []string{},
+			IsFirstLevel: false,
+		}
+		gf.Gems[name] = gem
+		return gem
+	}
+
+	// Parse dependency lines (6-space indent)
+	if currentGem != nil {
+		depMatches := depRegex.FindStringSubmatch(line)
+		if len(depMatches) > 0 {
+			depName := strings.ToLower(depMatches[1])
+			currentGem.Dependencies = append(currentGem.Dependencies, depName)
+		}
+	}
+	return currentGem
+}
+
+// parseDependenciesLine handles parsing gem names in DEPENDENCIES section
+func parseDependenciesLine(line string, gf *Gemfile, depItemRegex *regexp.Regexp) {
+	matches := depItemRegex.FindStringSubmatch(line)
+	if len(matches) == 0 {
+		return
+	}
+
+	gemName := strings.ToLower(matches[1])
+	gemName = strings.TrimSuffix(gemName, "!")
+	gf.FirstLevelGems = append(gf.FirstLevelGems, gemName)
+
+	if gem, ok := gf.Gems[gemName]; ok {
+		gem.IsFirstLevel = true
+	}
+}
+
 func Parse(path string) (*Gemfile, error) {
 	// Expand ~ if needed
 	if strings.HasPrefix(path, "~") {
@@ -94,7 +175,7 @@ func Parse(path string) (*Gemfile, error) {
 	}
 
 	scanner := bufio.NewScanner(file)
-	inSection := "" // track current section: "GIT", "GEM", "DEPENDENCIES", etc.
+	inSection := ""
 
 	gemLineRegex := regexp.MustCompile(`(?i)^\s{4}([a-z0-9_-]+)\s+\(([^)]+)\)`)
 	dependencyRegex := regexp.MustCompile(`(?i)^\s{6}([a-z0-9_-]+)`)
@@ -106,77 +187,26 @@ func Parse(path string) (*Gemfile, error) {
 		line := scanner.Text()
 
 		// Check for section headers
-		if strings.HasPrefix(line, "GIT") {
-			inSection = "GIT"
-			continue
-		} else if strings.HasPrefix(line, "GEM") {
-			inSection = "GEM"
-			continue
-		} else if strings.HasPrefix(line, "PLATFORMS") {
-			inSection = "PLATFORMS"
-			continue
-		} else if strings.HasPrefix(line, "DEPENDENCIES") {
-			inSection = "DEPENDENCIES"
-			continue
-		} else if strings.HasPrefix(line, "BUNDLED WITH") {
-			inSection = "BUNDLED"
-			break
-		}
-
-		// Skip empty lines and section metadata
-		if strings.TrimSpace(line) == "" || strings.HasPrefix(line, "  remote:") || strings.HasPrefix(line, "  specs:") || strings.HasPrefix(line, "  revision:") || strings.HasPrefix(line, "  branch:") || strings.HasPrefix(line, "  tag:") {
+		if newSection, isSectionHeader := detectSection(line); isSectionHeader {
+			if newSection == "BUNDLED" {
+				break
+			}
+			inSection = newSection
 			continue
 		}
 
-		// Skip PLATFORMS section content - just skip lines that are indented (platform names)
-		if inSection == "PLATFORMS" && (strings.HasPrefix(line, "  ") || strings.HasPrefix(line, " ")) {
+		if shouldSkipLine(line, inSection) {
 			continue
 		}
 
 		// Parse GIT and GEM sections
 		if inSection == "GIT" || inSection == "GEM" {
-			// Parse gem lines (4-space indent)
-			matches := gemLineRegex.FindStringSubmatch(line)
-			if len(matches) > 0 {
-				name := strings.ToLower(matches[1])
-				version := matches[2]
-
-				currentGem = &Gem{
-					Name:         name,
-					Version:      version,
-					Dependencies: []string{},
-					Groups:       []string{},
-					IsFirstLevel: false,
-				}
-				gf.Gems[name] = currentGem
-				continue
-			}
-
-			// Parse dependency lines (6-space indent)
-			if currentGem != nil {
-				depMatches := dependencyRegex.FindStringSubmatch(line)
-				if len(depMatches) > 0 {
-					depName := strings.ToLower(depMatches[1])
-					currentGem.Dependencies = append(currentGem.Dependencies, depName)
-				}
-			}
+			currentGem = parseGemOrGitLine(line, gf, currentGem, gemLineRegex, dependencyRegex)
 		}
 
-		// Parse DEPENDENCIES section (2-space indent for gem names)
+		// Parse DEPENDENCIES section
 		if inSection == "DEPENDENCIES" {
-			matches := dependencyItemRegex.FindStringSubmatch(line)
-			if len(matches) > 0 {
-				gemName := strings.ToLower(matches[1])
-				// Remove trailing '!' if it's a git dependency in DEPENDENCIES
-				gemName = strings.TrimSuffix(gemName, "!")
-
-				gf.FirstLevelGems = append(gf.FirstLevelGems, gemName)
-
-				// Mark the gem as first-level if it exists
-				if gem, ok := gf.Gems[gemName]; ok {
-					gem.IsFirstLevel = true
-				}
-			}
+			parseDependenciesLine(line, gf, dependencyItemRegex)
 		}
 	}
 
@@ -201,37 +231,60 @@ func (g *Gemfile) GetGemsAsList() []*Gem {
 	return gems
 }
 
-// LoadGroupsFromGemfile parses the Gemfile to extract group information
-// It updates the gems map with group information
-func (g *Gemfile) LoadGroupsFromGemfile(gemfilePath string) error {
+// resolvePath expands ~ and resolves directory to lock file path
+func resolvePath(path string, findFile func(string) string) string {
 	// Expand ~ if needed
-	if strings.HasPrefix(gemfilePath, "~") {
+	if strings.HasPrefix(path, "~") {
 		home, err := os.UserHomeDir()
 		if err != nil {
-			return fmt.Errorf("failed to get home directory: %w", err)
+			return ""
 		}
-		gemfilePath = filepath.Join(home, gemfilePath[1:])
+		path = filepath.Join(home, path[1:])
 	}
 
-	// Check if it's a directory, if so look for Gemfile
-	info, err := os.Stat(gemfilePath)
+	// Check if it's a directory
+	info, err := os.Stat(path)
 	if err != nil {
-		// Gemfile might not exist, which is okay - just return
-		return nil
+		return ""
 	}
 
 	if info.IsDir() {
-		gemfilePath = FindGemfile(gemfilePath)
-		if gemfilePath == "" {
-			// No Gemfile found, which is okay - just return
-			return nil
+		resolved := findFile(path)
+		if resolved == "" {
+			return ""
 		}
+		return resolved
+	}
+
+	return path
+}
+
+// addGroupsToGem adds groups to a gem, avoiding duplicates
+func addGroupsToGem(gem *Gem, groups []string) {
+	for _, group := range groups {
+		found := false
+		for _, existingGroup := range gem.Groups {
+			if existingGroup == group {
+				found = true
+				break
+			}
+		}
+		if !found {
+			gem.Groups = append(gem.Groups, group)
+		}
+	}
+}
+
+// LoadGroupsFromGemfile parses the Gemfile to extract group information
+func (g *Gemfile) LoadGroupsFromGemfile(gemfilePath string) error {
+	gemfilePath = resolvePath(gemfilePath, FindGemfile)
+	if gemfilePath == "" {
+		return nil
 	}
 
 	// Try to read the Gemfile
 	file, err := os.Open(gemfilePath)
 	if err != nil {
-		// Gemfile doesn't exist, which is okay
 		return nil
 	}
 	defer file.Close()
@@ -241,7 +294,7 @@ func (g *Gemfile) LoadGroupsFromGemfile(gemfilePath string) error {
 	groupRegex := regexp.MustCompile(`^\s*group\s+:([a-z_]+)\s+do`)
 	groupEndRegex := regexp.MustCompile(`^\s*end\s*$`)
 
-	currentGroups := []string{"default"} // Gems outside groups are in "default"
+	currentGroups := []string{"default"}
 	inGroup := false
 	groupStack := []string{}
 
@@ -275,19 +328,7 @@ func (g *Gemfile) LoadGroupsFromGemfile(gemfilePath string) error {
 		if len(gemMatches) > 0 {
 			gemName := gemMatches[1]
 			if gem, ok := g.Gems[gemName]; ok {
-				// Add groups to this gem (avoid duplicates)
-				for _, group := range currentGroups {
-					found := false
-					for _, existingGroup := range gem.Groups {
-						if existingGroup == group {
-							found = true
-							break
-						}
-					}
-					if !found {
-						gem.Groups = append(gem.Groups, group)
-					}
-				}
+				addGroupsToGem(gem, currentGroups)
 			}
 		}
 	}
@@ -297,27 +338,9 @@ func (g *Gemfile) LoadGroupsFromGemfile(gemfilePath string) error {
 
 // ExtractRubyVersion extracts the Ruby version from Gemfile.lock
 func ExtractRubyVersion(path string) string {
-	// Expand ~ if needed
-	if strings.HasPrefix(path, "~") {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return "Unknown"
-		}
-		path = filepath.Join(home, path[1:])
-	}
-
-	// Check if it's a directory, if so look for Gemfile.lock
-	info, err := os.Stat(path)
-	if err != nil {
+	path = resolvePath(path, FindLockFile)
+	if path == "" {
 		return "Unknown"
-	}
-
-	if info.IsDir() {
-		lockFile := FindLockFile(path)
-		if lockFile == "" {
-			return "Unknown"
-		}
-		path = lockFile
 	}
 
 	file, err := os.Open(path)
@@ -334,7 +357,6 @@ func ExtractRubyVersion(path string) string {
 		matches := rubyVersionRegex.FindStringSubmatch(line)
 		if len(matches) > 0 {
 			version := strings.TrimSpace(matches[1])
-			// Remove quotes if present
 			version = strings.Trim(version, "\"'")
 			return version
 		}
@@ -345,27 +367,9 @@ func ExtractRubyVersion(path string) string {
 
 // ExtractBundleVersion extracts the Bundle version from Gemfile.lock
 func ExtractBundleVersion(path string) string {
-	// Expand ~ if needed
-	if strings.HasPrefix(path, "~") {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return "Unknown"
-		}
-		path = filepath.Join(home, path[1:])
-	}
-
-	// Check if it's a directory, if so look for Gemfile.lock
-	info, err := os.Stat(path)
-	if err != nil {
+	path = resolvePath(path, FindLockFile)
+	if path == "" {
 		return "Unknown"
-	}
-
-	if info.IsDir() {
-		lockFile := FindLockFile(path)
-		if lockFile == "" {
-			return "Unknown"
-		}
-		path = lockFile
 	}
 
 	file, err := os.Open(path)
@@ -380,7 +384,6 @@ func ExtractBundleVersion(path string) string {
 	for scanner.Scan() {
 		line := scanner.Text()
 
-		// Check if previous line was "BUNDLED WITH"
 		if strings.Contains(strings.ToUpper(prevLine), "BUNDLED WITH") {
 			version := strings.TrimSpace(line)
 			return version

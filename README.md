@@ -35,7 +35,7 @@ If you're integrating gemtracker into automated systems, CI/CD pipelines, or bui
 
 ### Claude Code Skill
 
-**New in v1.1.2:** Use the `gem-check` Claude Code skill for interactive gem analysis:
+Use the `gem-check` Claude Code skill for interactive gem analysis:
 
 ```bash
 /gem-check
