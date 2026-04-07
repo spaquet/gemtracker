@@ -26,6 +26,33 @@ If you're integrating gemtracker into automated systems, CI/CD pipelines, or bui
 - Integration patterns with code examples
 - Best practices for AI-powered analysis
 
+### Claude Code Skill
+
+**New in v1.1.2:** Use the `gem-check` Claude Code skill for interactive gem analysis:
+
+```bash
+/gem-check
+```
+
+This skill provides:
+- **Security-first analysis** - Prioritize CVE fixes with severity levels
+- **Smart prioritization** - First-level dependencies before transitive
+- **Real-world workflows** - Guided upgrade paths for different scenarios
+- **Interactive help** - Ask follow-up questions about specific gems
+
+For complete documentation, see the [gem-check skill guide](.claude/skills/gem-check/SKILL.md).
+
+**Examples:**
+```
+/gem-check                    # Analyze current project
+/gem-check ~/my-rails-app    # Analyze specific project
+
+# After running, you can ask:
+"Help me upgrade Rails safely"
+"What are the top 3 things I should fix?"
+"Create a prioritized upgrade plan"
+```
+
 ## Installation
 
 ### macOS (Homebrew) — Recommended
