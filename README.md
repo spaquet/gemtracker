@@ -97,6 +97,76 @@ gemtracker -v
 gemtracker --version
 ```
 
+### Export Reports for CI/CD
+
+Generate non-interactive reports for continuous integration pipelines and compliance sharing:
+
+```bash
+# Generate human-readable text report to stdout
+gemtracker --report text /path/to/project
+
+# Export as CSV for compliance managers
+gemtracker --report csv --output gems-report.csv
+
+# Export as JSON for CI/CD pipeline processing
+gemtracker --report json | jq '.summary'
+
+# Save JSON report to file
+gemtracker --report json --output gems-report.json
+
+# Include verbose logging with report
+gemtracker --report text --verbose /path/to/project
+```
+
+**Supported Formats:**
+
+- **text** - Human-readable report with sections for vulnerable gems, outdated gems, and full gem list
+  - Perfect for: Code review, team communication, build logs
+  - Output: Formatted text with clear sections and summaries
+
+- **csv** - Comma-separated values for spreadsheets and compliance tools
+  - Perfect for: Compliance managers, risk assessment, audit trails
+  - Columns: Name, Version, Groups, Direct Dependency, Outdated, Latest Version, Vulnerable, Vulnerability Info
+
+- **json** - Machine-readable format for automation and CI/CD integration
+  - Perfect for: Pipeline parsing, metrics collection, automated workflows
+  - Contains: Full gem details, vulnerability info, summary statistics
+
+**Output Options:**
+
+- **No `--output` flag** - Report prints to stdout (useful for piping and CI/CD logs)
+- **`--output PATH`** - Report saved to specified file
+- **`--verbose`** - Include detailed logging to `~/.cache/gemtracker/gemtracker.log`
+
+**Exit Codes:**
+- **0** - Success (no errors)
+- **1** - Error (e.g., invalid format, missing Gemfile.lock)
+
+**CI/CD Examples:**
+
+GitHub Actions:
+```yaml
+- name: Check gem vulnerabilities
+  run: gemtracker --report json . | jq '.summary'
+```
+
+CircleCI:
+```yaml
+- run:
+    name: Generate gem report
+    command: gemtracker --report csv --output gems-report.csv
+```
+
+GitLab CI:
+```yaml
+check_gems:
+  script:
+    - gemtracker --report text --output gems-report.txt
+  artifacts:
+    paths:
+      - gems-report.txt
+```
+
 ### Interactive Navigation
 
 Once running, use these keys:
