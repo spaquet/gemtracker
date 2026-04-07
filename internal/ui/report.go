@@ -13,42 +13,66 @@ import (
 	"github.com/spaquet/gemtracker/internal/logger"
 )
 
-// ReportGenerator generates reports in various formats
+// ReportGenerator generates gem dependency reports in multiple formats (text, CSV, JSON)
+// for non-interactive CI/CD integration and compliance use cases.
 type ReportGenerator struct {
+	// projectPath is the path to the Ruby project (directory or Gemfile.lock file)
 	projectPath string
-	noCache     bool
-	verbose     bool
+	// noCache indicates whether to skip cached analysis results
+	noCache bool
+	// verbose enables detailed logging
+	verbose bool
 }
 
-// ReportData holds the structured data for export
+// ReportData holds structured gem analysis data suitable for export in multiple formats.
 type ReportData struct {
-	GeneratedAt     string
-	ProjectPath     string
-	TotalGems       int
-	FirstLevelGems  int
-	OutdatedGems    []*GemReport
-	VulnerableGems  []*GemReport
-	AllGems         []*GemReport
-	Summary         string
-	OutdatedCount   int
+	// GeneratedAt is the timestamp when the report was generated
+	GeneratedAt string
+	// ProjectPath is the path to the analyzed Ruby project
+	ProjectPath string
+	// TotalGems is the count of all gems (first-level and transitive)
+	TotalGems int
+	// FirstLevelGems is the count of directly required gems
+	FirstLevelGems int
+	// OutdatedGems lists gems with available updates
+	OutdatedGems []*GemReport
+	// VulnerableGems lists gems with known CVEs
+	VulnerableGems []*GemReport
+	// AllGems lists all gems in the project
+	AllGems []*GemReport
+	// Summary is a brief text summary of findings
+	Summary string
+	// OutdatedCount is the count of gems with updates available
+	OutdatedCount int
+	// VulnerableCount is the count of gems with known vulnerabilities
 	VulnerableCount int
 }
 
-// GemReport represents a gem in the report
+// GemReport represents a gem's details in the generated report, including status and metadata.
 type GemReport struct {
-	Name              string
-	Version           string
-	Groups            []string
-	IsFirstLevel      bool
-	IsOutdated        bool
-	LatestVersion     string
-	IsVulnerable      bool
+	// Name is the gem name
+	Name string
+	// Version is the currently installed version
+	Version string
+	// Groups lists the bundle groups this gem belongs to
+	Groups []string
+	// IsFirstLevel indicates whether this is a directly required gem
+	IsFirstLevel bool
+	// IsOutdated indicates whether a newer version is available
+	IsOutdated bool
+	// LatestVersion is the latest available version (if IsOutdated is true)
+	LatestVersion string
+	// IsVulnerable indicates whether known CVEs affect this version
+	IsVulnerable bool
+	// VulnerabilityInfo contains CVE ID and description (if IsVulnerable is true)
 	VulnerabilityInfo string
-	HomepageURL       string
-	Description       string
+	// HomepageURL is the gem's homepage or source code URL
+	HomepageURL string
+	// Description is the gem description from rubygems.org
+	Description string
 }
 
-// NewReportGenerator creates a new report generator
+// NewReportGenerator creates a new ReportGenerator for the given project path.
 func NewReportGenerator(projectPath string, noCache, verbose bool) *ReportGenerator {
 	return &ReportGenerator{
 		projectPath: projectPath,
@@ -57,7 +81,8 @@ func NewReportGenerator(projectPath string, noCache, verbose bool) *ReportGenera
 	}
 }
 
-// Generate generates and writes a report in the specified format
+// Generate analyzes the project and generates a report in the specified format (text, csv, or json).
+// If outputPath is empty, writes to stdout. Returns an error if analysis or report writing fails.
 func (rg *ReportGenerator) Generate(format, outputPath string) error {
 	// Parse the Gemfile
 	logger.Info("Parsing Gemfile...")
