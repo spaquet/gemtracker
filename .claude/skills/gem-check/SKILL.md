@@ -1,12 +1,23 @@
 ---
 name: gem-check
 description: Analyze Ruby gem security vulnerabilities, outdated dependencies, and health status with actionable upgrade recommendations
-version: 1.0.0
 ---
 
 # Gem Check Skill
 
 Analyze your Ruby project's dependencies for security vulnerabilities, outdated gems, and maintenance concerns. This skill runs `gemtracker` to provide structured reports and helps prioritize which gems to update.
+
+## How to Use This Skill
+
+When using gem-check, follow these steps:
+
+1. **Run the analysis** - Execute `/gem-check` to scan your project's Gemfile.lock
+2. **Review findings** - I'll present vulnerabilities, outdated gems, and health concerns with severity levels
+3. **Understand priorities** - Vulnerabilities first, then first-level gems, then transitive dependencies
+4. **Ask follow-up questions** - For any gem, ask for help understanding changes, testing strategy, or upgrade assistance
+5. **Take action** - Request specific updates or a complete upgrade plan based on your priorities
+
+Key principle: **You decide what to update and when.** I can provide analysis, explain changes, help with conflicts, and suggest strategies—but you control the final decisions.
 
 ## What This Skill Does
 
@@ -206,27 +217,7 @@ I'll provide:
 
 ## Installation Requirements
 
-This skill requires the `gemtracker` CLI tool. If not found, I'll prompt you to install it.
-
-**macOS / Linux (Recommended - Homebrew):**
-```bash
-brew tap spaquet/gemtracker
-brew install gemtracker
-```
-
-**Windows (Direct Download):**
-1. Download from [GitHub Releases](https://github.com/spaquet/gemtracker/releases)
-2. Extract ZIP file
-3. Add to PATH or place in a directory already in PATH
-
-**All Platforms (Build from Source):**
-```bash
-git clone https://github.com/spaquet/gemtracker
-cd gemtracker
-make build
-```
-
-See [gemtracker README](https://github.com/spaquet/gemtracker#installation) for full installation details.
+This skill requires the `gemtracker` CLI tool. If not found, I'll prompt you to install it. For detailed installation instructions, see [reference.md](reference.md#installation).
 
 ## Understanding Gem Groups
 
@@ -257,36 +248,20 @@ A vulnerability in `test` is less urgent than one in `default`.
 
 ## Examples
 
-### Run analysis
-```
-/gem-check
-```
-Shows all vulnerabilities, outdated gems, and health concerns.
-
-### Analyze specific project
-```
-/gem-check ~/my-rails-app
+### Quick scans
+```bash
+/gem-check                    # Analyze current project
+/gem-check ~/my-rails-app    # Analyze specific project
 ```
 
-### Get help with updates
+### Follow-up interactions
 ```
-/gem-check
-→ [See Rails is outdated]
-→ "Help me upgrade Rails safely"
-```
-
-### Update a specific gem
-```
-/gem-check
-→ [See devise 4.8.0 → 4.9.3]
-→ "Update devise to 4.9.3"
+"Help me upgrade Rails safely"
+"Update devise to 4.9.3"
+"Create a prioritized plan to update all outdated gems"
 ```
 
-### Create upgrade plan
-```
-/gem-check
-→ "Create a prioritized plan to update all outdated gems"
-```
+For more detailed examples including workflows for security-first updates, large projects, and CI/CD integration, see [examples.md](examples.md).
 
 ## Limitations
 
@@ -296,9 +271,23 @@ Shows all vulnerabilities, outdated gems, and health concerns.
 - Health data cached for 24 hours per gem
 - Very large projects (500+ gems) may take longer to analyze
 
-## Resources
+## Additional Resources
 
-- **gemtracker GitHub**: https://github.com/spaquet/gemtracker
-- **AI/Automation Guide**: https://github.com/spaquet/gemtracker/blob/main/AI_GUIDE.md
-- **Installation Guide**: https://github.com/spaquet/gemtracker#installation
-- **Report Formats**: https://github.com/spaquet/gemtracker#export-reports-for-cicd
+For detailed information about using this skill:
+- **[API Reference](reference.md)** - Complete CLI documentation, command options, output formats, troubleshooting
+- **[Usage Examples](examples.md)** - Real-world workflows: security-first updates, large projects, CI/CD integration, dependency conflicts
+
+External resources:
+- **[gemtracker GitHub](https://github.com/spaquet/gemtracker)** - Main project repository
+- **[Installation Guide](https://github.com/spaquet/gemtracker#installation)** - Setup instructions for all platforms
+- **[AI/Automation Guide](https://github.com/spaquet/gemtracker/blob/main/AI_GUIDE.md)** - Using gemtracker in scripts and automation
+
+## License
+
+This skill is open source under the MIT License. See [LICENSE](LICENSE) for full details.
+
+**MIT License Summary:**
+- ✅ Free to use, modify, and distribute
+- ✅ Include license notice
+- ✅ Use for commercial projects
+- ⚠️ No warranty or liability
