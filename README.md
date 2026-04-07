@@ -2,6 +2,13 @@
 
 A beautiful, interactive Terminal UI for analyzing Ruby gem dependencies and quickly identifying security risks in your projects.
 
+[![CI](https://github.com/spaquet/gemtracker/actions/workflows/ci.yml/badge.svg)](https://github.com/spaquet/gemtracker/actions)
+[![Latest Release](https://img.shields.io/github/v/release/spaquet/gemtracker)](https://github.com/spaquet/gemtracker/releases)
+[![License](https://img.shields.io/github/license/spaquet/gemtracker)](LICENSE)
+[![Go Report Card](https://goreportcard.com/badge/github.com/spaquet/gemtracker)](https://goreportcard.com/report/github.com/spaquet/gemtracker)
+
+![gemtracker screenshot](images/screen1.png)
+
 ## Features
 
 - **Interactive Tab-Based TUI**: Clean, modern interface with 4 main screens
