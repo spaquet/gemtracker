@@ -11,9 +11,12 @@ import (
 	"github.com/spaquet/gemtracker/internal/logger"
 )
 
-// ParseGemspec parses a Ruby .gemspec file to extract gem dependencies.
-// It extracts add_runtime_dependency, add_development_dependency, and add_dependency declarations.
-// Returns a Gemfile structure with all gems as first-level dependencies.
+// ParseGemspec parses a Ruby .gemspec file to extract gem dependencies declared via
+// add_runtime_dependency, add_development_dependency, and add_dependency directives.
+// It accepts either a file path or a directory path; if a directory is provided, it searches for
+// the first .gemspec file in that directory. Version constraints from unresolved gemspec declarations
+// are extracted but cannot be compared against actual installed versions without Gemfile.lock.
+// Returns a Gemfile structure with all gems marked as first-level dependencies.
 func ParseGemspec(path string) (*Gemfile, error) {
 	// Expand ~ if needed
 	if strings.HasPrefix(path, "~") {
@@ -144,7 +147,8 @@ func ParseGemspec(path string) (*Gemfile, error) {
 	return gf, nil
 }
 
-// countGemsByGroup returns the count of gems in a specific group
+// countGemsByGroup returns the count of gems in a specific group.
+// If group is empty string, counts gems that are NOT in the "development" group (i.e., runtime gems).
 func countGemsByGroup(gf *Gemfile, group string) int {
 	count := 0
 	for _, gem := range gf.Gems {
