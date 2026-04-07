@@ -14,13 +14,18 @@ import (
 	"github.com/spaquet/gemtracker/internal/logger"
 )
 
-// HealthScore represents the health tier of a gem
+// HealthScore represents the maintenance health tier of a gem.
+// Health is determined by last release date, maintainer count, activity, and repository status.
 type HealthScore int
 
 const (
+	// HealthUnknown indicates health data could not be fetched (rate limited, network error, etc.)
 	HealthUnknown HealthScore = iota
+	// HealthHealthy indicates active gem with regular releases and multiple maintainers (🟢)
 	HealthHealthy
+	// HealthWarning indicates stale gem with no recent activity or single maintainer (🟡)
 	HealthWarning
+	// HealthCritical indicates inactive gem, archived, or disabled repository (🔴)
 	HealthCritical
 )
 
@@ -37,35 +42,53 @@ func (hs HealthScore) String() string {
 	}
 }
 
-// GemHealth contains health indicators for a gem
+// GemHealth contains maintenance and activity metrics for a gem from RubyGems and GitHub.
 type GemHealth struct {
-	Score           HealthScore `json:"score"`
-	LastRelease     time.Time   `json:"last_release"`     // from rubygems version_created_at
-	GitHubPushedAt  time.Time   `json:"github_pushed_at"` // from github pushed_at
-	Stars           int         `json:"stars"`
-	OpenIssues      int         `json:"open_issues"`
-	Archived        bool        `json:"archived"`
-	Disabled        bool        `json:"disabled"`
-	MaintainerCount int         `json:"maintainer_count"`
-	RateLimited     bool        `json:"rate_limited"` // GitHub rate limit hit, data partial
-	FetchedAt       time.Time   `json:"fetched_at"`
+	// Score is the computed health tier (Healthy, Warning, Critical, Unknown)
+	Score HealthScore `json:"score"`
+	// LastRelease is the timestamp of the latest gem release from RubyGems
+	LastRelease time.Time `json:"last_release"`
+	// GitHubPushedAt is the timestamp of the last commit pushed to the repository
+	GitHubPushedAt time.Time `json:"github_pushed_at"`
+	// Stars is the number of GitHub stars on the repository
+	Stars int `json:"stars"`
+	// OpenIssues is the number of open issues on the repository
+	OpenIssues int `json:"open_issues"`
+	// Archived indicates whether the GitHub repository is archived
+	Archived bool `json:"archived"`
+	// Disabled indicates whether the GitHub repository is disabled
+	Disabled bool `json:"disabled"`
+	// MaintainerCount is the number of maintainers listed on RubyGems
+	MaintainerCount int `json:"maintainer_count"`
+	// RateLimited indicates if GitHub API rate limit was exceeded (partial data)
+	RateLimited bool `json:"rate_limited"`
+	// FetchedAt is the timestamp when this health data was fetched
+	FetchedAt time.Time `json:"fetched_at"`
 }
 
-// RepoOwnerPair represents a gem and its GitHub owner/repo for batch fetching
+// RepoOwnerPair represents a gem and its GitHub repository for batch fetching.
+// Used for efficient GraphQL batch queries to GitHub.
 type RepoOwnerPair struct {
+	// GemName is the gem name
 	GemName string
-	Owner   string
-	Repo    string
+	// Owner is the GitHub repository owner
+	Owner string
+	// Repo is the GitHub repository name
+	Repo string
 }
 
-// HealthChecker fetches health data from RubyGems and GitHub APIs
+// HealthChecker fetches and caches gem health data from the RubyGems and GitHub APIs.
+// It supports batch GitHub queries via GraphQL and graceful handling of rate limiting.
 type HealthChecker struct {
-	client      *http.Client
+	// client is the HTTP client for API requests
+	client *http.Client
+	// githubCache maps "owner/repo" to GitHub repo data for fast lookups
 	githubCache map[string]*githubRepo
-	mu          sync.Mutex
+	// mu protects githubCache from concurrent access
+	mu sync.Mutex
 }
 
-// NewHealthChecker creates a new health checker
+// NewHealthChecker creates a new HealthChecker with a 10-second HTTP timeout and empty caches.
 func NewHealthChecker() *HealthChecker {
 	return &HealthChecker{
 		client: &http.Client{
@@ -107,8 +130,9 @@ type githubGraphQLResponse struct {
 	Errors []map[string]interface{}      `json:"errors,omitempty"`
 }
 
-// FetchHealth fetches health data for a gem from RubyGems and GitHub
-// Returns (*GemHealth, error). If GitHub rate limited, returns partial data with RateLimited=true
+// FetchHealth fetches and computes health data for a gem from RubyGems and GitHub APIs.
+// It uses cached GitHub data from FetchGitHubBatch when available, then falls back to individual REST calls.
+// Returns (*GemHealth, error). If GitHub rate limited, returns partial data with RateLimited=true.
 func (hc *HealthChecker) FetchHealth(gemName, sourceCodeURI, homepageURI, versionCreatedAtStr, ownersURL string) (*GemHealth, error) {
 	health := &GemHealth{
 		FetchedAt: time.Now(),
@@ -178,9 +202,9 @@ func (hc *HealthChecker) FetchHealth(gemName, sourceCodeURI, homepageURI, versio
 	return health, nil
 }
 
-// FetchGitHubBatch fetches GitHub data for multiple repos in one or more GraphQL requests
-// Uses owner/repo pairs extracted from gem metadata
-// If GITHUB_TOKEN is not set, silently returns nil (GitHub data is optional)
+// FetchGitHubBatch fetches GitHub data for multiple repositories in batched GraphQL requests.
+// It caches all results for use by FetchHealth. If GITHUB_TOKEN is not set, it silently
+// returns without fetching (GitHub data is optional). Returns an error only if the API request fails.
 func (hc *HealthChecker) FetchGitHubBatch(pairs []RepoOwnerPair) error {
 	// If no token, skip GitHub entirely
 	token := os.Getenv("GITHUB_TOKEN")
@@ -367,7 +391,9 @@ func (hc *HealthChecker) fetchGitHubRepo(owner, repo string) (*githubRepo, bool)
 	return &ghRepo, false
 }
 
-// ComputeHealthScore computes the health score based on available data
+// ComputeHealthScore computes a health tier from gem health metrics.
+// Tiers: CRITICAL (archived/disabled/3+ yrs inactive), WARNING (1-3 yrs inactive or single maintainer),
+// HEALTHY (active within 1 year with 2+ maintainers), UNKNOWN (rate limited or no data).
 func ComputeHealthScore(h *GemHealth) HealthScore {
 	if h.RateLimited {
 		return HealthUnknown
@@ -408,8 +434,9 @@ func ComputeHealthScore(h *GemHealth) HealthScore {
 	return HealthHealthy
 }
 
-// ExtractGitHubOwnerRepo extracts GitHub owner and repo from source URIs
-// Handles: https://github.com/owner/repo, https://github.com/owner/repo.git, http://github.com/owner/repo, etc.
+// ExtractGitHubOwnerRepo extracts the GitHub owner and repository name from a URI.
+// It handles HTTPS, HTTP, and SSH-style URIs with optional .git suffix.
+// Returns (owner, repo, true) if extraction succeeds, ("", "", false) otherwise.
 func ExtractGitHubOwnerRepo(uri string) (owner, repo string, ok bool) {
 	// Regex: github.com/owner/repo or github.com:owner/repo
 	re := regexp.MustCompile(`github\.com[:/]([^/]+)/([^/.\s]+)`)

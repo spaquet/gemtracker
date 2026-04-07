@@ -1,3 +1,9 @@
+// Package cache provides caching functionality for gemtracker analysis results.
+//
+// Analysis results are cached based on Gemfile.lock modification time. When a Gemfile.lock
+// is analyzed, the results are stored in ~/.cache/gemtracker/ with a filename derived from
+// the file path hash. On subsequent runs, the cache is checked for validity by comparing
+// the cached modification time with the current file modification time.
 package cache
 
 import (
@@ -11,7 +17,8 @@ import (
 	"github.com/spaquet/gemtracker/internal/gemfile"
 )
 
-// CacheEntry represents a cached analysis result with metadata
+// CacheEntry represents a cached analysis result with metadata about the Gemfile.lock
+// that was analyzed and project information (Ruby version, bundle version, framework).
 type CacheEntry struct {
 	Result            *gemfile.AnalysisResult `json:"result"`
 	GemfileLockMtime  int64                   `json:"gemfile_lock_mtime"`
@@ -22,7 +29,8 @@ type CacheEntry struct {
 	RailsVersion      string                  `json:"rails_version"`
 }
 
-// GetCacheDir returns the cache directory path
+// GetCacheDir returns the cache directory path (~/.cache/gemtracker), creating it if needed.
+// Returns an error if the home directory cannot be determined or the directory cannot be created.
 func GetCacheDir() (string, error) {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
@@ -39,7 +47,8 @@ func GetCacheDir() (string, error) {
 	return cacheDir, nil
 }
 
-// GetCachePath returns the cache file path for a given Gemfile.lock
+// GetCachePath returns the cache file path for a given Gemfile.lock.
+// The filename is derived from a hash of the absolute path to ensure uniqueness across projects.
 func GetCachePath(gemfileLockPath string) (string, error) {
 	cacheDir, err := GetCacheDir()
 	if err != nil {
@@ -51,7 +60,9 @@ func GetCachePath(gemfileLockPath string) (string, error) {
 	return filepath.Join(cacheDir, hash+".json"), nil
 }
 
-// Read reads cached analysis result if it exists and is valid
+// Read reads and returns a cached analysis result if it exists and is still valid.
+// Returns nil if the cache file doesn't exist or the Gemfile.lock has been modified since caching.
+// Returns an error if the cache file cannot be read or parsed.
 func Read(gemfileLockPath string) (*CacheEntry, error) {
 	cachePath, err := GetCachePath(gemfileLockPath)
 	if err != nil {
@@ -89,7 +100,8 @@ func Read(gemfileLockPath string) (*CacheEntry, error) {
 	return &entry, nil
 }
 
-// Write writes analysis result to cache
+// Write writes an analysis result to cache, recording the Gemfile.lock modification time
+// and current timestamp. Returns an error if the cache file cannot be written.
 func Write(gemfileLockPath string, entry *CacheEntry) error {
 	// Update mtime and cached time
 	info, err := os.Stat(gemfileLockPath)
@@ -115,7 +127,8 @@ func Write(gemfileLockPath string, entry *CacheEntry) error {
 	return os.WriteFile(cachePath, data, 0644)
 }
 
-// Clear removes the cache entry for a given Gemfile.lock
+// Clear removes the cache entry for a given Gemfile.lock.
+// Returns an error if the cache file cannot be deleted.
 func Clear(gemfileLockPath string) error {
 	cachePath, err := GetCachePath(gemfileLockPath)
 	if err != nil {
@@ -125,7 +138,9 @@ func Clear(gemfileLockPath string) error {
 	return os.Remove(cachePath)
 }
 
-// hashPath creates a hash of the file path for use in cache filenames
+// hashPath creates a unique hash-based filename from the absolute path of a Gemfile.lock.
+// The resulting filename combines the base filename with the first 8 hex characters of the SHA256 hash
+// of the absolute path to ensure uniqueness across multiple projects with the same file name.
 func hashPath(path string) string {
 	abs, err := filepath.Abs(path)
 	if err != nil {

@@ -4,20 +4,29 @@ import (
 	"strings"
 )
 
-// Vulnerability represents a known vulnerability
+// Vulnerability represents a known CVE affecting one or more versions of a gem.
 type Vulnerability struct {
-	GemName          string
-	AffectedVersions []string // e.g., "< 6.1.4", ">= 6.0.0, < 6.0.5"
-	Description      string
-	CVE              string
+	// GemName is the affected gem (lowercase)
+	GemName string
+	// AffectedVersions is a list of version specs that are vulnerable (e.g., "< 6.1.4", ">= 6.0.0, < 6.0.5")
+	AffectedVersions []string
+	// Description is a brief summary of the vulnerability
+	Description string
+	// CVE is the CVE identifier (e.g., "CVE-2021-22942")
+	CVE string
 }
 
-// VulnerabilityChecker checks if gems have known vulnerabilities
+// VulnerabilityChecker checks if gem versions have known CVEs.
+// It maintains a static list of known vulnerabilities with version ranges.
 type VulnerabilityChecker struct {
+	// vulnerabilities is the list of known CVEs
 	vulnerabilities []Vulnerability
 }
 
-// NewVulnerabilityChecker creates a new checker with known vulnerabilities
+// NewVulnerabilityChecker creates a new VulnerabilityChecker with a built-in list of
+// known CVEs affecting common Ruby gems (Rails, Devise, Rack, ActionPack, etc.).
+// This list is static and compiled at build time; for live CVE updates, consider
+// integrating with a dedicated vulnerability database.
 func NewVulnerabilityChecker() *VulnerabilityChecker {
 	vc := &VulnerabilityChecker{
 		vulnerabilities: []Vulnerability{
@@ -60,8 +69,9 @@ func NewVulnerabilityChecker() *VulnerabilityChecker {
 	return vc
 }
 
-// HasVulnerability checks if a gem has known vulnerabilities
-// Returns (hasVulnerability, cveID, description)
+// HasVulnerability checks if a gem version has a known CVE and returns the result.
+// Returns (hasVulnerability, cveID, description). If multiple CVEs affect the version,
+// only the first match is returned.
 func (vc *VulnerabilityChecker) HasVulnerability(gemName, version string) (bool, string, string) {
 	for _, vuln := range vc.vulnerabilities {
 		if strings.ToLower(vuln.GemName) == strings.ToLower(gemName) {
@@ -73,7 +83,8 @@ func (vc *VulnerabilityChecker) HasVulnerability(gemName, version string) (bool,
 	return false, "", ""
 }
 
-// versionIsAffected checks if a version matches the affected version spec
+// versionIsAffected checks if a version matches any of the affected version specs.
+// If any spec matches, the version is considered affected.
 func (vc *VulnerabilityChecker) versionIsAffected(version string, affectedSpecs []string) bool {
 	// Simple implementation: check if version is in any of the affected ranges
 	// Format: "< 6.1.4" or ">= 6.0.0, < 6.0.5"
@@ -85,7 +96,9 @@ func (vc *VulnerabilityChecker) versionIsAffected(version string, affectedSpecs 
 	return false
 }
 
-// matchesSpec checks if a version matches a spec like "< 6.1.4" or ">= 6.0.0"
+// matchesSpec checks if a version matches a version spec string.
+// Supported formats: "<", "<=", ">", ">=", and exact match.
+// Examples: "< 6.1.4", ">= 6.0.0", "1.2.3"
 func (vc *VulnerabilityChecker) matchesSpec(version, spec string) bool {
 	spec = strings.TrimSpace(spec)
 

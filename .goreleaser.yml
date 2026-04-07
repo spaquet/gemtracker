@@ -73,7 +73,7 @@ changelog:
       - '^test:'
       - typo
 
-brews:
+homebrew_casks:
   - repository:
       owner: spaquet
       name: homebrew-gemtracker

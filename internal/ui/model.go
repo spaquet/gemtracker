@@ -1,3 +1,8 @@
+// Package ui provides the interactive Terminal User Interface (TUI) for gemtracker using BubbleTea.
+//
+// The TUI displays gem dependency analysis across multiple views (gem list, details, search, vulnerabilities,
+// project info) with real-time background updates for gem health, outdated versions, and health scoring.
+// It handles user keyboard input, manages application state, and coordinates async data fetching.
 package ui
 
 import (
@@ -54,18 +59,29 @@ var frameworkGems = map[string]string{
 // View Modes
 // ============================================================================
 
+// ViewMode represents the current screen being displayed in the TUI.
 type ViewMode int
 
 const (
+	// ViewLoading displays the loading/progress screen while analyzing the project
 	ViewLoading ViewMode = iota
+	// ViewGemList displays all first-level gems (directly required dependencies)
 	ViewGemList
+	// ViewGemDetail displays forward and reverse dependencies for a selected gem
 	ViewGemDetail
+	// ViewSearch displays search results for a gem query
 	ViewSearch
+	// ViewUpgradeable displays gems with available updates, organized by type
 	ViewUpgradeable
+	// ViewCVE displays vulnerable gems with CVE information
 	ViewCVE
+	// ViewProjectInfo displays project metadata (Ruby version, framework, gem counts, etc.)
 	ViewProjectInfo
+	// ViewFilterMenu displays options to filter gems by group or upgradability
 	ViewFilterMenu
+	// ViewSelectPath displays an input prompt to select a project directory
 	ViewSelectPath
+	// ViewError displays an error message
 	ViewError
 )
 
@@ -138,14 +154,19 @@ type OutdatedCompleteMsg struct{}
 // Model
 // ============================================================================
 
+// Model is the central BubbleTea model that manages all TUI state, including the current screen,
+// gem data, navigation, filtering, async operations (health checks, outdated version checks),
+// and error states. It implements the tea.Model interface and coordinates all UI updates.
 type Model struct {
-	// Window dimensions
+	// Window dimensions (updated on resize)
 	Width  int
 	Height int
 
-	// Current view and navigation
+	// CurrentView is the screen currently being displayed
 	CurrentView ViewMode
-	ActiveTab   ViewMode // Persists across ViewLoading/ViewGemDetail
+	// ActiveTab persists the tab (ViewGemList, ViewUpgradeable, ViewCVE, ViewProjectInfo)
+	// across navigation away and back, restoring state when returning
+	ActiveTab ViewMode
 
 	// Data
 	AnalysisResult   *gemfile.AnalysisResult
@@ -252,6 +273,9 @@ type Model struct {
 // Initialization
 // ============================================================================
 
+// NewModel creates a new TUI Model and loads the project from the given path.
+// If the path contains a Gemfile.lock, gems.locked, or .gemspec file, analysis starts automatically.
+// The version, commit, and date are displayed in the UI header.
 func NewModel(version, commit, date, projectPath string, noCache, verbose bool) *Model {
 	m := &Model{
 		Version:         version,
@@ -289,6 +313,8 @@ func NewModel(version, commit, date, projectPath string, noCache, verbose bool) 
 	return m
 }
 
+// Init implements the tea.Model interface and starts the initial command queue.
+// If a Gemfile.lock or .gemspec is found, it begins project analysis automatically.
 func (m *Model) Init() tea.Cmd {
 	// Auto-start analysis if lock file or gemspec exists
 	if _, err := os.Stat(m.GemfileLockPath); err == nil {
