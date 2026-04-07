@@ -22,16 +22,16 @@ type ReportGenerator struct {
 
 // ReportData holds the structured data for export
 type ReportData struct {
-	GeneratedAt      string
-	ProjectPath      string
-	TotalGems        int
-	FirstLevelGems   int
-	OutdatedGems     []*GemReport
-	VulnerableGems   []*GemReport
-	AllGems          []*GemReport
-	Summary          string
-	OutdatedCount    int
-	VulnerableCount  int
+	GeneratedAt     string
+	ProjectPath     string
+	TotalGems       int
+	FirstLevelGems  int
+	OutdatedGems    []*GemReport
+	VulnerableGems  []*GemReport
+	AllGems         []*GemReport
+	Summary         string
+	OutdatedCount   int
+	VulnerableCount int
 }
 
 // GemReport represents a gem in the report
@@ -312,10 +312,10 @@ func (rg *ReportGenerator) generateJSONReport(data *ReportData, outputPath strin
 		"generated_at": data.GeneratedAt,
 		"project_path": data.ProjectPath,
 		"summary": map[string]interface{}{
-			"total_gems":        data.TotalGems,
-			"first_level_gems":  data.FirstLevelGems,
-			"outdated_count":    data.OutdatedCount,
-			"vulnerable_count":  data.VulnerableCount,
+			"total_gems":       data.TotalGems,
+			"first_level_gems": data.FirstLevelGems,
+			"outdated_count":   data.OutdatedCount,
+			"vulnerable_count": data.VulnerableCount,
 		},
 		"gems": data.AllGems,
 	}
