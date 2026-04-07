@@ -2,6 +2,11 @@ package ui
 
 import "github.com/charmbracelet/lipgloss"
 
+// This file defines all terminal UI styling constants for gemtracker.
+// It uses a dark slate/blue ANSI 256-color palette suitable for long terminal sessions,
+// with specialized colors for status indicators (success green, warning yellow, danger red).
+// All styles are built using lipgloss for composable, terminal-safe formatting.
+
 // Color palette - dark slate/blue theme (256-color ANSI)
 const (
 	ColorBg           = "235" // #262626 - base background
