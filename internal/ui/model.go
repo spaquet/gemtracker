@@ -15,6 +15,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spaquet/gemtracker/internal/cache"
 	"github.com/spaquet/gemtracker/internal/gemfile"
+	"github.com/spaquet/gemtracker/internal/logger"
 )
 
 // Spinner frames for loading animation (8-frame braille sequence)
@@ -235,6 +236,7 @@ type Model struct {
 	// Project state
 	ProjectPath     string
 	GemfileLockPath string
+	GemfileSource   string // "Gemfile.lock", "gems.locked", ".gemspec", etc.
 
 	// App metadata
 	Version             string
@@ -288,13 +290,13 @@ func NewModel(version, commit, date, projectPath string, noCache, verbose bool) 
 }
 
 func (m *Model) Init() tea.Cmd {
-	// Auto-start analysis if Gemfile.lock exists
+	// Auto-start analysis if lock file or gemspec exists
 	if _, err := os.Stat(m.GemfileLockPath); err == nil {
 		// File exists, start analysis
 		m.CurrentView = ViewLoading
 		m.ActiveTab = ViewGemList
 		m.Loading = true
-		m.LoadingMessage = "Parsing Gemfile.lock..."
+		m.LoadingMessage = fmt.Sprintf("Parsing %s...", m.GemfileSource)
 		m.AnalysisStage = "parsing"
 		m.AnalysisPercentage = 0
 		m.AnimationFrame = 0
@@ -334,18 +336,46 @@ func (m *Model) loadProject(path string) {
 		absPath = expandedPath
 	}
 
-	// Check if path is a file (Gemfile.lock) or directory
+	// Check if path is a file (Gemfile.lock, gems.locked, etc.) or directory
 	fileInfo, err := os.Stat(absPath)
 	if err == nil && !fileInfo.IsDir() {
-		// It's a file - assume it's Gemfile.lock
+		// It's a file - use it directly
 		m.GemfileLockPath = absPath
 		m.ProjectPath = filepath.Dir(absPath)
+		m.GemfileSource = filepath.Base(absPath)
+		logger.Info("Project loaded from explicit file: %s", m.GemfileSource)
 		return
 	}
 
 	// It's a directory (or doesn't exist yet)
 	m.ProjectPath = absPath
+
+	// Try to find a lock file (gems.locked or Gemfile.lock)
+	lockFile := gemfile.FindLockFile(m.ProjectPath)
+	if lockFile != "" {
+		m.GemfileLockPath = lockFile
+		m.GemfileSource = filepath.Base(lockFile)
+		logger.Info("Project loaded from lock file: %s", m.GemfileSource)
+		return
+	}
+
+	// Try to find a .gemspec file
+	files, err := os.ReadDir(m.ProjectPath)
+	if err == nil {
+		for _, file := range files {
+			if !file.IsDir() && strings.HasSuffix(file.Name(), ".gemspec") {
+				m.GemfileLockPath = filepath.Join(m.ProjectPath, file.Name())
+				m.GemfileSource = file.Name()
+				logger.Info("Project loaded from gemspec file: %s", m.GemfileSource)
+				return
+			}
+		}
+	}
+
+	// Fallback to Gemfile.lock (default behavior for backward compatibility)
 	m.GemfileLockPath = filepath.Join(m.ProjectPath, "Gemfile.lock")
+	m.GemfileSource = "Gemfile.lock"
+	logger.Info("No files found, defaulting to: %s", m.GemfileSource)
 }
 
 // ============================================================================
@@ -371,7 +401,16 @@ func performAnalysis(gemfilePath string, noCache bool) tea.Cmd {
 		}
 
 		// Cache miss or invalid, do full analysis
-		gf, err := gemfile.Parse(gemfilePath)
+		// Determine parser based on file type
+		var gf *gemfile.Gemfile
+		var err error
+
+		if strings.HasSuffix(gemfilePath, ".gemspec") {
+			gf, err = gemfile.ParseGemspec(gemfilePath)
+		} else {
+			gf, err = gemfile.Parse(gemfilePath)
+		}
+
 		if err != nil {
 			return AnalysisCompleteMsg{
 				Result: nil,
@@ -379,9 +418,11 @@ func performAnalysis(gemfilePath string, noCache bool) tea.Cmd {
 			}
 		}
 
-		// Load group information from Gemfile
-		dir := filepath.Dir(gemfilePath)
-		gf.LoadGroupsFromGemfile(dir)
+		// Load group information from Gemfile (only for lock files, not gemspec)
+		if !strings.HasSuffix(gemfilePath, ".gemspec") {
+			dir := filepath.Dir(gemfilePath)
+			gf.LoadGroupsFromGemfile(dir)
+		}
 
 		// Create the outdated checker once and reuse it
 		outdatedChecker := gemfile.NewOutdatedChecker()

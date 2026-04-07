@@ -125,13 +125,30 @@ func (m *Model) assembleViewWithChrome(contentString string) string {
 
 func (m *Model) renderAppHeader() string {
 	appName := fmt.Sprintf("gemtracker %s", m.Version)
+
+	// Build right side: source file info
+	rightParts := []string{}
+
+	// Add source file
+	if m.GemfileSource != "" {
+		if strings.HasSuffix(m.GemfileSource, ".gemspec") {
+			rightParts = append(rightParts, fmt.Sprintf("Source: %s (unresolved)", m.GemfileSource))
+		} else {
+			rightParts = append(rightParts, fmt.Sprintf("Source: %s", m.GemfileSource))
+		}
+	}
+
+	// Add project path
 	projectPath := m.ProjectPath
 	if projectPath == "" {
 		projectPath = "(no project)"
 	}
+	rightParts = append(rightParts, projectPath)
+
+	rightContent := strings.Join(rightParts, " • ")
 
 	left := AppHeaderStyle.Render(appName)
-	right := ProjectPathStyle.Render(projectPath)
+	right := ProjectPathStyle.Render(rightContent)
 
 	// Calculate spacing
 	totalLen := lipgloss.Width(left) + lipgloss.Width(right)

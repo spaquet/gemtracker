@@ -431,3 +431,123 @@ BUNDLED WITH
 		t.Error("expected acts-as-taggable-on to be marked as first-level")
 	}
 }
+
+func TestFindLockFile_PreferGemsLocked(t *testing.T) {
+	dir := t.TempDir()
+
+	// Create both gems.locked and Gemfile.lock
+	gemsLocked := filepath.Join(dir, "gems.locked")
+	gemfileLock := filepath.Join(dir, "Gemfile.lock")
+
+	if err := os.WriteFile(gemsLocked, []byte("# gems.locked"), 0644); err != nil {
+		t.Fatalf("failed to create gems.locked: %v", err)
+	}
+	if err := os.WriteFile(gemfileLock, []byte("# Gemfile.lock"), 0644); err != nil {
+		t.Fatalf("failed to create Gemfile.lock: %v", err)
+	}
+
+	result := FindLockFile(dir)
+	if result != gemsLocked {
+		t.Errorf("expected FindLockFile to prefer gems.locked, got %s", result)
+	}
+}
+
+func TestFindLockFile_FallbackToGemfileLock(t *testing.T) {
+	dir := t.TempDir()
+
+	// Create only Gemfile.lock
+	gemfileLock := filepath.Join(dir, "Gemfile.lock")
+	if err := os.WriteFile(gemfileLock, []byte("# Gemfile.lock"), 0644); err != nil {
+		t.Fatalf("failed to create Gemfile.lock: %v", err)
+	}
+
+	result := FindLockFile(dir)
+	if result != gemfileLock {
+		t.Errorf("expected FindLockFile to return Gemfile.lock, got %s", result)
+	}
+}
+
+func TestFindLockFile_NotFound(t *testing.T) {
+	dir := t.TempDir()
+
+	// No lock files exist
+	result := FindLockFile(dir)
+	if result != "" {
+		t.Errorf("expected FindLockFile to return empty string, got %s", result)
+	}
+}
+
+func TestFindLockFile_OnlyGemsLocked(t *testing.T) {
+	dir := t.TempDir()
+
+	// Create only gems.locked
+	gemsLocked := filepath.Join(dir, "gems.locked")
+	if err := os.WriteFile(gemsLocked, []byte("# gems.locked"), 0644); err != nil {
+		t.Fatalf("failed to create gems.locked: %v", err)
+	}
+
+	result := FindLockFile(dir)
+	if result != gemsLocked {
+		t.Errorf("expected FindLockFile to return gems.locked, got %s", result)
+	}
+}
+
+func TestFindGemfile_PreferGemsRb(t *testing.T) {
+	dir := t.TempDir()
+
+	// Create both gems.rb and Gemfile
+	gemsRb := filepath.Join(dir, "gems.rb")
+	gemfile := filepath.Join(dir, "Gemfile")
+
+	if err := os.WriteFile(gemsRb, []byte("# gems.rb"), 0644); err != nil {
+		t.Fatalf("failed to create gems.rb: %v", err)
+	}
+	if err := os.WriteFile(gemfile, []byte("# Gemfile"), 0644); err != nil {
+		t.Fatalf("failed to create Gemfile: %v", err)
+	}
+
+	result := FindGemfile(dir)
+	if result != gemsRb {
+		t.Errorf("expected FindGemfile to prefer gems.rb, got %s", result)
+	}
+}
+
+func TestFindGemfile_FallbackToGemfile(t *testing.T) {
+	dir := t.TempDir()
+
+	// Create only Gemfile
+	gemfile := filepath.Join(dir, "Gemfile")
+	if err := os.WriteFile(gemfile, []byte("# Gemfile"), 0644); err != nil {
+		t.Fatalf("failed to create Gemfile: %v", err)
+	}
+
+	result := FindGemfile(dir)
+	if result != gemfile {
+		t.Errorf("expected FindGemfile to return Gemfile, got %s", result)
+	}
+}
+
+func TestFindGemfile_NotFound(t *testing.T) {
+	dir := t.TempDir()
+
+	// No Gemfile exists
+	result := FindGemfile(dir)
+	if result != "" {
+		t.Errorf("expected FindGemfile to return empty string, got %s", result)
+	}
+}
+
+func TestFindGemfile_OnlyGemsRb(t *testing.T) {
+	dir := t.TempDir()
+
+	// Create only gems.rb
+	gemsRb := filepath.Join(dir, "gems.rb")
+	if err := os.WriteFile(gemsRb, []byte("# gems.rb"), 0644); err != nil {
+		t.Fatalf("failed to create gems.rb: %v", err)
+	}
+
+	result := FindGemfile(dir)
+	if result != gemsRb {
+		t.Errorf("expected FindGemfile to return gems.rb, got %s", result)
+	}
+}
