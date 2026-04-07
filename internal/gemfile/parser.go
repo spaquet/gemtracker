@@ -1,3 +1,11 @@
+// Package gemfile provides parsing and analysis of Ruby Gemfile.lock files.
+//
+// It handles:
+//   - Parsing Gemfile.lock (and gems.locked) files to extract gem dependencies
+//   - Extracting group information from Gemfile (and gems.rb) files
+//   - Building dependency trees (forward and reverse dependencies)
+//   - Analyzing gem health, outdated versions, and vulnerabilities
+//   - Generating reports in multiple formats (text, CSV, JSON)
 package gemfile
 
 import (
@@ -11,23 +19,33 @@ import (
 	"github.com/spaquet/gemtracker/internal/logger"
 )
 
+// Gem represents a Ruby gem with its version, dependencies, and group assignments.
 type Gem struct {
-	Name         string
-	Version      string
+	// Name is the lowercase gem name
+	Name string
+	// Version is the installed version string (may include platform suffixes like "x86_64-linux")
+	Version string
+	// Dependencies is a list of gem names that this gem depends on
 	Dependencies []string
-	Groups       []string // e.g., "default", "development", "test", "production"
-	IsFirstLevel bool     // true if this gem is in DEPENDENCIES section (directly required)
+	// Groups lists the bundle groups this gem belongs to (e.g., "default", "development", "test", "production")
+	Groups []string
+	// IsFirstLevel is true if this gem is in the DEPENDENCIES section (directly required)
+	IsFirstLevel bool
 }
 
+// Gemfile represents the parsed contents of a Gemfile.lock file.
 type Gemfile struct {
-	Path           string
-	Gems           map[string]*Gem
-	FirstLevelGems []string // Names of gems listed in DEPENDENCIES section
+	// Path is the absolute path to the Gemfile.lock file
+	Path string
+	// Gems is a map of all gems (by lowercase name) found in the lock file
+	Gems map[string]*Gem
+	// FirstLevelGems is a list of gem names that are directly required (in DEPENDENCIES section)
+	FirstLevelGems []string
 }
 
-// FindLockFile searches for a lock file in the given directory.
-// It probes in priority order: gems.locked, Gemfile.lock
-// Returns the filename if found, empty string otherwise.
+// FindLockFile searches for a Ruby lock file in the given directory.
+// It probes in priority order: gems.locked, Gemfile.lock.
+// Returns the absolute path to the lock file if found, empty string otherwise.
 func FindLockFile(dir string) string {
 	candidates := []string{"gems.locked", "Gemfile.lock"}
 	for _, filename := range candidates {
@@ -39,9 +57,9 @@ func FindLockFile(dir string) string {
 	return ""
 }
 
-// FindGemfile searches for a Gemfile in the given directory.
-// It probes in priority order: gems.rb, Gemfile
-// Returns the filename if found, empty string otherwise.
+// FindGemfile searches for a Ruby Gemfile in the given directory.
+// It probes in priority order: gems.rb, Gemfile.
+// Returns the absolute path to the Gemfile if found, empty string otherwise.
 func FindGemfile(dir string) string {
 	candidates := []string{"gems.rb", "Gemfile"}
 	for _, filename := range candidates {
@@ -53,7 +71,8 @@ func FindGemfile(dir string) string {
 	return ""
 }
 
-// detectSection checks if a line starts a new section and returns the section name and whether to skip to next line
+// detectSection checks if a line is a Gemfile.lock section header and returns the section name
+// and a boolean indicating whether it's a section header.
 func detectSection(line string) (string, bool) {
 	switch {
 	case strings.HasPrefix(line, "GIT"):
@@ -70,7 +89,8 @@ func detectSection(line string) (string, bool) {
 	return "", false
 }
 
-// shouldSkipLine checks if a line should be skipped during parsing
+// shouldSkipLine determines if a line should be skipped during Gemfile.lock parsing.
+// It skips blank lines and metadata lines (remote, specs, revision, branch, tag).
 func shouldSkipLine(line string, inSection string) bool {
 	trimmed := strings.TrimSpace(line)
 	if trimmed == "" {
@@ -89,7 +109,8 @@ func shouldSkipLine(line string, inSection string) bool {
 	return false
 }
 
-// parseGemOrGitLine handles parsing gem lines in GIT/GEM sections
+// parseGemOrGitLine parses gem spec lines (4-space indent) and dependency lines (6-space indent)
+// from GIT/GEM sections of the Gemfile.lock. Returns the current or newly created Gem.
 func parseGemOrGitLine(line string, gf *Gemfile, currentGem *Gem, gemLineRegex, depRegex *regexp.Regexp) *Gem {
 	// Parse gem lines (4-space indent)
 	matches := gemLineRegex.FindStringSubmatch(line)
@@ -118,7 +139,8 @@ func parseGemOrGitLine(line string, gf *Gemfile, currentGem *Gem, gemLineRegex, 
 	return currentGem
 }
 
-// parseDependenciesLine handles parsing gem names in DEPENDENCIES section
+// parseDependenciesLine parses gem names from the DEPENDENCIES section of Gemfile.lock.
+// Marks the gem as first-level (directly required) if it exists in the gems map.
 func parseDependenciesLine(line string, gf *Gemfile, depItemRegex *regexp.Regexp) {
 	matches := depItemRegex.FindStringSubmatch(line)
 	if len(matches) == 0 {
@@ -134,6 +156,10 @@ func parseDependenciesLine(line string, gf *Gemfile, depItemRegex *regexp.Regexp
 	}
 }
 
+// Parse parses a Gemfile.lock file (or gems.locked) and returns the parsed Gemfile structure.
+// It accepts either a file path or directory path; if a directory is provided, it searches for
+// a lock file in that directory. Expands ~/ in paths. Returns an error if the file cannot be
+// found, opened, or parsed.
 func Parse(path string) (*Gemfile, error) {
 	// Expand ~ if needed
 	if strings.HasPrefix(path, "~") {
@@ -219,10 +245,12 @@ func Parse(path string) (*Gemfile, error) {
 	return gf, nil
 }
 
+// GetGemCount returns the total number of gems in the parsed Gemfile.
 func (g *Gemfile) GetGemCount() int {
 	return len(g.Gems)
 }
 
+// GetGemsAsList returns all gems in the Gemfile as a slice.
 func (g *Gemfile) GetGemsAsList() []*Gem {
 	gems := make([]*Gem, 0, len(g.Gems))
 	for _, gem := range g.Gems {
@@ -231,7 +259,8 @@ func (g *Gemfile) GetGemsAsList() []*Gem {
 	return gems
 }
 
-// resolvePath expands ~ and resolves directory to lock file path
+// resolvePath expands ~/ in paths and resolves a directory to a lock/Gemfile path
+// using the provided findFile function. Returns empty string if the path is invalid.
 func resolvePath(path string, findFile func(string) string) string {
 	// Expand ~ if needed
 	if strings.HasPrefix(path, "~") {
@@ -259,7 +288,7 @@ func resolvePath(path string, findFile func(string) string) string {
 	return path
 }
 
-// addGroupsToGem adds groups to a gem, avoiding duplicates
+// addGroupsToGem adds one or more groups to a gem, avoiding duplicate group assignments.
 func addGroupsToGem(gem *Gem, groups []string) {
 	for _, group := range groups {
 		found := false
@@ -275,7 +304,9 @@ func addGroupsToGem(gem *Gem, groups []string) {
 	}
 }
 
-// LoadGroupsFromGemfile parses the Gemfile to extract group information
+// LoadGroupsFromGemfile parses the Gemfile (or gems.rb) to extract group assignments for gems.
+// It processes group blocks (e.g., "group :development do") and assigns those groups to gems defined within.
+// Returns an error if the Gemfile cannot be read; returns nil if the Gemfile is not found (graceful degradation).
 func (g *Gemfile) LoadGroupsFromGemfile(gemfilePath string) error {
 	gemfilePath = resolvePath(gemfilePath, FindGemfile)
 	if gemfilePath == "" {
