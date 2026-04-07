@@ -10,6 +10,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [v1.1.2] - 2026-04-06
 
 ### Added
+- **Non-Interactive CLI Export Reports** - Generate gem reports in multiple formats for CI/CD pipelines (Issue #35)
+  - Three export formats: `text` (human-readable), `csv` (compliance-friendly), `json` (machine-readable)
+  - `--report FORMAT` flag generates report and exits (non-interactive mode)
+  - `--output PATH` flag saves report to file (defaults to stdout)
+  - Compatible with all major CI/CD platforms (GitHub Actions, CircleCI, Travis, GitLab)
+  - Full vulnerability and outdated gem detection in reports
+  - Proper exit codes for CI/CD integration (0 on success, 1 on errors)
+  - Supports `--verbose` logging in non-interactive mode
+  - Example: `gemtracker --report csv --output gems-report.csv` or `gemtracker --report json | jq '.summary'`
 - **Support for Alternative Bundler Conventions** - Added support for `gems.locked` and `gems.rb` file naming (Issue #26)
   - Detect and parse `gems.locked` (identical structure to Gemfile.lock)
   - Detect and parse `gems.rb` (identical syntax to Gemfile)
