@@ -350,26 +350,27 @@ func (m *Model) loadProject(path string) {
 	// It's a directory (or doesn't exist yet)
 	m.ProjectPath = absPath
 
-	// Try to find a lock file (gems.locked or Gemfile.lock)
-	lockFile := gemfile.FindLockFile(m.ProjectPath)
-	if lockFile != "" {
-		m.GemfileLockPath = lockFile
-		m.GemfileSource = filepath.Base(lockFile)
-		logger.Info("Project loaded from lock file: %s", m.GemfileSource)
-		return
-	}
-
-	// Try to find a .gemspec file
+	// For gem projects: try to find a .gemspec file FIRST (it's the authoritative source)
+	// This ensures we get all production dependencies, not just what's in Gemfile.lock
 	files, err := os.ReadDir(m.ProjectPath)
 	if err == nil {
 		for _, file := range files {
 			if !file.IsDir() && strings.HasSuffix(file.Name(), ".gemspec") {
 				m.GemfileLockPath = filepath.Join(m.ProjectPath, file.Name())
 				m.GemfileSource = file.Name()
-				logger.Info("Project loaded from gemspec file: %s", m.GemfileSource)
+				logger.Info("Project loaded from gemspec file: %s (gem project)", m.GemfileSource)
 				return
 			}
 		}
+	}
+
+	// For Rails/Bundler projects: try to find a lock file (gems.locked or Gemfile.lock)
+	lockFile := gemfile.FindLockFile(m.ProjectPath)
+	if lockFile != "" {
+		m.GemfileLockPath = lockFile
+		m.GemfileSource = filepath.Base(lockFile)
+		logger.Info("Project loaded from lock file: %s", m.GemfileSource)
+		return
 	}
 
 	// Fallback to Gemfile.lock (default behavior for backward compatibility)

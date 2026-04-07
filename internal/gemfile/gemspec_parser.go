@@ -71,9 +71,9 @@ func ParseGemspec(path string) (*Gemfile, error) {
 
 	// Regex patterns for dependency declarations
 	// Matches: add_runtime_dependency 'gem_name', '>= 1.0' or add_development_dependency, etc.
-	// Also matches spec.add_runtime_dependency pattern
-	runtimeDepRegex := regexp.MustCompile(`(?:spec\.)?add_(?:runtime_)?dependency\s+['"]([^'"]+)['"]\s*(?:,\s*['"]([^'"]+)['"])?`)
-	developmentDepRegex := regexp.MustCompile(`(?:spec\.)?add_development_dependency\s+['"]([^'"]+)['"]\s*(?:,\s*['"]([^'"]+)['"])?`)
+	// Also matches spec.add_runtime_dependency and s.add_runtime_dependency patterns
+	runtimeDepRegex := regexp.MustCompile(`(?:spec\.|s\.)?add_(?:runtime_)?dependency\s+['"]([^'"]+)['"]\s*(?:,\s*['"]([^'"]+)['"])?`)
+	developmentDepRegex := regexp.MustCompile(`(?:spec\.|s\.)?add_development_dependency\s+['"]([^'"]+)['"]\s*(?:,\s*['"]([^'"]+)['"])?`)
 
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -121,7 +121,7 @@ func ParseGemspec(path string) (*Gemfile, error) {
 					Name:         gemName,
 					Version:      version,
 					Dependencies: []string{},
-					Groups:       []string{},
+					Groups:       []string{"production"},
 					IsFirstLevel: true,
 				}
 
