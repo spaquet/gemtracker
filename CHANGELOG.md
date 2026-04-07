@@ -7,9 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [v1.1.2] - 2026-04-06
+## [v1.1.2] - 2026-04-07
 
 ### Added
+- **Claude Code Skill (gem-check)** - Interactive gem analysis directly in Claude Code
+  - Run `/gem-check` to analyze gem dependencies with AI assistance
+  - Security-first vulnerability detection with severity prioritization
+  - Smart gem update prioritization (first-level > transitive, production > dev)
+  - Real-world upgrade workflow guidance with worked examples
+  - Interactive follow-up questions for specific gems and upgrade strategies
+  - Professional skill documentation with API reference, examples, and scenarios
+  - MIT-licensed skill ready for distribution
 - **Non-Interactive CLI Export Reports** - Generate gem reports in multiple formats for CI/CD pipelines (Issue #35)
   - Three export formats: `text` (human-readable), `csv` (compliance-friendly), `json` (machine-readable)
   - `--report FORMAT` flag generates report and exits (non-interactive mode)
