@@ -385,19 +385,7 @@ func (m *Model) viewLoading() string {
 // ============================================================================
 
 func (m *Model) viewGemList() string {
-	// Build the view by collecting all lines
-	var allLines []string
-
-	// Add header
-	allLines = append(allLines, m.renderAppHeader())
-
-	// Add tab bar
-	allLines = append(allLines, m.renderTabBar())
-
-	// Calculate content height: total height minus header, tabbar, and statusbar
-	// Reserve minimum 1 line for statusbar, but statusBarTotalHeight gives actual needed height
 	statusbarHeight := m.statusBarTotalHeight()
-	// Ensure at least 1 line is reserved for status bar
 	if statusbarHeight < 1 {
 		statusbarHeight = 1
 	}
@@ -405,42 +393,9 @@ func (m *Model) viewGemList() string {
 	if contentHeight < 1 {
 		contentHeight = 1
 	}
+	gemContent := m.renderGemListTable(contentHeight)
 
-	// Add gem list content
-	gemTableStr := m.renderGemListTable(contentHeight)
-	if gemTableStr != "" {
-		gemListLines := strings.Split(strings.Trim(gemTableStr, "\n"), "\n")
-		// Don't limit to contentHeight - if we have more content, let it spill over temporarily
-		// The overflow handling below will trim it properly while preserving statusbar
-		allLines = append(allLines, gemListLines...)
-	}
-
-	// Add status bar (can be multi-line)
-	statusbarContent := m.renderStatusBar()
-	if statusbarContent != "" {
-		statusbarLines := strings.Split(strings.Trim(statusbarContent, "\n"), "\n")
-		// Limit statusbar to its expected height
-		if len(statusbarLines) > statusbarHeight {
-			statusbarLines = statusbarLines[:statusbarHeight]
-		}
-		allLines = append(allLines, statusbarLines...)
-	}
-
-	// Ensure we don't exceed terminal height - trim content if needed to preserve statusbar
-	// Only trim if there's significant overflow (more than 1 line) to avoid cutting off last gems
-	if len(allLines) > m.Height {
-		excessLines := len(allLines) - m.Height
-		// Only trim if overflow is more than 1 line (accounts for small statusbar fluctuations)
-		if excessLines > 1 && len(allLines) > 2+statusbarHeight {
-			gemContentEnd := len(allLines) - statusbarHeight
-			trimPoint := gemContentEnd - (excessLines - 1) // Keep 1 extra line to preserve last gems
-			if trimPoint > 2 {                             // Keep at least header + tabbar
-				allLines = append(allLines[:trimPoint], allLines[gemContentEnd:]...)
-			}
-		}
-	}
-
-	return lipgloss.JoinVertical(lipgloss.Left, allLines...)
+	return m.assembleViewWithChrome(gemContent)
 }
 
 func (m *Model) renderGemListTable(height int) string {
@@ -1252,7 +1207,8 @@ func (m *Model) renderCVETable(height int) string {
 		height = 1
 	}
 
-	if len(m.VulnerableGems) == 0 {
+	// If no vulnerabilities found and not refreshing, show clean state
+	if len(m.CVEVulnerabilities) == 0 && !m.CVERefreshInProgress {
 		msg := "No vulnerabilities found. Your gems are safe! ✓"
 		return lipgloss.NewStyle().
 			Foreground(lipgloss.Color(ColorSuccess)).
@@ -1261,39 +1217,167 @@ func (m *Model) renderCVETable(height int) string {
 			Render(msg)
 	}
 
-	title := fmt.Sprintf("Vulnerabilities Found (%d)", len(m.VulnerableGems))
-	title = lipgloss.NewStyle().Bold(true).Render(title)
+	// Build header section with severity summary and cache status
+	headerSection := m.renderCVEHeader(height)
 
-	headerRow := fmt.Sprintf("  %-20s %-16s %-11s %-30s %s",
-		"CVE ID", "Gem", "Version", "Description", "Status")
-	header := TableHeaderStyle.Render(headerRow)
+	// Calculate available space after header
+	headerLines := strings.Count(headerSection, "\n") + 1
+	remainingHeight := height - headerLines - 1 // -1 for spacing
 
-	lines := []string{title, header}
+	if remainingHeight < 1 {
+		return headerSection
+	}
 
-	visibleRows := height - 3
+	// Build vulnerability list
+	vulnList := m.renderCVEVulnerabilitiesList(remainingHeight)
+
+	// Combine header and list
+	result := lipgloss.JoinVertical(lipgloss.Left, headerSection, vulnList)
+
+	// Pad to full height
+	lines := strings.Split(result, "\n")
+	for len(lines) < height {
+		lines = append(lines, "")
+	}
+
+	return lipgloss.JoinVertical(lipgloss.Left, lines[:height]...)
+}
+
+func (m *Model) renderCVEHeader(maxHeight int) string {
+	lines := []string{}
+
+	// Count vulnerabilities by severity
+	critCount := 0
+	highCount := 0
+	mediumCount := 0
+	lowCount := 0
+
+	for _, vuln := range m.CVEVulnerabilities {
+		switch vuln.Severity {
+		case "CRITICAL":
+			critCount++
+		case "HIGH":
+			highCount++
+		case "MEDIUM":
+			mediumCount++
+		case "LOW":
+			lowCount++
+		}
+	}
+
+	// Severity summary line with colors
+	severityLine := fmt.Sprintf(
+		"  Severity: %s CRITICAL (%d)  %s HIGH (%d)  %s MEDIUM (%d)  %s LOW (%d)",
+		BadgeCriticalDotStyle.Render("●"), critCount,
+		BadgeCriticalDotStyle.Render("●"), highCount,
+		BadgeWarningDotStyle.Render("●"), mediumCount,
+		BadgeHealthyDotStyle.Render("●"), lowCount,
+	)
+	lines = append(lines, severityLine)
+
+	// Cache status line
+	cacheStatusParts := []string{}
+
+	if m.CVEVulnerabilities != nil && len(m.CVEVulnerabilities) > 0 {
+		// Show cache age
+		if !m.CVECacheLoadedAt.IsZero() {
+			cacheAge := time.Since(m.CVECacheLoadedAt)
+			cacheAgeStr := formatDuration(cacheAge)
+			cacheStatusParts = append(cacheStatusParts, fmt.Sprintf("Cache: %s old", cacheAgeStr))
+
+			// Show TTL countdown
+			remaining := m.CVECacheTTL - cacheAge
+			if remaining > 0 {
+				remainingStr := formatDuration(remaining)
+				cacheStatusParts = append(cacheStatusParts, fmt.Sprintf("expires in %s", remainingStr))
+			} else {
+				cacheStatusParts = append(cacheStatusParts, "(expired)")
+			}
+		}
+
+		// Show last scan time
+		if !m.CVELastScanTime.IsZero() {
+			scanAge := time.Since(m.CVELastScanTime)
+			scanAgeStr := formatDuration(scanAge)
+			cacheStatusParts = append(cacheStatusParts, fmt.Sprintf("last scanned: %s ago", scanAgeStr))
+		}
+
+		// Show gem count scanned
+		if m.AnalysisResult != nil && len(m.AnalysisResult.AllGems) > 0 {
+			cacheStatusParts = append(cacheStatusParts, fmt.Sprintf("%d gems scanned", len(m.AnalysisResult.AllGems)))
+		}
+	}
+
+	if len(cacheStatusParts) > 0 {
+		cacheLine := "  " + strings.Join(cacheStatusParts, " · ")
+		lines = append(lines, cacheLine)
+	}
+
+	// Refresh progress line (if refreshing)
+	if m.CVERefreshInProgress {
+		refreshLine := "  🔄 Refreshing vulnerabilities in background..."
+		lines = append(lines, refreshLine)
+	}
+
+	// Error message if last scan failed
+	if m.CVELastError != "" && !m.CVERefreshInProgress {
+		errorLine := fmt.Sprintf("  ⚠️  Could not fetch latest data: %s", m.CVELastError)
+		lines = append(lines, errorLine)
+	}
+
+	return strings.Join(lines, "\n")
+}
+
+func (m *Model) renderCVEVulnerabilitiesList(height int) string {
+	if len(m.CVEVulnerabilities) == 0 {
+		if m.CVERefreshInProgress {
+			return "  ⏳ Scanning for vulnerabilities..."
+		}
+		return ""
+	}
+
+	lines := []string{}
+
+	// Table header
+	headerRow := fmt.Sprintf("  %-18s %-14s %-12s %-30s",
+		"CVE ID", "Gem", "Severity", "Description")
+	lines = append(lines, TableHeaderStyle.Render(headerRow))
+
+	// Render vulnerabilities
+	visibleRows := height - 1 // -1 for header
 	if visibleRows < 0 {
 		visibleRows = 0
 	}
+
 	endIdx := m.CVEOffset + visibleRows
-	if endIdx > len(m.VulnerableGems) {
-		endIdx = len(m.VulnerableGems)
+	if endIdx > len(m.CVEVulnerabilities) {
+		endIdx = len(m.CVEVulnerabilities)
 	}
 
 	for i := m.CVEOffset; i < endIdx; i++ {
-		if i >= len(m.VulnerableGems) {
+		if i >= len(m.CVEVulnerabilities) {
 			break
 		}
 
-		gem := m.VulnerableGems[i]
-		cveID := extractCVEID(gem.VulnerabilityInfo)
-		desc := extractCVEDesc(gem.VulnerabilityInfo)
+		vuln := m.CVEVulnerabilities[i]
 
-		row := fmt.Sprintf("  %-20s %-16s %-11s %-30s %s",
-			cveID,
-			truncateStr(gem.Name, 16),
-			gem.Version,
-			truncateStr(desc, 30),
-			"⚠",
+		// Get severity badge style
+		severityBadge := ""
+		switch vuln.Severity {
+		case "CRITICAL", "HIGH":
+			severityBadge = BadgeCriticalDotStyle.Render("●")
+		case "MEDIUM":
+			severityBadge = BadgeWarningDotStyle.Render("●")
+		default:
+			severityBadge = BadgeHealthyDotStyle.Render("●")
+		}
+
+		row := fmt.Sprintf("  %-18s %-14s %s %-12s %-30s",
+			truncateStr(vuln.CVE, 18),
+			truncateStr(vuln.GemName, 14),
+			severityBadge,
+			vuln.Severity,
+			truncateStr(vuln.Description, 30),
 		)
 
 		if i == m.CVECursor {
@@ -1310,6 +1394,18 @@ func (m *Model) renderCVETable(height int) string {
 	}
 
 	return lipgloss.JoinVertical(lipgloss.Left, lines[:height]...)
+}
+
+// formatDuration converts a duration to a human-readable string
+func formatDuration(d time.Duration) string {
+	if d < time.Minute {
+		return fmt.Sprintf("%ds", int(d.Seconds()))
+	} else if d < time.Hour {
+		return fmt.Sprintf("%dm", int(d.Minutes()))
+	} else if d < 24*time.Hour {
+		return fmt.Sprintf("%dh", int(d.Hours()))
+	}
+	return fmt.Sprintf("%dd", int(d.Hours()/24))
 }
 
 // ============================================================================

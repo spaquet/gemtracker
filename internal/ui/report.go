@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"context"
 	"encoding/csv"
 	"encoding/json"
 	"fmt"
@@ -127,8 +128,16 @@ func (rg *ReportGenerator) Generate(format, outputPath string) error {
 		}
 	}
 
-	// Check for vulnerabilities (already done in Analyze)
-	// but we need to get the vulnerability details
+	// Check for vulnerabilities using OSV.dev
+	logger.Info("Scanning for vulnerabilities...")
+	vulns, err := rg.scanVulnerabilities(analysis.AllGems)
+	if err != nil {
+		logger.Warn("Failed to scan vulnerabilities: %v", err)
+		// Continue with report generation, just without CVE data
+	} else {
+		// Merge vulnerability data into gem statuses
+		rg.mergeVulnerabilitiesIntoGems(analysis.GemStatuses, vulns)
+	}
 
 	// Build report data
 	reportData := rg.buildReportData(analysis, gemStatusMap, gf)
@@ -383,4 +392,84 @@ func boolToString(b bool) string {
 		return "yes"
 	}
 	return "no"
+}
+
+// scanVulnerabilities queries OSV.dev for vulnerabilities in the given gems
+func (rg *ReportGenerator) scanVulnerabilities(gems []*gemfile.Gem) ([]*gemfile.Vulnerability, error) {
+	if len(gems) == 0 {
+		return []*gemfile.Vulnerability{}, nil
+	}
+
+	// Compute gems signature for cache key
+	gemsSignature := gemfile.ComputeGemsSignature(gems)
+
+	// Try to load from cache first
+	logger.Info("Checking CVE cache...")
+	cacheEntry, err := gemfile.LoadVulnerabilityCache(gemsSignature)
+	if err == nil && cacheEntry != nil && gemfile.IsCacheValid(cacheEntry) {
+		// Cache hit! Return cached data
+		logger.Info("CVE cache hit: using cached vulnerabilities")
+		vulnPtrs := make([]*gemfile.Vulnerability, len(cacheEntry.Vulnerabilities))
+		for i := range cacheEntry.Vulnerabilities {
+			vulnPtrs[i] = &cacheEntry.Vulnerabilities[i]
+		}
+		return vulnPtrs, nil
+	}
+
+	// Cache miss, fetch from OSV.dev
+	logger.Info("CVE cache miss, fetching from OSV.dev...")
+	osv := gemfile.NewOSVClient()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	vulns, err := osv.QueryBatch(ctx, gems)
+	if err != nil {
+		logger.Warn("Failed to query OSV.dev: %v", err)
+		return nil, err
+	}
+
+	// Save to cache
+	cacheEntry = &gemfile.CacheEntry{
+		GemsSignature:   gemsSignature,
+		CachedAt:        time.Now(),
+		ScannedAt:       time.Now(),
+		TTLSeconds:      int(gemfile.VulnerabilityCacheTTL.Seconds()),
+		GemCount:        len(gems),
+		ScanStatus:      "success",
+		Vulnerabilities: vulns,
+	}
+
+	if err := gemfile.SaveVulnerabilityCache(gemsSignature, cacheEntry); err != nil {
+		logger.Warn("Failed to save CVE cache: %v", err)
+	}
+
+	// Convert to pointers for return
+	vulnPtrs := make([]*gemfile.Vulnerability, len(vulns))
+	for i := range vulns {
+		vulnPtrs[i] = &vulns[i]
+	}
+
+	return vulnPtrs, nil
+}
+
+// mergeVulnerabilitiesIntoGems updates gem statuses with vulnerability information
+func (rg *ReportGenerator) mergeVulnerabilitiesIntoGems(gemStatuses []*gemfile.GemStatus, vulnerabilities []*gemfile.Vulnerability) {
+	// Build a map of vulnerabilities by gem name
+	vulnByGem := make(map[string][]*gemfile.Vulnerability)
+	for _, vuln := range vulnerabilities {
+		vulnByGem[vuln.GemName] = append(vulnByGem[vuln.GemName], vuln)
+	}
+
+	// Update gem statuses with vulnerability info
+	for _, gemStatus := range gemStatuses {
+		if vulns, hasVulns := vulnByGem[gemStatus.Name]; hasVulns && len(vulns) > 0 {
+			gemStatus.IsVulnerable = true
+			// Use the first vulnerability for the summary info
+			vuln := vulns[0]
+			gemStatus.VulnerabilityInfo = fmt.Sprintf("%s: %s", vuln.CVE, vuln.Description)
+		} else {
+			gemStatus.IsVulnerable = false
+			gemStatus.VulnerabilityInfo = ""
+		}
+	}
 }
