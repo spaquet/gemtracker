@@ -306,8 +306,8 @@ func TestWriteOutputToFile(t *testing.T) {
 
 // TestGenerateWithInvalidFormat tests error handling for invalid format
 func TestGenerateWithInvalidFormat(t *testing.T) {
-	if _, err := os.Stat("testdata/Gemfile.lock"); os.IsNotExist(err) {
-		t.Skip("testdata/Gemfile.lock not found, skipping test")
+	if _, err := os.Stat("testdata/projects/minimal-example/Gemfile.lock"); os.IsNotExist(err) {
+		t.Skip("testdata/projects/minimal-example/Gemfile.lock not found, skipping test")
 	}
 
 	rg := NewReportGenerator("testdata", false, false)
@@ -352,8 +352,8 @@ func TestBoolToString(t *testing.T) {
 
 // TestGenerateWithRealGemfile tests report generation with actual test data
 func TestGenerateWithRealGemfile(t *testing.T) {
-	if _, err := os.Stat("testdata/Gemfile.lock"); os.IsNotExist(err) {
-		t.Skip("testdata/Gemfile.lock not found, skipping integration test")
+	if _, err := os.Stat("testdata/projects/minimal-example/Gemfile.lock"); os.IsNotExist(err) {
+		t.Skip("testdata/projects/minimal-example/Gemfile.lock not found, skipping integration test")
 	}
 
 	rg := NewReportGenerator("testdata", false, false)

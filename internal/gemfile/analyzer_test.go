@@ -7,7 +7,7 @@ import (
 )
 
 func TestAnalyze_BasicMetrics(t *testing.T) {
-	path := "../../testdata/Gemfile.lock"
+	path := "../../testdata/projects/minimal-example/Gemfile.lock"
 	gf, err := Parse(path)
 	if err != nil {
 		t.Fatalf("Parse failed: %v", err)
@@ -164,7 +164,7 @@ func TestAnalyze_Details(t *testing.T) {
 }
 
 func TestAnalyze_RealGemfile(t *testing.T) {
-	path := "../../testdata/Gemfile.lock"
+	path := "../../testdata/projects/minimal-example/Gemfile.lock"
 	gf, err := Parse(path)
 	if err != nil {
 		t.Fatalf("Parse failed: %v", err)
