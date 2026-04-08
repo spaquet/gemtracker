@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v1.1.5] - 2026-04-08
+
+### Added
+- **Vulnerability Tracking from OSV** - Now tracking vulnerabilities from https://osv.dev/
+  - Enhanced vulnerability database integration for comprehensive security insights
+  - Provides broader coverage of known security issues in gem dependencies
+
+### Fixed
+- **Header Display on Gems Tab** - Fixed minor issue preventing the header line from being displayed on the Gems tab view
+  - Header with version, path, and tab navigation now properly visible
+
 ## [v1.1.4] - 2026-04-08
 
 ### Fixed
