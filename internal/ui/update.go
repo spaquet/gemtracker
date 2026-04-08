@@ -252,36 +252,23 @@ func (m *Model) handleGemListKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case "r":
-		// Manual health refresh (issue #28)
-		if m.HealthLoading || m.OutdatedLoading {
+		// Full refresh: gem list, upgrades, and vulnerabilities
+		if m.HealthLoading || m.OutdatedLoading || m.CVERefreshInProgress {
 			// Don't start another refresh while already loading
 			return m, nil
 		}
 
-		// Clear all health data
-		for _, gem := range m.UnfilteredGems {
-			gem.Health = nil
-		}
-		for _, gem := range m.FirstLevelGems {
-			gem.Health = nil
-		}
-		for _, gem := range m.AnalysisResult.GemStatuses {
-			gem.Health = nil
-		}
+		logger.Info("User requested full refresh (r key)")
+		m.Loading = true
+		m.LoadingMessage = "Refreshing all data..."
 
-		// Reset health loading state
-		m.HealthPending = make([]*gemfile.GemStatus, len(m.AnalysisResult.GemStatuses))
-		copy(m.HealthPending, m.AnalysisResult.GemStatuses)
-		m.HealthLoadedCount = 0
-		m.HealthTotalCount = len(m.HealthPending)
-		m.HealthLoading = true
-		m.HealthRateLimited = false
+		// Clear all caches to force fresh data
+		cache.Clear(m.GemfileLockPath)           // Clear analysis cache
+		cache.ClearHealth(m.GemfileLockPath)     // Clear health cache
+		gemfile.ClearVulnerabilityCache()        // Clear CVE cache
 
-		// Clear the on-disk health cache
-		cache.ClearHealth(m.GemfileLockPath)
-
-		// Start GitHub batch fetch
-		return m, fetchGitHubBatchHealth(m.AnalysisResult.GemStatuses, m.OutdatedChecker, m.HealthChecker)
+		// Restart full analysis from scratch
+		return m, performAnalysis(m.GemfileLockPath, true) // true = ignore cache
 	}
 
 	return m, nil

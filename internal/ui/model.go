@@ -355,6 +355,14 @@ func (m *Model) Init() tea.Cmd {
 		m.AnalysisPercentage = 0
 		m.AnimationFrame = 0
 
+		// If --no-cache flag is set, clear all caches to force fresh data
+		if m.NoCache {
+			logger.Info("--no-cache flag set, clearing all caches")
+			gemfile.ClearVulnerabilityCache() // Clear CVE cache
+			cache.Clear(m.GemfileLockPath)    // Clear analysis cache
+			cache.ClearHealth(m.GemfileLockPath) // Clear health cache
+		}
+
 		return tea.Batch(
 			// Progress ticker - increments percentage while analysis runs
 			tea.Tick(200*time.Millisecond, func(time.Time) tea.Msg {
