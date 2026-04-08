@@ -6,7 +6,7 @@ import (
 )
 
 func TestAnalyzeDependencies_ForwardDeps(t *testing.T) {
-	path := "../../testdata/Gemfile.lock"
+	path := "../../testdata/projects/minimal-example/Gemfile.lock"
 	gf, err := Parse(path)
 	if err != nil {
 		t.Fatalf("Parse failed: %v", err)
@@ -48,7 +48,7 @@ func TestAnalyzeDependencies_ForwardDeps(t *testing.T) {
 }
 
 func TestAnalyzeDependencies_ReverseDeps(t *testing.T) {
-	path := "../../testdata/Gemfile.lock"
+	path := "../../testdata/projects/minimal-example/Gemfile.lock"
 	gf, err := Parse(path)
 	if err != nil {
 		t.Fatalf("Parse failed: %v", err)
@@ -68,7 +68,7 @@ func TestAnalyzeDependencies_ReverseDeps(t *testing.T) {
 }
 
 func TestAnalyzeDependencies_NonexistentGem(t *testing.T) {
-	path := "../../testdata/Gemfile.lock"
+	path := "../../testdata/projects/minimal-example/Gemfile.lock"
 	gf, err := Parse(path)
 	if err != nil {
 		t.Fatalf("Parse failed: %v", err)
@@ -87,7 +87,7 @@ func TestAnalyzeDependencies_NonexistentGem(t *testing.T) {
 }
 
 func TestBuildDependencyTree(t *testing.T) {
-	path := "../../testdata/Gemfile.lock"
+	path := "../../testdata/projects/minimal-example/Gemfile.lock"
 	gf, err := Parse(path)
 	if err != nil {
 		t.Fatalf("Parse failed: %v", err)
@@ -123,7 +123,7 @@ func TestBuildDependencyTree(t *testing.T) {
 }
 
 func TestBuildReverseDependencyTree(t *testing.T) {
-	path := "../../testdata/Gemfile.lock"
+	path := "../../testdata/projects/minimal-example/Gemfile.lock"
 	gf, err := Parse(path)
 	if err != nil {
 		t.Fatalf("Parse failed: %v", err)
@@ -205,7 +205,7 @@ func getMaxDepth(node *DependencyNode) int {
 }
 
 func TestDependencyInfo_Version(t *testing.T) {
-	path := "../../testdata/Gemfile.lock"
+	path := "../../testdata/projects/minimal-example/Gemfile.lock"
 	gf, err := Parse(path)
 	if err != nil {
 		t.Fatalf("Parse failed: %v", err)
@@ -219,7 +219,7 @@ func TestDependencyInfo_Version(t *testing.T) {
 }
 
 func TestSimpleDependencies(t *testing.T) {
-	path := "../../testdata/Gemfile.lock.simple"
+	path := "../../testdata/projects/simple-deps/Gemfile.lock"
 	gf, err := Parse(path)
 	if err != nil {
 		t.Fatalf("Parse failed: %v", err)

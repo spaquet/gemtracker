@@ -7,7 +7,7 @@ import (
 )
 
 func TestParse_ValidFile(t *testing.T) {
-	path := "../../testdata/Gemfile.lock"
+	path := "../../testdata/projects/minimal-example/Gemfile.lock"
 	gf, err := Parse(path)
 	if err != nil {
 		t.Fatalf("Parse failed: %v", err)
@@ -32,7 +32,7 @@ func TestParse_ValidFile(t *testing.T) {
 }
 
 func TestParse_RailsGem(t *testing.T) {
-	path := "../../testdata/Gemfile.lock"
+	path := "../../testdata/projects/minimal-example/Gemfile.lock"
 	gf, err := Parse(path)
 	if err != nil {
 		t.Fatalf("Parse failed: %v", err)
@@ -68,7 +68,7 @@ func TestParse_RailsGem(t *testing.T) {
 }
 
 func TestParse_DeviseGem(t *testing.T) {
-	path := "../../testdata/Gemfile.lock"
+	path := "../../testdata/projects/minimal-example/Gemfile.lock"
 	gf, err := Parse(path)
 	if err != nil {
 		t.Fatalf("Parse failed: %v", err)
@@ -131,7 +131,7 @@ PLATFORMS
 }
 
 func TestParse_SimpleFile(t *testing.T) {
-	path := "../../testdata/Gemfile.lock.simple"
+	path := "../../testdata/projects/simple-deps/Gemfile.lock"
 	gf, err := Parse(path)
 	if err != nil {
 		t.Fatalf("Parse failed: %v", err)
@@ -174,7 +174,7 @@ func TestParse_SimpleFile(t *testing.T) {
 }
 
 func TestGetGemsAsList(t *testing.T) {
-	path := "../../testdata/Gemfile.lock"
+	path := "../../testdata/projects/minimal-example/Gemfile.lock"
 	gf, err := Parse(path)
 	if err != nil {
 		t.Fatalf("Parse failed: %v", err)

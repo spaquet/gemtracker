@@ -50,3 +50,6 @@ PLATFORMS
 DEPENDENCIES
   devise
   rails
+
+BUNDLED WITH
+   2.4.8

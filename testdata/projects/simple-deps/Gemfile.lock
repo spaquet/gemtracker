@@ -10,3 +10,6 @@ PLATFORMS
 
 DEPENDENCIES
   another-gem
+
+BUNDLED WITH
+   2.4.8
