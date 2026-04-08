@@ -8,7 +8,6 @@ This directory contains test fixtures for gemtracker's parsing, analysis, and re
 testdata/
 ├── README.md                    # This file
 └── projects/                    # Test fixture projects
-    ├── README.md               # Project-specific documentation
     ├── minimal-example/         # Small Rails app (unit testing)
     ├── simple-deps/            # Minimal deps (basic parsing)
     ├── standard-project/       # Full Rails 7.0 app (40 gems)
@@ -18,8 +17,8 @@ testdata/
 
 ## Test Projects Overview
 
-### `minimal-example/` - Unit Testing
-**Purpose:** Small, focused fixture for unit tests
+### 1. `minimal-example/` - Unit Testing
+Small, focused fixture for unit tests.
 
 **Files:**
 - `Gemfile.lock` - Basic Rails app with 15 gems
@@ -30,14 +29,14 @@ testdata/
 - DB: `rack`, `rack-test`
 - Transitive deps: `concurrent-ruby`, `i18n`, `minitest`, `tzinfo`, `orm_adapter`, `responders`, `thor`, `rake`
 
-**Use Cases:**
+**Test Coverage:**
 - Parser unit tests (valid file parsing, gem extraction)
 - Analyzer tests (forward/reverse dependencies, tree building)
 - Dependency analysis (first-level gem identification)
 - Basic relationship mapping
 
-### `simple-deps/` - Parser Edge Cases
-**Purpose:** Minimal test case for basic parsing and dependency chains
+### 2. `simple-deps/` - Parser Edge Cases
+Minimal test case for basic parsing and dependency chains.
 
 **Files:**
 - `Gemfile.lock` - 2 gems with simple dependency
@@ -46,14 +45,14 @@ testdata/
 - `simple-gem` (1.0.0) - no dependencies
 - `another-gem` (2.0.0) - depends on simple-gem
 
-**Use Cases:**
+**Test Coverage:**
 - Testing basic parsing without noise
 - Dependency extraction and validation
 - Testing gems with/without dependencies
 - Edge case handling
 
-### `standard-project/` - Integration Testing
-**Purpose:** Realistic Rails 7.0 application with comprehensive gem coverage
+### 3. `standard-project/` - Integration Testing
+Realistic Rails 7.0 application with comprehensive gem coverage.
 
 **Files:**
 - `Gemfile.lock` - Rails 7.0.4 stack with 40+ direct gems
@@ -69,15 +68,14 @@ testdata/
 - **Monitoring:** sentry-rails
 - **Utilities:** kaminari, friendly_id, aws-sdk-s3, icalendar, shrine, simple_form
 
-**Use Cases:**
-- Full integration tests
-- Outdated detection testing
-- Large gem set handling
-- Performance testing
-- Real-world scenario simulations
+**Test Coverage:**
+- Standard Gemfile.lock parsing
+- Dependency tree analysis
+- Version outdatedness detection
+- Gem relationship mapping
 
-### `bundled-gemfile/` - Alternative Format Testing
-**Purpose:** Test `gems.locked` format (Bundler alternative lock file)
+### 4. `bundled-gemfile/` - Alternative Format Testing
+Test `gems.locked` format (Bundler alternative lock file).
 
 **Files:**
 - `gems.locked` - Rails 6.1 stack using alternative lock format
@@ -88,14 +86,13 @@ testdata/
 - **Utilities:** Analytics, annotations, authentication, authorization, automation, AWS features
 - **Database:** SQL support, caching, messaging
 
-**Use Cases:**
-- Lock file format compatibility
-- Bundler alternative support
-- Version compatibility testing (Rails 6.1)
-- Non-standard project structure handling
+**Test Coverage:**
+- Alternative lock file format support
+- Backward compatibility with older lock files
+- Format normalization
 
-### `gem-project/` - Gem Specification Testing
-**Purpose:** Test gemspec file parsing and gem package analysis
+### 5. `gem-project/` - Gem Specification Testing
+Test gemspec file parsing and gem package analysis.
 
 **Files:**
 - `my_gem.gemspec` - Ruby gem specification with 40 declared dependencies
@@ -113,11 +110,22 @@ testdata/
 - **Testing:** rspec-rails, factory_bot_rails, faker, rubocop
 - **Development:** pry, guard, solargraph
 
-**Use Cases:**
-- Gemspec parsing (not just lock files)
-- Gem packaging analysis
+**Test Coverage:**
+- Gemspec parsing and dependency extraction
+- Gem metadata handling
 - Development vs runtime dependency distinction
-- Gem distribution scenario testing
+
+## Gem Characteristics
+
+Each project includes gems with varied characteristics:
+
+- **Recent versions:** `rails ~> 7.0.4`, `graphql ~> 2.0`, `faker ~> 3.1`
+- **Outdated versions:** `rack 2.2.6.4`, `devise 4.8.1`, `nokogiri 1.14.2`
+- **Security-aware:** `bcrypt`, `jwt`, `devise` (authentication)
+- **Infrastructure:** AWS, Azure, Elasticsearch, Redis, PostgreSQL, MySQL
+- **Testing:** RSpec, Factory Bot, Faker, WebMock
+- **Code Quality:** Rubocop, Guard, Solargraph
+- **Analytics:** Sentry, NewRelic, Datadog, LaunchDarkly
 
 ## Usage in Tests
 
@@ -137,7 +145,7 @@ go test ./internal/gemfile -run TestParse_ValidFile -v
 ### Test File References
 
 | Test File | Projects Used |
-|-----------|---------------|
+| --------- | ------------- |
 | `internal/gemfile/parser_test.go` | minimal-example, simple-deps |
 | `internal/gemfile/analyzer_test.go` | minimal-example |
 | `internal/gemfile/dependencies_test.go` | minimal-example, simple-deps |
@@ -146,6 +154,7 @@ go test ./internal/gemfile -run TestParse_ValidFile -v
 ### Example Test Patterns
 
 **Parsing a test project:**
+
 ```go
 path := "testdata/projects/standard-project/Gemfile.lock"
 gf, err := Parse(path)
@@ -155,6 +164,7 @@ if err != nil {
 ```
 
 **Analyzing dependencies:**
+
 ```go
 path := "testdata/projects/minimal-example/Gemfile.lock"
 gf, err := Parse(path)
@@ -162,6 +172,7 @@ result := AnalyzeDependencies(gf, "rails")
 ```
 
 **Testing gemspec:**
+
 ```go
 path := "testdata/projects/gem-project/my_gem.gemspec"
 gf, err := Parse(path)
@@ -177,7 +188,7 @@ When adding new test projects:
    - `Gemfile.lock` or `gems.locked` for lock file tests
    - `my_gem.gemspec` for gem package tests
    - `Gemfile` (optional) for group tests
-3. **Document in `projects/README.md`:**
+3. **Document in this README:**
    - Purpose of the fixture
    - Key gems and their versions
    - Test scenarios covered
@@ -214,3 +225,7 @@ When adding new test projects:
 - Versions reflect actual gems available on rubygems.org at fixture creation
 - All fixtures use `BUNDLED WITH` markers for version compatibility
 - Gemspec in gem-project uses realistic dependency ranges
+- Platform-specific gems (e.g., `x86_64-linux`) are preserved as-is
+- Pre-release versions (e.g., `3.0.0.rc1`) are included for version parsing tests
+- Some gems intentionally have outdated versions for outdated detection tests
+- Vulnerability detection tests should reference the documented CVEs in comments within lock files
