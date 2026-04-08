@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v1.1.4] - 2026-04-08
+
+### Fixed
+- **Enable Sentry Error Tracking in Release Builds** (Issue #50)
+  - Pass SENTRY_DSN secret to GoReleaser build environment
+  - Released binaries now have error tracking activated by default
+  - Users downloading from GitHub Releases get Sentry support out-of-the-box
+  - Local development builds without SENTRY_DSN still work (Sentry disabled as expected)
+
 ## [v1.1.3] - 2026-04-08
 
 ### Improved
