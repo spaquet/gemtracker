@@ -1171,6 +1171,9 @@ func (m *Model) handleCVELoadFromCache(msg CVELoadFromCacheMsg) (tea.Model, tea.
 	m.CVELastScanTime = time.Now().Add(-msg.CacheAge)
 	m.CVECacheLoadedAt = time.Now()
 
+	// Merge CVE results into gem statuses so Gems tab shows vulnerability indicators
+	m.mergeVulnerabilityDataIntoGems(msg.Vulnerabilities)
+
 	// Rebuild vulnerable gems list (only gems with vulnerabilities)
 	m.rebuildVulnerableGemsList()
 
@@ -1205,10 +1208,40 @@ func (m *Model) handleCVEComplete(msg CVECompleteMsg) (tea.Model, tea.Cmd) {
 		m.LastGemsSignature = gemfile.ComputeGemsSignature(m.AnalysisResult.AllGems)
 	}
 
+	// Merge CVE results into gem statuses so Gems tab shows vulnerability indicators
+	m.mergeVulnerabilityDataIntoGems(msg.Vulnerabilities)
+
 	// Rebuild vulnerable gems list (only gems with vulnerabilities)
 	m.rebuildVulnerableGemsList()
 
 	return m, nil
+}
+
+// mergeVulnerabilityDataIntoGems updates gem statuses with vulnerability information from OSV.dev
+// This ensures the Gems tab shows the same vulnerability data as the CVE tab
+func (m *Model) mergeVulnerabilityDataIntoGems(vulnerabilities []*gemfile.Vulnerability) {
+	if m.AnalysisResult == nil {
+		return
+	}
+
+	// Build a map of vulnerabilities by gem name
+	vulnByGem := make(map[string][]*gemfile.Vulnerability)
+	for _, vuln := range vulnerabilities {
+		vulnByGem[vuln.GemName] = append(vulnByGem[vuln.GemName], vuln)
+	}
+
+	// Update gem statuses with vulnerability info
+	for _, gemStatus := range m.AnalysisResult.GemStatuses {
+		if vulns, hasVulns := vulnByGem[gemStatus.Name]; hasVulns && len(vulns) > 0 {
+			gemStatus.IsVulnerable = true
+			// Use the first vulnerability for the summary info
+			vuln := vulns[0]
+			gemStatus.VulnerabilityInfo = fmt.Sprintf("%s: %s", vuln.CVE, vuln.Description)
+		} else {
+			gemStatus.IsVulnerable = false
+			gemStatus.VulnerabilityInfo = ""
+		}
+	}
 }
 
 // rebuildVulnerableGemsList updates the VulnerableGems list to match CVEVulnerabilities

@@ -54,15 +54,14 @@ type AnalysisResult struct {
 }
 
 // Analyze performs a complete security and version analysis of a parsed Gemfile.
-// It checks each gem for known vulnerabilities and identifies first-level dependencies.
-// It returns an AnalysisResult with summary and detailed reports. Note: outdated version
-// checking is done separately by the UI and is not included in this initial analysis.
+// It identifies first-level dependencies and prepares gem statuses for analysis.
+// Vulnerability checking is done asynchronously via OSV.dev (not here) to avoid blocking
+// and to use the authoritative live vulnerability database. Outdated version checking is
+// also done separately by the UI.
 func Analyze(gemfile *Gemfile) *AnalysisResult {
-	vulnChecker := NewVulnerabilityChecker()
-
 	allGems := gemfile.GetGemsAsList()
 	outdatedList := []string{}
-	vulnerableList := []string{}
+	vulnerableList := []string{} // Will be populated by OSV.dev async, not here
 	firstLevelList := []string{}
 	gemStatuses := make([]*GemStatus, 0, len(allGems))
 
@@ -72,7 +71,7 @@ func Analyze(gemfile *Gemfile) *AnalysisResult {
 		firstLevelMap[name] = true
 	}
 
-	// Check each gem for outdated and vulnerable status
+	// Check each gem for vulnerable and outdated status
 	for _, gem := range allGems {
 		status := &GemStatus{
 			Name:    gem.Name,
@@ -80,13 +79,9 @@ func Analyze(gemfile *Gemfile) *AnalysisResult {
 			Groups:  gem.Groups, // Copy group information
 		}
 
-		// Check if vulnerable
-		hasVuln, cveID, vulnDesc := vulnChecker.HasVulnerability(gem.Name, gem.Version)
-		if hasVuln {
-			status.IsVulnerable = true
-			status.VulnerabilityInfo = fmt.Sprintf("%s: %s", cveID, vulnDesc)
-			vulnerableList = append(vulnerableList, gem.Name)
-		}
+		// Note: Vulnerability checking is deferred to OSV.dev async scan in the UI.
+		// Do not use static vulnerability list - it gets out of sync with live data.
+		// IsVulnerable will be set by the UI when CVE scan completes.
 
 		// Track first-level gems (those in DEPENDENCIES section of Gemfile.lock, not transitive deps)
 		// First, check if it was explicitly marked in DEPENDENCIES section
