@@ -918,18 +918,30 @@ func fetchNextOutdatedItem(gems []*gemfile.GemStatus, checker *gemfile.OutdatedC
 func performCVEScan(gems []*gemfile.Gem) tea.Cmd {
 	return func() tea.Msg {
 		if gems == nil || len(gems) == 0 {
+			logger.Info("CVE scan skipped: no gems to scan")
 			return CVECompleteMsg{Vulnerabilities: []*gemfile.Vulnerability{}, Error: nil}
 		}
 
+		logger.Info("Starting CVE scan for %d gems", len(gems))
+
 		// Compute gems signature for cache key
 		gemsSignature := gemfile.ComputeGemsSignature(gems)
+		logger.Info("Gems signature for cache: %s", gemsSignature)
 
 		// Try to load from cache first
+		logger.Info("Attempting to load CVE data from cache...")
 		cacheEntry, err := gemfile.LoadVulnerabilityCache(gemsSignature)
-		if err == nil && cacheEntry != nil && gemfile.IsCacheValid(cacheEntry) {
+		if err != nil {
+			logger.Warn("Error loading cache: %v", err)
+		}
+
+		if cacheEntry != nil && gemfile.IsCacheValid(cacheEntry) {
 			// Cache hit! Return cached data
 			cacheAge := gemfile.GetCacheAge(cacheEntry)
 			cacheTTL := time.Duration(cacheEntry.TTLSeconds) * time.Second
+
+			logger.Info("CVE cache HIT: returning %d cached vulnerabilities (age: %v, TTL: %v)",
+				len(cacheEntry.Vulnerabilities), cacheAge.Round(time.Second), cacheTTL)
 
 			// Convert vulnerabilities to pointers
 			vulnPtrs := make([]*gemfile.Vulnerability, len(cacheEntry.Vulnerabilities))
@@ -945,14 +957,18 @@ func performCVEScan(gems []*gemfile.Gem) tea.Cmd {
 		}
 
 		// Cache miss or expired, fetch from OSV.dev
+		logger.Info("CVE cache MISS or expired, fetching from OSV.dev...")
 		osv := gemfile.NewOSVClient()
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 
 		vulns, err := osv.QueryBatch(ctx, gems)
 		if err != nil {
+			logger.Error("CVE scan failed: %v", err)
 			return CVECompleteMsg{Vulnerabilities: nil, Error: err}
 		}
+
+		logger.Info("CVE scan complete: found %d vulnerabilities", len(vulns))
 
 		// Convert vulnerabilities to pointers for return
 		vulnPtrs := make([]*gemfile.Vulnerability, len(vulns))

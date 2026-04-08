@@ -8,6 +8,8 @@ import (
 	"io"
 	"net/http"
 	"time"
+
+	"github.com/spaquet/gemtracker/internal/logger"
 )
 
 const (
@@ -94,8 +96,11 @@ func NewOSVClient() *OSVClient {
 // Filters out clean gems (those with no vulnerabilities)
 func (c *OSVClient) QueryBatch(ctx context.Context, gems []*Gem) ([]Vulnerability, error) {
 	if len(gems) == 0 {
+		logger.Info("OSV batch query: no gems to scan")
 		return []Vulnerability{}, nil
 	}
+
+	logger.Info("Starting OSV batch query for %d gems", len(gems))
 
 	// Build batch request
 	queries := make([]OSVQueryRequest, len(gems))
@@ -112,12 +117,15 @@ func (c *OSVClient) QueryBatch(ctx context.Context, gems []*Gem) ([]Vulnerabilit
 	reqBody := OSVBatchRequest{Queries: queries}
 	reqJSON, err := json.Marshal(reqBody)
 	if err != nil {
+		logger.Warn("Failed to marshal OSV request: %v", err)
 		return nil, fmt.Errorf("failed to marshal OSV request: %w", err)
 	}
 
 	// Make request
+	logger.Info("Sending batch request to OSV.dev (endpoint: %s)", OSVBatchEndpoint)
 	req, err := http.NewRequestWithContext(ctx, "POST", OSVBatchEndpoint, bytes.NewReader(reqJSON))
 	if err != nil {
+		logger.Warn("Failed to create OSV request: %v", err)
 		return nil, fmt.Errorf("failed to create OSV request: %w", err)
 	}
 
@@ -126,23 +134,31 @@ func (c *OSVClient) QueryBatch(ctx context.Context, gems []*Gem) ([]Vulnerabilit
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
+		logger.Warn("OSV API request failed: %v", err)
 		return nil, fmt.Errorf("OSV API request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
+		logger.Warn("OSV API returned status %d: %s", resp.StatusCode, string(body))
 		return nil, fmt.Errorf("OSV API returned status %d: %s", resp.StatusCode, string(body))
 	}
+
+	logger.Info("OSV API response received (HTTP %d)", resp.StatusCode)
 
 	// Parse response
 	var batchResp OSVBatchResponse
 	if err := json.NewDecoder(resp.Body).Decode(&batchResp); err != nil {
+		logger.Warn("Failed to parse OSV response: %v", err)
 		return nil, fmt.Errorf("failed to parse OSV response: %w", err)
 	}
 
+	logger.Info("Parsing OSV response: %d results", len(batchResp.Results))
+
 	// Convert OSV vulnerabilities to our format, filtering clean gems
 	vulns := c.parseOSVResponse(batchResp, gems)
+	logger.Info("OSV batch query complete: found %d vulnerabilities", len(vulns))
 	return vulns, nil
 }
 
@@ -164,6 +180,10 @@ func (c *OSVClient) parseOSVResponse(resp OSVBatchResponse, gems []*Gem) []Vulne
 		}
 
 		gem := gems[resultIdx]
+
+		if len(result.Vulns) > 0 {
+			logger.Info("Found %d vulnerabilities for %s@%s", len(result.Vulns), gem.Name, gem.Version)
+		}
 
 		// Only add vulnerabilities for this gem if there are any
 		for _, osvVuln := range result.Vulns {
@@ -199,6 +219,7 @@ func (c *OSVClient) parseOSVResponse(resp OSVBatchResponse, gems []*Gem) []Vulne
 				vuln.CVSS = osvVuln.Cvss.Score
 			}
 
+			logger.Info("Processing CVE %s: %s [%s, CVSS: %.1f]", osvVuln.ID, osvVuln.Summary, vuln.Severity, vuln.CVSS)
 			vulnerabilities = append(vulnerabilities, vuln)
 		}
 	}
