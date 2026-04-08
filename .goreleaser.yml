@@ -73,7 +73,7 @@ changelog:
       - '^test:'
       - typo
 
-homebrew_casks:
+homebrew_taps:
   - repository:
       owner: spaquet
       name: homebrew-gemtracker
@@ -84,3 +84,7 @@ homebrew_casks:
     description: "An interactive TUI for analyzing Ruby gem dependencies and security risks"
     license: MIT
     skip_upload: false
+    install: |
+      bin.install "gemtracker"
+    test: |
+      system "#{bin}/gemtracker", "--version"
