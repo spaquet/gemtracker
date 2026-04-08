@@ -229,16 +229,16 @@ type Model struct {
 	UpgradeableOffset         int
 
 	// CVE screen state
-	VulnerableGems        []*gemfile.GemStatus
-	CVECursor             int
-	CVEOffset             int
-	CVEVulnerabilities    []*gemfile.Vulnerability // Actual vulnerability data from OSV.dev
-	LastGemsSignature     string                   // SHA256 of last scanned gems
-	CVERefreshInProgress  bool                     // Is a CVE refresh happening in background?
-	CVELastScanTime       time.Time                // When was CVE data last scanned?
-	CVECacheLoadedAt      time.Time                // When was cache loaded?
-	CVECacheTTL           time.Duration            // Default: 1 hour
-	CVELastError          string                   // Last error message if scan failed
+	VulnerableGems       []*gemfile.GemStatus
+	CVECursor            int
+	CVEOffset            int
+	CVEVulnerabilities   []*gemfile.Vulnerability // Actual vulnerability data from OSV.dev
+	LastGemsSignature    string                   // SHA256 of last scanned gems
+	CVERefreshInProgress bool                     // Is a CVE refresh happening in background?
+	CVELastScanTime      time.Time                // When was CVE data last scanned?
+	CVECacheLoadedAt     time.Time                // When was cache loaded?
+	CVECacheTTL          time.Duration            // Default: 1 hour
+	CVELastError         string                   // Last error message if scan failed
 
 	// Project Info screen state
 	RubyVersion       string
@@ -304,20 +304,20 @@ type Model struct {
 // The version, commit, and date are displayed in the UI header.
 func NewModel(version, commit, date, projectPath string, noCache, verbose bool) *Model {
 	m := &Model{
-		Version:         version,
-		Commit:          commit,
-		Date:            date,
-		CurrentView:     ViewGemList,
-		ActiveTab:       ViewGemList,
-		SearchInput:     textinput.New(),
-		PathInput:       textinput.New(),
-		SelectedGroups:  make(map[string]bool),
-		NoCache:         noCache,
-		Verbose:         verbose,
-		HealthChecker:   gemfile.NewHealthChecker(),
-		OutdatedChecker: gemfile.NewOutdatedChecker(),
-		HealthPending:   make([]*gemfile.GemStatus, 0),
-		CVECacheTTL:     1 * time.Hour,
+		Version:            version,
+		Commit:             commit,
+		Date:               date,
+		CurrentView:        ViewGemList,
+		ActiveTab:          ViewGemList,
+		SearchInput:        textinput.New(),
+		PathInput:          textinput.New(),
+		SelectedGroups:     make(map[string]bool),
+		NoCache:            noCache,
+		Verbose:            verbose,
+		HealthChecker:      gemfile.NewHealthChecker(),
+		OutdatedChecker:    gemfile.NewOutdatedChecker(),
+		HealthPending:      make([]*gemfile.GemStatus, 0),
+		CVECacheTTL:        1 * time.Hour,
 		CVEVulnerabilities: make([]*gemfile.Vulnerability, 0),
 	}
 

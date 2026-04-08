@@ -11,7 +11,7 @@ import (
 )
 
 const (
-	OSVBatchEndpoint = "https://api.osv.dev/v1/query/batch"
+	OSVBatchEndpoint  = "https://api.osv.dev/v1/query/batch"
 	OSVRequestTimeout = 30 * time.Second
 )
 
