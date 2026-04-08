@@ -385,19 +385,7 @@ func (m *Model) viewLoading() string {
 // ============================================================================
 
 func (m *Model) viewGemList() string {
-	// Build the view by collecting all lines
-	var allLines []string
-
-	// Add header
-	allLines = append(allLines, m.renderAppHeader())
-
-	// Add tab bar
-	allLines = append(allLines, m.renderTabBar())
-
-	// Calculate content height: total height minus header, tabbar, and statusbar
-	// Reserve minimum 1 line for statusbar, but statusBarTotalHeight gives actual needed height
 	statusbarHeight := m.statusBarTotalHeight()
-	// Ensure at least 1 line is reserved for status bar
 	if statusbarHeight < 1 {
 		statusbarHeight = 1
 	}
@@ -405,42 +393,9 @@ func (m *Model) viewGemList() string {
 	if contentHeight < 1 {
 		contentHeight = 1
 	}
+	gemContent := m.renderGemListTable(contentHeight)
 
-	// Add gem list content
-	gemTableStr := m.renderGemListTable(contentHeight)
-	if gemTableStr != "" {
-		gemListLines := strings.Split(strings.Trim(gemTableStr, "\n"), "\n")
-		// Don't limit to contentHeight - if we have more content, let it spill over temporarily
-		// The overflow handling below will trim it properly while preserving statusbar
-		allLines = append(allLines, gemListLines...)
-	}
-
-	// Add status bar (can be multi-line)
-	statusbarContent := m.renderStatusBar()
-	if statusbarContent != "" {
-		statusbarLines := strings.Split(strings.Trim(statusbarContent, "\n"), "\n")
-		// Limit statusbar to its expected height
-		if len(statusbarLines) > statusbarHeight {
-			statusbarLines = statusbarLines[:statusbarHeight]
-		}
-		allLines = append(allLines, statusbarLines...)
-	}
-
-	// Ensure we don't exceed terminal height - trim content if needed to preserve statusbar
-	// Only trim if there's significant overflow (more than 1 line) to avoid cutting off last gems
-	if len(allLines) > m.Height {
-		excessLines := len(allLines) - m.Height
-		// Only trim if overflow is more than 1 line (accounts for small statusbar fluctuations)
-		if excessLines > 1 && len(allLines) > 2+statusbarHeight {
-			gemContentEnd := len(allLines) - statusbarHeight
-			trimPoint := gemContentEnd - (excessLines - 1) // Keep 1 extra line to preserve last gems
-			if trimPoint > 2 {                             // Keep at least header + tabbar
-				allLines = append(allLines[:trimPoint], allLines[gemContentEnd:]...)
-			}
-		}
-	}
-
-	return lipgloss.JoinVertical(lipgloss.Left, allLines...)
+	return m.assembleViewWithChrome(gemContent)
 }
 
 func (m *Model) renderGemListTable(height int) string {
