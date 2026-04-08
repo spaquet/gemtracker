@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v1.1.3] - 2026-04-08
+
+### Improved
+- **Filter View UI Enhancements** (Issue #47)
+  - Convert filter view to modal overlay for improved UX
+  - Filter menu now appears as a centered modal box overlaid on the gem list instead of replacing the entire screen
+  - Users maintain visual context with the gem list visible in the background
+  - Fixes layout issue where action hints and statusbar were pushed off-screen
+
+### Changed
+- **Filter View Checkboxes** - Improved visibility and clarity
+  - Replace tiny checkbox symbols (☑/☐) with larger, color-coded alternatives
+  - Selected items: `[✓]` in green (`ColorSuccess`)
+  - Unselected items: `[ ]` in muted gray (`ColorTextMuted`)
+  - Add cursor indicator (›) to highlight currently selected option
+  - Add footer hint showing keyboard shortcuts within modal box
+
+### Technical
+- Add `placeOverlay()` helper function for ANSI-aware modal rendering
+- Import `github.com/charmbracelet/x/ansi` for ANSI escape sequence handling
+- Modal positioned using center calculation based on terminal dimensions
+- Modal styling: rounded border with accent color and surface background
+
 ## [v1.1.2] - 2026-04-07
 
 ### Added
