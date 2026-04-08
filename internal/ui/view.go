@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/spaquet/gemtracker/internal/gemfile"
 )
 
@@ -38,6 +39,28 @@ func (m *Model) statusBarTotalHeight() int {
 	}
 
 	return height
+}
+
+// placeOverlay overlays a foreground view on top of a background view at a specified row/column position.
+// It uses ANSI-aware truncation to preserve the background view left of the overlay while placing
+// the overlay content in the center and allowing the terminal default background to appear on the right.
+func placeOverlay(startRow, startCol int, fg, bg string) string {
+	fgLines := strings.Split(fg, "\n")
+	bgLines := strings.Split(bg, "\n")
+
+	for i, fgLine := range fgLines {
+		row := startRow + i
+		if row < 0 || row >= len(bgLines) {
+			continue
+		}
+
+		// Use ANSI-aware truncation to get the left portion of the background
+		left := ansi.Truncate(bgLines[row], startCol, "")
+		// Replace the line with left background + foreground content
+		bgLines[row] = left + fgLine
+	}
+
+	return strings.Join(bgLines, "\n")
 }
 
 // ============================================================================
@@ -1409,67 +1432,86 @@ func (m *Model) viewSelectPath() string {
 // ============================================================================
 
 func (m *Model) viewFilterMenu() string {
-	statusbarLines := m.statusBarTotalHeight()
-	contentHeight := m.Height - 2 - statusbarLines
-	if contentHeight < 1 {
-		contentHeight = 1
-	}
-	filterContent := m.renderFilterMenu(contentHeight)
+	// Render gem list as background
+	background := m.viewGemList()
 
-	return m.assembleViewWithChrome(filterContent)
+	// Create filter modal
+	modal := m.renderFilterModalBox()
+
+	// Calculate centered position
+	modalLines := strings.Split(modal, "\n")
+	modalH := len(modalLines)
+	modalW := lipgloss.Width(modal)
+
+	startRow := (m.Height - modalH) / 2
+	startCol := (m.Width - modalW) / 2
+
+	if startRow < 2 {
+		startRow = 2 // Don't cover header
+	}
+	if startCol < 0 {
+		startCol = 0
+	}
+
+	// Overlay modal on background
+	return placeOverlay(startRow, startCol, modal, background)
 }
 
-func (m *Model) renderFilterMenu(height int) string {
-	if height < 1 {
-		height = 1
+func (m *Model) renderFilterModalBox() string {
+	// Create checkbox styles
+	checkOn := lipgloss.NewStyle().
+		Foreground(lipgloss.Color(ColorSuccess)).
+		Render("[✓]")
+	checkOff := lipgloss.NewStyle().
+		Foreground(lipgloss.Color(ColorTextMuted)).
+		Render("[ ]")
+
+	// Helper to choose checkbox
+	checkbox := func(on bool) string {
+		if on {
+			return checkOn
+		}
+		return checkOff
 	}
 
+	// Build content lines
+	lines := []string{}
+
+	// Title
 	title := "Filter Gems"
 	titleStyle := lipgloss.NewStyle().
 		Bold(true).
 		Foreground(lipgloss.Color(ColorPrimary))
-
-	lines := []string{titleStyle.Render(title), ""}
+	lines = append(lines, titleStyle.Render(title))
+	lines = append(lines, "")
 
 	// Upgradable filter option
 	upgradableLabel := "Show only upgradable"
-	if m.ShowOnlyUpgradable {
-		upgradableLabel = "☑ " + upgradableLabel
-	} else {
-		upgradableLabel = "☐ " + upgradableLabel
-	}
-
+	upgradableLine := checkbox(m.ShowOnlyUpgradable) + " " + upgradableLabel
 	if m.FilterMenuCursor == 0 {
-		lines = append(lines, RowSelectedStyle.Render("  "+upgradableLabel))
+		lines = append(lines, RowSelectedStyle.Render("› "+upgradableLine))
 	} else {
-		lines = append(lines, "  "+upgradableLabel)
+		lines = append(lines, "  "+upgradableLine)
 	}
 
 	lines = append(lines, "")
 
 	// Group filter options
 	if len(m.AvailableGroups) > 0 {
-		groupsTitle := "Filter by group:"
-		lines = append(lines, groupsTitle)
+		lines = append(lines, "Filter by group:")
 
 		for i, group := range m.AvailableGroups {
-			label := group
-			if m.SelectedGroups[group] {
-				label = "☑ " + label
-			} else {
-				label = "☐ " + label
-			}
-
+			groupLine := checkbox(m.SelectedGroups[group]) + " " + group
 			menuIdx := 1 + i
 			if m.FilterMenuCursor == menuIdx {
-				lines = append(lines, RowSelectedStyle.Render("  "+label))
+				lines = append(lines, RowSelectedStyle.Render("› "+groupLine))
 			} else {
-				lines = append(lines, "  "+label)
+				lines = append(lines, "  "+groupLine)
 			}
 		}
 	}
 
-	// Show active filters summary
+	// Active filters summary
 	lines = append(lines, "")
 	lines = append(lines, "Active filters:")
 
@@ -1477,7 +1519,7 @@ func (m *Model) renderFilterMenu(height int) string {
 		lines = append(lines, "  (none)")
 	} else {
 		if m.ShowOnlyUpgradable {
-			lines = append(lines, "  • Show only upgradable")
+			lines = append(lines, "  • Upgradable only")
 		}
 		if len(m.SelectedGroups) > 0 {
 			var selectedGroups []string
@@ -1490,12 +1532,33 @@ func (m *Model) renderFilterMenu(height int) string {
 		}
 	}
 
-	// Padding
-	for len(lines) < height {
-		lines = append(lines, "")
+	// Footer hint
+	lines = append(lines, "")
+	hintStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color(ColorTextMuted)).
+		Italic(true)
+	lines = append(lines, hintStyle.Render("↑↓ navigate  space toggle  enter/esc close"))
+
+	// Create the modal box with border
+	content := strings.Join(lines, "\n")
+
+	// Calculate width - use enough space but not too much
+	modalWidth := lipgloss.Width(content) + 4 // 2 for padding left/right, 2 for border
+	if modalWidth < 50 {
+		modalWidth = 50
+	}
+	if modalWidth > m.Width-4 {
+		modalWidth = m.Width - 4
 	}
 
-	return strings.Join(lines[:height], "\n")
+	// Apply border and styling
+	boxStyle := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color(ColorBorderActive)).
+		Background(lipgloss.Color(ColorSurface)).
+		Padding(1, 2)
+
+	return boxStyle.Width(modalWidth).Render(content)
 }
 
 // ============================================================================
