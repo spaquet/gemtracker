@@ -358,8 +358,8 @@ func (m *Model) Init() tea.Cmd {
 		// If --no-cache flag is set, clear all caches to force fresh data
 		if m.NoCache {
 			logger.Info("--no-cache flag set, clearing all caches")
-			gemfile.ClearVulnerabilityCache() // Clear CVE cache
-			cache.Clear(m.GemfileLockPath)    // Clear analysis cache
+			gemfile.ClearVulnerabilityCache()    // Clear CVE cache
+			cache.Clear(m.GemfileLockPath)       // Clear analysis cache
 			cache.ClearHealth(m.GemfileLockPath) // Clear health cache
 		}
 

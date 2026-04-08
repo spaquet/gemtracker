@@ -263,9 +263,9 @@ func (m *Model) handleGemListKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.LoadingMessage = "Refreshing all data..."
 
 		// Clear all caches to force fresh data
-		cache.Clear(m.GemfileLockPath)           // Clear analysis cache
-		cache.ClearHealth(m.GemfileLockPath)     // Clear health cache
-		gemfile.ClearVulnerabilityCache()        // Clear CVE cache
+		cache.Clear(m.GemfileLockPath)       // Clear analysis cache
+		cache.ClearHealth(m.GemfileLockPath) // Clear health cache
+		gemfile.ClearVulnerabilityCache()    // Clear CVE cache
 
 		// Restart full analysis from scratch
 		return m, performAnalysis(m.GemfileLockPath, true) // true = ignore cache
