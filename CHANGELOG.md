@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v1.1.6] - 2026-04-08
+
+### Fixed
+- **GoReleaser v2.15.2 Compatibility** - Fixed release pipeline by updating homebrew configuration field
+  - Renamed `homebrew_taps` to `brews` to match GoReleaser v2.x configuration format
+  - Release builds now complete successfully
+
 ## [v1.1.5] - 2026-04-08
 
 ### Added
