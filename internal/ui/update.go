@@ -707,18 +707,10 @@ func (m *Model) handleAnalysisComplete(msg AnalysisCompleteMsg) (tea.Model, tea.
 	copy(m.UnfilteredGems, m.FirstLevelGems)
 	m.AvailableGroups = m.extractAvailableGroups(m.FirstLevelGems)
 
-	// Extract vulnerable gems and sort alphabetically
+	// Note: m.VulnerableGems is no longer populated from static checker
+	// Instead, we use m.CVEVulnerabilities which is populated from OSV.dev
+	// This will be built in rebuildVulnerableGemsList() after CVE scan completes
 	m.VulnerableGems = make([]*gemfile.GemStatus, 0)
-	for _, gs := range msg.Result.GemStatuses {
-		if gs.IsVulnerable {
-			m.VulnerableGems = append(m.VulnerableGems, gs)
-		}
-	}
-
-	// Sort vulnerable gems alphabetically by name
-	sort.Slice(m.VulnerableGems, func(i, j int) bool {
-		return m.VulnerableGems[i].Name < m.VulnerableGems[j].Name
-	})
 
 	// Populate project info fields
 	m.RubyVersion = gemfile.ExtractRubyVersion(m.GemfileLockPath)
