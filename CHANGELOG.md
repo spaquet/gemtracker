@@ -231,36 +231,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Minimal dependencies (charmbracelet packages only)
 - Efficient dependency parsing and analysis
 
----
-
-## How to Report Issues
-
-Found a bug? Please open an issue on [GitHub](https://github.com/spaquet/gemtracker/issues).
-
-## How to Suggest Features
-
-Have an idea for a new feature? Open a [discussion](https://github.com/spaquet/gemtracker/discussions) or [issue](https://github.com/spaquet/gemtracker/issues) on GitHub.
-
-## Security
-
-For security vulnerabilities, please see [SECURITY.md](SECURITY.md) for responsible disclosure.
 
 ---
-
-## Version History
-
-### Planned for Future Releases
-
-- [ ] Live CVE database updates
-- [ ] Support for Gemfile global options and git/path sources
-- [ ] License compliance checking
-- [ ] CI/CD integration mode
-- [ ] Custom vulnerability filtering
-- [ ] Dependency graph visualization
-- [ ] Export functionality (JSON, CSV)
-
----
-
 ## Legend
 
 - **Added** for new features
