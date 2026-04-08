@@ -112,6 +112,18 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case OutdatedCompleteMsg:
 		return m.handleOutdatedComplete()
+
+	case CVEScanStartedMsg:
+		return m.handleCVEScanStarted()
+
+	case CVEProgressMsg:
+		return m.handleCVEProgress(msg)
+
+	case CVECompleteMsg:
+		return m.handleCVEComplete(msg)
+
+	case CVELoadFromCacheMsg:
+		return m.handleCVELoadFromCache(msg)
 	}
 
 	return m, nil
@@ -444,7 +456,7 @@ func (m *Model) handleUpgradeableKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "tab":
 		m.CurrentView = ViewCVE
 		m.ActiveTab = ViewCVE
-		return m, nil
+		return m.ensureCVEScanStarted()
 
 	case "shift+tab":
 		m.CurrentView = ViewSearch
@@ -507,25 +519,33 @@ func (m *Model) handleCVEKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case "down":
-		if m.CVECursor < len(m.VulnerableGems)-1 {
+		if m.CVECursor < len(m.CVEVulnerabilities)-1 {
 			m.CVECursor++
 			m.ensureCVECursorVisible()
 		}
 		return m, nil
 
 	case "enter":
-		if len(m.VulnerableGems) > 0 && m.CVECursor < len(m.VulnerableGems) {
-			m.SelectedGem = m.VulnerableGems[m.CVECursor]
-			m.CurrentView = ViewGemDetail
-			m.ActiveTab = ViewCVE
-			m.Loading = true
-			m.LoadingMessage = "Loading dependencies..."
-			return m, tea.Batch(
-				tea.Tick(time.Millisecond*100, func(time.Time) tea.Msg {
-					return SpinnerTickMsg{}
-				}),
-				performDependencyAnalysis(m.GemfileLockPath, m.SelectedGem.Name),
-			)
+		if len(m.CVEVulnerabilities) > 0 && m.CVECursor < len(m.CVEVulnerabilities) {
+			vuln := m.CVEVulnerabilities[m.CVECursor]
+			// Find the gem with this vulnerability to display details
+			if m.AnalysisResult != nil {
+				for _, gemStatus := range m.AnalysisResult.GemStatuses {
+					if gemStatus.Name == vuln.GemName {
+						m.SelectedGem = gemStatus
+						m.CurrentView = ViewGemDetail
+						m.ActiveTab = ViewCVE
+						m.Loading = true
+						m.LoadingMessage = "Loading dependencies..."
+						return m, tea.Batch(
+							tea.Tick(time.Millisecond*100, func(time.Time) tea.Msg {
+								return SpinnerTickMsg{}
+							}),
+							performDependencyAnalysis(m.GemfileLockPath, m.SelectedGem.Name),
+						)
+					}
+				}
+			}
 		}
 		return m, nil
 	}
@@ -543,7 +563,26 @@ func (m *Model) handleProjectInfoKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "shift+tab":
 		m.CurrentView = ViewCVE
 		m.ActiveTab = ViewCVE
+		return m.ensureCVEScanStarted()
+	}
+
+	return m, nil
+}
+
+// ensureCVEScanStarted checks if CVE scan needs to start and initiates it if needed
+func (m *Model) ensureCVEScanStarted() (tea.Model, tea.Cmd) {
+	if m.AnalysisResult == nil || len(m.AnalysisResult.AllGems) == 0 {
 		return m, nil
+	}
+
+	currentGemsSignature := gemfile.ComputeGemsSignature(m.AnalysisResult.AllGems)
+
+	// Check if gems have changed or if we need a refresh
+	needsRefresh := currentGemsSignature != m.LastGemsSignature || m.CVECacheLoadedAt.IsZero()
+
+	if needsRefresh {
+		// Start CVE scan
+		return m, performCVEScan(m.AnalysisResult.AllGems)
 	}
 
 	return m, nil
@@ -767,7 +806,17 @@ func (m *Model) handleAnalysisComplete(msg AnalysisCompleteMsg) (tea.Model, tea.
 		}
 	}
 
-	return m, fetchNextOutdatedItem(m.OutdatedPending, m.OutdatedChecker)
+	// Start CVE scanning in background
+	// Compute gems signature for later refresh detection
+	if len(msg.Result.AllGems) > 0 {
+		m.LastGemsSignature = gemfile.ComputeGemsSignature(msg.Result.AllGems)
+	}
+
+	// Batch outdated checking and CVE scanning
+	return m, tea.Batch(
+		fetchNextOutdatedItem(m.OutdatedPending, m.OutdatedChecker),
+		performCVEScan(msg.Result.AllGems),
+	)
 }
 
 func (m *Model) handleDependencyComplete(msg DependencyCompleteMsg) (tea.Model, tea.Cmd) {
@@ -1107,4 +1156,89 @@ func (m *Model) ensureDetailCursorVisible() {
 	if *offset < 0 {
 		*offset = 0
 	}
+}
+
+// ============================================================================
+// CVE Scan Handlers
+// ============================================================================
+
+func (m *Model) handleCVEScanStarted() (tea.Model, tea.Cmd) {
+	m.CVERefreshInProgress = true
+	return m, nil
+}
+
+func (m *Model) handleCVEProgress(msg CVEProgressMsg) (tea.Model, tea.Cmd) {
+	// Update progress in UI if needed
+	// For now, just acknowledge the progress
+	return m, nil
+}
+
+func (m *Model) handleCVELoadFromCache(msg CVELoadFromCacheMsg) (tea.Model, tea.Cmd) {
+	// Load cached vulnerabilities into model
+	m.CVEVulnerabilities = msg.Vulnerabilities
+	m.CVELastScanTime = time.Now().Add(-msg.CacheAge)
+	m.CVECacheLoadedAt = time.Now()
+
+	// Rebuild vulnerable gems list (only gems with vulnerabilities)
+	m.rebuildVulnerableGemsList()
+
+	// Trigger async refresh in background (don't wait for it)
+	// Only if we have analysis results
+	if m.AnalysisResult != nil && len(m.AnalysisResult.AllGems) > 0 {
+		gemsToScan := m.AnalysisResult.AllGems
+		return m, performCVEScan(gemsToScan)
+	}
+
+	return m, nil
+}
+
+func (m *Model) handleCVEComplete(msg CVECompleteMsg) (tea.Model, tea.Cmd) {
+	m.CVERefreshInProgress = false
+
+	if msg.Error != nil {
+		// If error, keep old data if available, show error
+		m.CVELastError = msg.Error.Error()
+		logger.Warn("CVE scan failed: %v", msg.Error)
+		return m, nil
+	}
+
+	// Update with fresh data
+	m.CVEVulnerabilities = msg.Vulnerabilities
+	m.CVELastScanTime = time.Now()
+	m.CVECacheLoadedAt = time.Now()
+	m.CVELastError = ""
+
+	// Update gems signature for next check
+	if m.AnalysisResult != nil && len(m.AnalysisResult.AllGems) > 0 {
+		m.LastGemsSignature = gemfile.ComputeGemsSignature(m.AnalysisResult.AllGems)
+	}
+
+	// Rebuild vulnerable gems list (only gems with vulnerabilities)
+	m.rebuildVulnerableGemsList()
+
+	return m, nil
+}
+
+// rebuildVulnerableGemsList updates the VulnerableGems list to match CVEVulnerabilities
+// Only includes gems that actually have vulnerabilities
+func (m *Model) rebuildVulnerableGemsList() {
+	// Build a map of gem names with vulnerabilities
+	gemNameMap := make(map[string]bool)
+	for _, vuln := range m.CVEVulnerabilities {
+		gemNameMap[vuln.GemName] = true
+	}
+
+	// Filter gem statuses to only those with vulnerabilities
+	vulnerableGems := make([]*gemfile.GemStatus, 0)
+	if m.AnalysisResult != nil {
+		for _, gemStatus := range m.AnalysisResult.GemStatuses {
+			if gemNameMap[gemStatus.Name] {
+				vulnerableGems = append(vulnerableGems, gemStatus)
+			}
+		}
+	}
+
+	m.VulnerableGems = vulnerableGems
+	m.CVECursor = 0
+	m.CVEOffset = 0
 }

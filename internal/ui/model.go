@@ -6,6 +6,7 @@
 package ui
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -150,6 +151,24 @@ type OutdatedItemMsg struct {
 
 type OutdatedCompleteMsg struct{}
 
+type CVEScanStartedMsg struct{}
+
+type CVEProgressMsg struct {
+	GemsProcessed int
+	TotalGems     int
+}
+
+type CVECompleteMsg struct {
+	Vulnerabilities []*gemfile.Vulnerability
+	Error           error
+}
+
+type CVELoadFromCacheMsg struct {
+	Vulnerabilities []*gemfile.Vulnerability
+	CacheAge        time.Duration
+	CacheTTL        time.Duration
+}
+
 // ============================================================================
 // Model
 // ============================================================================
@@ -210,9 +229,16 @@ type Model struct {
 	UpgradeableOffset         int
 
 	// CVE screen state
-	VulnerableGems []*gemfile.GemStatus
-	CVECursor      int
-	CVEOffset      int
+	VulnerableGems        []*gemfile.GemStatus
+	CVECursor             int
+	CVEOffset             int
+	CVEVulnerabilities    []*gemfile.Vulnerability // Actual vulnerability data from OSV.dev
+	LastGemsSignature     string                   // SHA256 of last scanned gems
+	CVERefreshInProgress  bool                     // Is a CVE refresh happening in background?
+	CVELastScanTime       time.Time                // When was CVE data last scanned?
+	CVECacheLoadedAt      time.Time                // When was cache loaded?
+	CVECacheTTL           time.Duration            // Default: 1 hour
+	CVELastError          string                   // Last error message if scan failed
 
 	// Project Info screen state
 	RubyVersion       string
@@ -291,6 +317,8 @@ func NewModel(version, commit, date, projectPath string, noCache, verbose bool) 
 		HealthChecker:   gemfile.NewHealthChecker(),
 		OutdatedChecker: gemfile.NewOutdatedChecker(),
 		HealthPending:   make([]*gemfile.GemStatus, 0),
+		CVECacheTTL:     1 * time.Hour,
+		CVEVulnerabilities: make([]*gemfile.Vulnerability, 0),
 	}
 
 	// Configure search input
@@ -882,5 +910,72 @@ func fetchNextOutdatedItem(gems []*gemfile.GemStatus, checker *gemfile.OutdatedC
 			HomepageURL:   homepage,
 			Description:   desc,
 		}
+	}
+}
+
+// performCVEScan queries OSV.dev for vulnerabilities in the project's gems
+// Returns cached data if available and not expired, otherwise fetches fresh data
+func performCVEScan(gems []*gemfile.Gem) tea.Cmd {
+	return func() tea.Msg {
+		if gems == nil || len(gems) == 0 {
+			return CVECompleteMsg{Vulnerabilities: []*gemfile.Vulnerability{}, Error: nil}
+		}
+
+		// Compute gems signature for cache key
+		gemsSignature := gemfile.ComputeGemsSignature(gems)
+
+		// Try to load from cache first
+		cacheEntry, err := gemfile.LoadVulnerabilityCache(gemsSignature)
+		if err == nil && cacheEntry != nil && gemfile.IsCacheValid(cacheEntry) {
+			// Cache hit! Return cached data
+			cacheAge := gemfile.GetCacheAge(cacheEntry)
+			cacheTTL := time.Duration(cacheEntry.TTLSeconds) * time.Second
+
+			// Convert vulnerabilities to pointers
+			vulnPtrs := make([]*gemfile.Vulnerability, len(cacheEntry.Vulnerabilities))
+			for i := range cacheEntry.Vulnerabilities {
+				vulnPtrs[i] = &cacheEntry.Vulnerabilities[i]
+			}
+
+			return CVELoadFromCacheMsg{
+				Vulnerabilities: vulnPtrs,
+				CacheAge:        cacheAge,
+				CacheTTL:        cacheTTL,
+			}
+		}
+
+		// Cache miss or expired, fetch from OSV.dev
+		osv := gemfile.NewOSVClient()
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
+		vulns, err := osv.QueryBatch(ctx, gems)
+		if err != nil {
+			return CVECompleteMsg{Vulnerabilities: nil, Error: err}
+		}
+
+		// Convert vulnerabilities to pointers for return
+		vulnPtrs := make([]*gemfile.Vulnerability, len(vulns))
+		for i := range vulns {
+			vulnPtrs[i] = &vulns[i]
+		}
+
+		// Save to cache
+		cacheEntry = &gemfile.CacheEntry{
+			GemsSignature:   gemsSignature,
+			CachedAt:        time.Now(),
+			ScannedAt:       time.Now(),
+			TTLSeconds:      int(gemfile.VulnerabilityCacheTTL.Seconds()),
+			GemCount:        len(gems),
+			ScanStatus:      "success",
+			Vulnerabilities: vulns,
+		}
+
+		if err := gemfile.SaveVulnerabilityCache(gemsSignature, cacheEntry); err != nil {
+			// Log error but don't fail - we still have the fresh data
+			logger.Warn("Failed to save CVE cache: %v", err)
+		}
+
+		return CVECompleteMsg{Vulnerabilities: vulnPtrs, Error: nil}
 	}
 }
