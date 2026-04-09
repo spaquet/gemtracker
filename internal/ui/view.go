@@ -1169,7 +1169,8 @@ func (m *Model) renderUpgradeableTable(height int) string {
 
 func (m *Model) viewCVE() string {
 	statusbarLines := m.statusBarTotalHeight()
-	contentHeight := m.Height - 2 - statusbarLines
+	// Reserve 1 line for footer/statusbar to prevent clipping the last CVE
+	contentHeight := m.Height - 2 - statusbarLines - 1
 	if contentHeight < 1 {
 		contentHeight = 1
 	}
@@ -1365,18 +1366,11 @@ func (m *Model) renderCVEVulnerabilitiesList(height int) string {
 		"CVE ID", "Gem", " ", "Severity", "Type", "Group")
 	lines = append(lines, TableHeaderStyle.Render(headerRow))
 
-	// Render vulnerabilities - reserve 1 line for table header
-	maxVulns := height - 1
+	// Calculate how many vulnerabilities can fit (like Gems tab does)
+	// height is already adjusted by caller, maxVulns = height - lines_already_added
+	maxVulns := height - len(lines)
 	if maxVulns < 0 {
 		maxVulns = 0
-	}
-
-	// Ensure offset is within bounds
-	if m.CVEOffset < 0 {
-		m.CVEOffset = 0
-	}
-	if m.CVEOffset >= len(m.CVEVulnerabilities) && len(m.CVEVulnerabilities) > 0 {
-		m.CVEOffset = len(m.CVEVulnerabilities) - 1
 	}
 
 	// Calculate end index
@@ -1391,37 +1385,58 @@ func (m *Model) renderCVEVulnerabilitiesList(height int) string {
 		}
 
 		vuln := m.CVEVulnerabilities[i]
+		isSelected := i == m.CVECursor
 
-		// Get gem type (Direct/Transitive) and group
-		gemType, group := m.getCVEGemInfo(vuln.GemName)
-
-		// Add framework tag to gem name if applicable
-		gemDisplay := vuln.GemName
-		if m.isFrameworkGem(vuln.GemName) {
-			gemDisplay = gemDisplay + " [fw]"
-		}
-
-		// Build plain text row (no ANSI codes in fmt.Sprintf to preserve width calculation)
-		row := fmt.Sprintf("  %-18s %-14s ● %-10s %-10s %-15s",
-			truncateStr(vuln.CVE, 18),
-			truncateStr(gemDisplay, 14),
-			vuln.Severity,
-			gemType,
-			truncateStr(group, 15),
-		)
-
-		// Apply styling to entire row
-		if i == m.CVECursor {
-			row = RowSelectedStyle.Render(row)
-		} else {
-			row = RowNormalStyle.Render(row)
-		}
-
-		lines = append(lines, row)
+		line := m.formatCVERow(vuln, isSelected)
+		lines = append(lines, line)
 	}
 
 	// Don't pad - let wrapper handle layout
 	return lipgloss.JoinVertical(lipgloss.Left, lines...)
+}
+
+// formatCVERow formats a single CVE vulnerability row - mirrors formatGemListRow pattern
+func (m *Model) formatCVERow(vuln *gemfile.Vulnerability, selected bool) string {
+	// Get severity badge color
+	var severityBadge string
+	switch vuln.Severity {
+	case "CRITICAL":
+		severityBadge = BadgeCriticalDotStyle.Render("●")
+	case "HIGH":
+		severityBadge = BadgeHighDotStyle.Render("●")
+	case "MEDIUM":
+		severityBadge = BadgeWarningDotStyle.Render("●")
+	default:
+		severityBadge = BadgeHealthyDotStyle.Render("●")
+	}
+
+	// Standardize badge width to prevent ANSI codes from breaking fmt.Sprintf
+	severityBadge = fmt.Sprintf("%s", severityBadge)
+
+	// Get gem type (Direct/Transitive) and group
+	gemType, group := m.getCVEGemInfo(vuln.GemName)
+
+	// Add framework tag to gem name if applicable
+	gemDisplay := vuln.GemName
+	if m.isFrameworkGem(vuln.GemName) {
+		gemDisplay = gemDisplay + " [fw]"
+	}
+
+	// Build plain text row matching Gems tab pattern
+	row := fmt.Sprintf("  %-18s %-14s %s %-12s %-10s %-15s",
+		truncateStr(vuln.CVE, 18),
+		truncateStr(gemDisplay, 14),
+		severityBadge,
+		vuln.Severity,
+		gemType,
+		truncateStr(group, 15),
+	)
+
+	// Apply selection styling - mirrors formatGemListRow
+	if selected {
+		return RowSelectedStyle.Render(row)
+	}
+	return RowNormalStyle.Render(row)
 }
 
 // formatDuration converts a duration to a human-readable string

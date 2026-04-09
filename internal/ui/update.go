@@ -1146,47 +1146,41 @@ func (m *Model) ensureSearchCursorVisible() {
 
 func (m *Model) ensureCVECursorVisible() {
 	statusbarHeight := m.statusBarTotalHeight()
-	contentHeight := m.Height - 2 - statusbarHeight
+	// Reserve 1 line for footer/statusbar buffer (matches viewCVE and clampScrollOffsets)
+	contentHeight := m.Height - 2 - statusbarHeight - 1
 	if contentHeight < 1 {
 		contentHeight = 1
 	}
 
-	// The CVE view shows:
-	// - Header info (severity summary, cache status, etc.) - ~3-4 lines
-	// - Table header (CVE ID | Gem | Severity | Type | Group) - 1 line
-	// - Vulnerability rows - rest of space
-	// We need to reserve ~5 lines for all headers to be safe
-	headerReserve := 5
-	availableCVERows := contentHeight - headerReserve
+	// renderCVETable shows: header (1-4 lines) + table_header (1 line) + vulnerabilities (rest)
+	// Use 5 as a safe estimate for the CVE header section
+	availableCVERows := contentHeight - 5
 
 	if availableCVERows < 1 {
 		availableCVERows = 1
 	}
 
-	// Ensure cursor stays within bounds
-	maxCursor := len(m.CVEVulnerabilities) - 1
-	if m.CVECursor > maxCursor {
-		m.CVECursor = maxCursor
+	// Keep cursor in bounds
+	if m.CVECursor >= len(m.CVEVulnerabilities) {
+		m.CVECursor = len(m.CVEVulnerabilities) - 1
 	}
 	if m.CVECursor < 0 {
 		m.CVECursor = 0
 	}
 
-	// Adjust offset to keep cursor visible
+	// Scroll to keep cursor visible
 	if m.CVECursor < m.CVEOffset {
 		m.CVEOffset = m.CVECursor
-	}
-	if m.CVECursor >= m.CVEOffset+availableCVERows {
+	} else if m.CVECursor >= m.CVEOffset+availableCVERows {
 		m.CVEOffset = m.CVECursor - availableCVERows + 1
 	}
 
-	// Clamp offset to valid range
-	maxOffset := len(m.CVEVulnerabilities) - availableCVERows
-	if maxOffset < 0 {
-		maxOffset = 0
+	// Keep offset in bounds
+	if m.CVEOffset < 0 {
+		m.CVEOffset = 0
 	}
-	if m.CVEOffset > maxOffset {
-		m.CVEOffset = maxOffset
+	if m.CVEOffset >= len(m.CVEVulnerabilities) && len(m.CVEVulnerabilities) > 0 {
+		m.CVEOffset = len(m.CVEVulnerabilities) - 1
 	}
 }
 
@@ -1285,13 +1279,6 @@ func (m *Model) handleCVELoadFromCache(msg CVELoadFromCacheMsg) (tea.Model, tea.
 
 	// Rebuild vulnerable gems list (only gems with vulnerabilities)
 	m.rebuildVulnerableGemsList()
-
-	// Trigger async refresh in background (don't wait for it)
-	// Only if we have analysis results
-	if m.AnalysisResult != nil && len(m.AnalysisResult.AllGems) > 0 {
-		gemsToScan := m.AnalysisResult.AllGems
-		return m, performCVEScan(gemsToScan)
-	}
 
 	return m, nil
 }
