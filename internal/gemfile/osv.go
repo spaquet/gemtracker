@@ -52,14 +52,14 @@ type OSVResult struct {
 
 // OSVVulnerability represents a vulnerability from OSV.dev
 type OSVVulnerability struct {
-	ID        string `json:"id"`
-	Summary   string `json:"summary"`
-	Details   string `json:"details"`
-	Published string `json:"published"`
-	Modified  string `json:"modified"`
-	Severity  []map[string]interface{} `json:"severity"` // Array of severity objects with type and score (CVSS string)
-	DatabaseSpecific map[string]interface{} `json:"database_specific"` // Contains severity for GitHub reviewed vulns
-	References []struct {
+	ID               string                   `json:"id"`
+	Summary          string                   `json:"summary"`
+	Details          string                   `json:"details"`
+	Published        string                   `json:"published"`
+	Modified         string                   `json:"modified"`
+	Severity         []map[string]interface{} `json:"severity"`          // Array of severity objects with type and score (CVSS string)
+	DatabaseSpecific map[string]interface{}   `json:"database_specific"` // Contains severity for GitHub reviewed vulns
+	References       []struct {
 		Type string `json:"type"`
 		URL  string `json:"url"`
 	} `json:"references"`
