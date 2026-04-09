@@ -1361,9 +1361,9 @@ func (m *Model) renderCVEVulnerabilitiesList(height int) string {
 
 	lines := []string{}
 
-	// Table header: CVE ID | Gem | ● Severity | Type | Group
-	headerRow := fmt.Sprintf("  %-18s %-14s %s %-12s %-10s %-15s",
-		"CVE ID", "Gem", " ", "Severity", "Type", "Group")
+	// Table header: # | CVE ID | Gem | ● Severity | Type | Group
+	headerRow := fmt.Sprintf("  %3s %-18s %-14s %s %-12s %-10s %-15s",
+		"#", "CVE ID", "Gem", " ", "Severity", "Type", "Group")
 	lines = append(lines, TableHeaderStyle.Render(headerRow))
 
 	// Calculate how many vulnerabilities can fit (like Gems tab does)
@@ -1386,8 +1386,9 @@ func (m *Model) renderCVEVulnerabilitiesList(height int) string {
 
 		vuln := m.CVEVulnerabilities[i]
 		isSelected := i == m.CVECursor
+		rowNum := i + 1 // 1-based line number
 
-		line := m.formatCVERow(vuln, isSelected)
+		line := m.formatCVERow(vuln, isSelected, rowNum)
 		lines = append(lines, line)
 	}
 
@@ -1396,7 +1397,7 @@ func (m *Model) renderCVEVulnerabilitiesList(height int) string {
 }
 
 // formatCVERow formats a single CVE vulnerability row - mirrors formatGemListRow pattern
-func (m *Model) formatCVERow(vuln *gemfile.Vulnerability, selected bool) string {
+func (m *Model) formatCVERow(vuln *gemfile.Vulnerability, selected bool, rowNum int) string {
 	// Get severity badge color
 	var severityBadge string
 	switch vuln.Severity {
@@ -1423,7 +1424,8 @@ func (m *Model) formatCVERow(vuln *gemfile.Vulnerability, selected bool) string 
 	}
 
 	// Build plain text row matching Gems tab pattern
-	row := fmt.Sprintf("  %-18s %-14s %s %-12s %-10s %-15s",
+	row := fmt.Sprintf("  %3d %-18s %-14s %s %-12s %-10s %-15s",
+		rowNum,
 		truncateStr(vuln.CVE, 18),
 		truncateStr(gemDisplay, 14),
 		severityBadge,
