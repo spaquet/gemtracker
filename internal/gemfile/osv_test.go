@@ -38,7 +38,7 @@ func TestOSVClient_QueryBatch_EmptyGems(t *testing.T) {
 }
 
 func TestOSVClient_QueryBatch_Success(t *testing.T) {
-	// Mock OSV.dev response
+	// Mock OSV.dev response (matches actual OSV.dev API format)
 	mockResponse := `{
 		"results": [
 			{
@@ -46,11 +46,16 @@ func TestOSVClient_QueryBatch_Success(t *testing.T) {
 					{
 						"id": "CVE-2021-22942",
 						"summary": "SQL injection in Rails",
-						"severity": "HIGH",
-						"published": "2021-06-01T00:00:00Z",
-						"cvss": {
-							"score": 7.5
+						"severity": [
+							{
+								"type": "CVSS_V3",
+								"score": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H"
+							}
+						],
+						"database_specific": {
+							"severity": "HIGH"
 						},
+						"published": "2021-06-01T00:00:00Z",
 						"references": [
 							{
 								"type": "WEB",
@@ -140,8 +145,10 @@ func TestOSVClient_QueryBatch_Success(t *testing.T) {
 		t.Errorf("expected severity HIGH, got %s", vuln.Severity)
 	}
 
-	if vuln.CVSS != 7.5 {
-		t.Errorf("expected CVSS 7.5, got %f", vuln.CVSS)
+	// Note: CVSS score is 0 because OSV batch endpoint doesn't return numeric scores
+	// CVSS is extracted from individual vulnerability detail endpoint requests
+	if vuln.CVSS != 0.0 {
+		t.Errorf("expected CVSS 0.0 (not available in batch endpoint), got %f", vuln.CVSS)
 	}
 
 	if vuln.Source != "osv.dev" {
@@ -394,7 +401,15 @@ func TestOSVClient_QueryBatch_MultipleVulnerabilities(t *testing.T) {
 					{
 						"id": "CVE-2021-22942",
 						"summary": "SQL injection in Rails",
-						"severity": "HIGH",
+						"severity": [
+							{
+								"type": "CVSS_V3",
+								"score": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H"
+							}
+						],
+						"database_specific": {
+							"severity": "HIGH"
+						},
 						"published": "2021-06-01T00:00:00Z",
 						"affected": [
 							{
@@ -414,7 +429,15 @@ func TestOSVClient_QueryBatch_MultipleVulnerabilities(t *testing.T) {
 					{
 						"id": "CVE-2021-22880",
 						"summary": "Another Rails vulnerability",
-						"severity": "CRITICAL",
+						"severity": [
+							{
+								"type": "CVSS_V3",
+								"score": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"
+							}
+						],
+						"database_specific": {
+							"severity": "CRITICAL"
+						},
 						"published": "2021-05-01T00:00:00Z",
 						"affected": [
 							{

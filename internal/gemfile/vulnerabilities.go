@@ -28,4 +28,6 @@ type Vulnerability struct {
 	OSVId string
 	// Source indicates where the vulnerability data came from (e.g., "osv.dev", "static")
 	Source string
+	// Workarounds are temporary mitigations if no upgrade is immediately available
+	Workarounds string
 }

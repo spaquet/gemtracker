@@ -19,7 +19,8 @@ const (
 	ColorPrimary      = "74"  // #5fafd7 - app accent
 	ColorSuccess      = "71"  // #5faf5f - latest/up to date
 	ColorWarning      = "178" // #d7af00 - outdated
-	ColorDanger       = "160" // #d70000 - vulnerable
+	ColorDanger       = "160" // #d70000 - vulnerable (CRITICAL)
+	ColorHigh         = "208" // #ff8700 - high severity (orange)
 	ColorSelected     = "24"  // #005f87 - selected row background
 	ColorTabActive    = "74"  // same as Primary
 	ColorTabInactive  = "244" // same as TextMuted
@@ -131,6 +132,9 @@ var BadgeWarningDotStyle = lipgloss.NewStyle().
 
 var BadgeCriticalDotStyle = lipgloss.NewStyle().
 	Foreground(lipgloss.Color(ColorDanger))
+
+var BadgeHighDotStyle = lipgloss.NewStyle().
+	Foreground(lipgloss.Color(ColorHigh))
 
 // ============================================================================
 // Panel/Container Styles

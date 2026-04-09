@@ -3,6 +3,7 @@ package ui
 import (
 	"fmt"
 	"runtime"
+	"sort"
 	"strings"
 	"time"
 
@@ -14,6 +15,32 @@ import (
 // ============================================================================
 // Helper Methods
 // ============================================================================
+
+// wrapText wraps a string to the specified width, maintaining word boundaries
+func wrapText(text string, width int) []string {
+	var result []string
+	words := strings.Fields(text)
+	var currentLine string
+
+	for _, word := range words {
+		if currentLine == "" {
+			currentLine = word
+		} else if len(currentLine)+1+len(word) <= width {
+			currentLine += " " + word
+		} else {
+			if currentLine != "" {
+				result = append(result, currentLine)
+			}
+			currentLine = word
+		}
+	}
+
+	if currentLine != "" {
+		result = append(result, currentLine)
+	}
+
+	return result
+}
 
 func (m *Model) updateBarHeight() int {
 	if m.NewVersionAvailable != "" {
@@ -89,6 +116,10 @@ func (m *Model) View() string {
 		return m.viewProjectInfo()
 	case ViewFilterMenu:
 		return m.viewFilterMenu()
+	case ViewCVEFilterMenu:
+		return m.viewCVEFilterMenu()
+	case ViewCVEInfo:
+		return m.viewCVEInfo()
 	case ViewSelectPath:
 		return m.viewSelectPath()
 	case ViewError:
@@ -103,14 +134,16 @@ func (m *Model) View() string {
 // ============================================================================
 
 var viewHints = map[ViewMode][]string{
-	ViewGemList:     {"↑↓ navigate", "enter select", "f filter", "u upgradable", "c clear", "r refresh", "tab next", "q quit"},
-	ViewGemDetail:   {"esc back", "tab section", "↑↓ navigate", "enter select", "o open url", "q quit"},
-	ViewSearch:      {"type search", "↑↓ navigate", "enter select", "esc clear"},
-	ViewUpgradeable: {"↑↓ navigate", "enter select", "tab next", "q quit"},
-	ViewCVE:         {"↑↓ navigate", "enter select", "tab next", "q quit"},
-	ViewProjectInfo: {"tab next", "shift+tab prev", "q quit"},
-	ViewFilterMenu:  {"↑↓ navigate", "space toggle", "enter back", "q quit"},
-	ViewSelectPath:  {"enter confirm", "esc cancel"},
+	ViewGemList:       {"↑↓ navigate", "enter select", "f filter", "u upgradable", "c clear", "r refresh", "tab next", "q quit"},
+	ViewGemDetail:     {"esc back", "tab section", "↑↓ navigate", "enter select", "o open url", "q quit"},
+	ViewSearch:        {"type search", "↑↓ navigate", "enter select", "esc clear"},
+	ViewUpgradeable:   {"↑↓ navigate", "enter select", "tab next", "q quit"},
+	ViewCVE:           {"↑↓ navigate", "enter select", "f filter", "i info", "tab next", "q quit"},
+	ViewProjectInfo:   {"tab next", "shift+tab prev", "q quit"},
+	ViewFilterMenu:    {"↑↓ navigate", "space toggle", "enter back", "q quit"},
+	ViewCVEFilterMenu: {"↑↓ navigate", "space toggle", "enter back", "q quit"},
+	ViewCVEInfo:       {"esc close", "q quit"},
+	ViewSelectPath:    {"enter confirm", "esc cancel"},
 }
 
 func (m *Model) getHintsForView() []string {
@@ -240,8 +273,8 @@ func (m *Model) renderTabBar() string {
 			if upgradableCount > 0 {
 				label = fmt.Sprintf("%s (%d)", label, upgradableCount)
 			}
-		} else if mode == ViewCVE && len(m.VulnerableGems) > 0 {
-			label = fmt.Sprintf("%s (%d)", label, len(m.VulnerableGems))
+		} else if mode == ViewCVE && len(m.CVEVulnerabilities) > 0 {
+			label = fmt.Sprintf("%s (%d)", label, len(m.CVEVulnerabilities))
 		}
 		if mode == m.ActiveTab {
 			tabs = append(tabs, TabActiveStyle.Render(label))
@@ -1162,7 +1195,8 @@ func (m *Model) renderUpgradeableTable(height int) string {
 
 func (m *Model) viewCVE() string {
 	statusbarLines := m.statusBarTotalHeight()
-	contentHeight := m.Height - 2 - statusbarLines
+	// Reserve 1 line for footer/statusbar to prevent clipping the last CVE
+	contentHeight := m.Height - 2 - statusbarLines - 1
 	if contentHeight < 1 {
 		contentHeight = 1
 	}
@@ -1230,7 +1264,7 @@ func (m *Model) renderCVEHeader(maxHeight int) string {
 	severityLine := fmt.Sprintf(
 		"  Severity: %s CRITICAL (%d)  %s HIGH (%d)  %s MEDIUM (%d)  %s LOW (%d)",
 		BadgeCriticalDotStyle.Render("●"), critCount,
-		BadgeCriticalDotStyle.Render("●"), highCount,
+		BadgeHighDotStyle.Render("●"), highCount,
 		BadgeWarningDotStyle.Render("●"), mediumCount,
 		BadgeHealthyDotStyle.Render("●"), lowCount,
 	)
@@ -1289,6 +1323,60 @@ func (m *Model) renderCVEHeader(maxHeight int) string {
 	return strings.Join(lines, "\n")
 }
 
+// getCVEGemInfo returns the type (Direct/Transitive) and group for a gem in a vulnerability
+func (m *Model) getCVEGemInfo(gemName string) (gemType string, group string) {
+	// Check if gem is in first-level gems (direct dependency)
+	for _, gem := range m.FirstLevelGems {
+		if gem.Name == gemName {
+			gemType = "Direct"
+			if len(gem.Groups) > 0 {
+				group = strings.Join(gem.Groups, ",")
+			} else {
+				group = "default"
+			}
+			return
+		}
+	}
+	// Not found in first-level, so it's transitive
+	// For transitive gems, try to find which first-level gems depend on it
+	// and show their groups as context
+	gemType = "Transitive"
+	parentGems := m.findParentGems(gemName)
+	if len(parentGems) > 0 {
+		// Collect groups from all parent gems
+		groupsMap := make(map[string]bool)
+		for _, parentName := range parentGems {
+			for _, gem := range m.FirstLevelGems {
+				if gem.Name == parentName && len(gem.Groups) > 0 {
+					for _, g := range gem.Groups {
+						groupsMap[g] = true
+					}
+				}
+			}
+		}
+		if len(groupsMap) > 0 {
+			// Sort and join groups
+			var groupList []string
+			for g := range groupsMap {
+				groupList = append(groupList, g)
+			}
+			sort.Strings(groupList)
+			group = strings.Join(groupList, ",")
+		} else {
+			group = "default"
+		}
+	} else {
+		group = "—"
+	}
+	return
+}
+
+// isFrameworkGem checks if a gem is part of a known framework
+func (m *Model) isFrameworkGem(gemName string) bool {
+	_, isFramework := frameworkGems[gemName]
+	return isFramework
+}
+
 func (m *Model) renderCVEVulnerabilitiesList(height int) string {
 	if len(m.CVEVulnerabilities) == 0 {
 		if m.CVERefreshInProgress {
@@ -1299,17 +1387,19 @@ func (m *Model) renderCVEVulnerabilitiesList(height int) string {
 
 	lines := []string{}
 
-	// Table header
-	headerRow := fmt.Sprintf("  %-18s %-14s %-12s %-30s",
-		"CVE ID", "Gem", "Severity", "Description")
+	// Table header: # | CVE ID | Gem | ● Severity | Type | Group
+	headerRow := fmt.Sprintf("  %3s %-18s %-14s %s %-12s %-10s %-15s",
+		"#", "CVE ID", "Gem", " ", "Severity", "Type", "Group")
 	lines = append(lines, TableHeaderStyle.Render(headerRow))
 
-	// Render vulnerabilities - don't reserve space for padding
-	maxVulns := height - 1 // -1 for header
+	// Calculate how many vulnerabilities can fit (like Gems tab does)
+	// height is already adjusted by caller, maxVulns = height - lines_already_added
+	maxVulns := height - len(lines)
 	if maxVulns < 0 {
 		maxVulns = 0
 	}
 
+	// Calculate end index
 	endIdx := m.CVEOffset + maxVulns
 	if endIdx > len(m.CVEVulnerabilities) {
 		endIdx = len(m.CVEVulnerabilities)
@@ -1321,36 +1411,60 @@ func (m *Model) renderCVEVulnerabilitiesList(height int) string {
 		}
 
 		vuln := m.CVEVulnerabilities[i]
+		isSelected := i == m.CVECursor
+		rowNum := i + 1 // 1-based line number
 
-		// Get severity badge style
-		severityBadge := ""
-		switch vuln.Severity {
-		case "CRITICAL", "HIGH":
-			severityBadge = BadgeCriticalDotStyle.Render("●")
-		case "MEDIUM":
-			severityBadge = BadgeWarningDotStyle.Render("●")
-		default:
-			severityBadge = BadgeHealthyDotStyle.Render("●")
-		}
-
-		row := fmt.Sprintf("  %-18s %-14s %s %-12s %-30s",
-			truncateStr(vuln.CVE, 18),
-			truncateStr(vuln.GemName, 14),
-			severityBadge,
-			vuln.Severity,
-			truncateStr(vuln.Description, 30),
-		)
-
-		if i == m.CVECursor {
-			row = RowSelectedStyle.Render(row)
-		} else {
-			row = RowNormalStyle.Render(row)
-		}
-		lines = append(lines, row)
+		line := m.formatCVERow(vuln, isSelected, rowNum)
+		lines = append(lines, line)
 	}
 
 	// Don't pad - let wrapper handle layout
 	return lipgloss.JoinVertical(lipgloss.Left, lines...)
+}
+
+// formatCVERow formats a single CVE vulnerability row - mirrors formatGemListRow pattern
+func (m *Model) formatCVERow(vuln *gemfile.Vulnerability, selected bool, rowNum int) string {
+	// Get severity badge color
+	var severityBadge string
+	switch vuln.Severity {
+	case "CRITICAL":
+		severityBadge = BadgeCriticalDotStyle.Render("●")
+	case "HIGH":
+		severityBadge = BadgeHighDotStyle.Render("●")
+	case "MEDIUM":
+		severityBadge = BadgeWarningDotStyle.Render("●")
+	default:
+		severityBadge = BadgeHealthyDotStyle.Render("●")
+	}
+
+	// Standardize badge width to prevent ANSI codes from breaking fmt.Sprintf
+	severityBadge = fmt.Sprintf("%s", severityBadge)
+
+	// Get gem type (Direct/Transitive) and group
+	gemType, group := m.getCVEGemInfo(vuln.GemName)
+
+	// Add framework tag to gem name if applicable
+	gemDisplay := vuln.GemName
+	if m.isFrameworkGem(vuln.GemName) {
+		gemDisplay = gemDisplay + " [fw]"
+	}
+
+	// Build plain text row matching Gems tab pattern
+	row := fmt.Sprintf("  %3d %-18s %-14s %s %-12s %-10s %-15s",
+		rowNum,
+		truncateStr(vuln.CVE, 18),
+		truncateStr(gemDisplay, 14),
+		severityBadge,
+		vuln.Severity,
+		gemType,
+		truncateStr(group, 15),
+	)
+
+	// Apply selection styling - mirrors formatGemListRow
+	if selected {
+		return RowSelectedStyle.Render(row)
+	}
+	return RowNormalStyle.Render(row)
 }
 
 // formatDuration converts a duration to a human-readable string
@@ -1612,6 +1726,386 @@ func (m *Model) renderFilterModalBox() string {
 		Padding(1, 2)
 
 	return boxStyle.Width(modalWidth).Render(content)
+}
+
+func (m *Model) viewCVEFilterMenu() string {
+	// Render CVE list as background
+	background := m.viewCVE()
+
+	// Create filter modal
+	modal := m.renderCVEFilterModalBox()
+
+	// Calculate centered position
+	modalLines := strings.Split(modal, "\n")
+	modalH := len(modalLines)
+	modalW := lipgloss.Width(modal)
+
+	startRow := (m.Height - modalH) / 2
+	startCol := (m.Width - modalW) / 2
+
+	if startRow < 2 {
+		startRow = 2 // Don't cover header
+	}
+	if startCol < 0 {
+		startCol = 0
+	}
+
+	// Overlay modal on background
+	return placeOverlay(startRow, startCol, modal, background)
+}
+
+func (m *Model) renderCVEFilterModalBox() string {
+	// Create checkbox styles
+	checkOn := lipgloss.NewStyle().
+		Foreground(lipgloss.Color(ColorSuccess)).
+		Render("[✓]")
+	checkOff := lipgloss.NewStyle().
+		Foreground(lipgloss.Color(ColorTextMuted)).
+		Render("[ ]")
+
+	// Helper to choose checkbox
+	checkbox := func(on bool) string {
+		if on {
+			return checkOn
+		}
+		return checkOff
+	}
+
+	// Build content lines
+	lines := []string{}
+
+	// Title
+	title := "Filter CVEs"
+	titleStyle := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color(ColorPrimary))
+	lines = append(lines, titleStyle.Render(title))
+	lines = append(lines, "")
+
+	// Severity filter options
+	severities := []string{"CRITICAL", "HIGH", "MEDIUM", "LOW"}
+	for i, severity := range severities {
+		severityLine := checkbox(m.CVESelectedSeverities[severity]) + " " + severity + " only"
+		if m.CVEFilterMenuCursor == i {
+			lines = append(lines, RowSelectedStyle.Render("› "+severityLine))
+		} else {
+			lines = append(lines, "  "+severityLine)
+		}
+	}
+
+	lines = append(lines, "")
+
+	// Direct-only filter
+	directLine := checkbox(m.CVEShowOnlyDirect) + " Direct only"
+	if m.CVEFilterMenuCursor == 4 {
+		lines = append(lines, RowSelectedStyle.Render("› "+directLine))
+	} else {
+		lines = append(lines, "  "+directLine)
+	}
+
+	// Footer hint
+	lines = append(lines, "")
+	hintStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color(ColorTextMuted)).
+		Italic(true)
+	lines = append(lines, hintStyle.Render("↑↓ navigate  space toggle  enter/esc close"))
+
+	// Create the modal box with border
+	content := strings.Join(lines, "\n")
+
+	// Calculate width
+	modalWidth := lipgloss.Width(content) + 4 // 2 for padding left/right, 2 for border
+	if modalWidth < 50 {
+		modalWidth = 50
+	}
+	if modalWidth > m.Width-4 {
+		modalWidth = m.Width - 4
+	}
+
+	// Apply border and styling
+	boxStyle := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color(ColorBorderActive)).
+		Background(lipgloss.Color(ColorSurface)).
+		Padding(1, 2)
+
+	return boxStyle.Width(modalWidth).Render(content)
+}
+
+func (m *Model) viewCVEInfo() string {
+	if len(m.CVEVulnerabilities) == 0 || m.CVECursor >= len(m.CVEVulnerabilities) {
+		return m.viewCVE()
+	}
+
+	// Render CVE list as background
+	background := m.viewCVE()
+
+	// Create info modal
+	modal := m.renderCVEInfoModalBox()
+
+	// Calculate centered position
+	modalLines := strings.Split(modal, "\n")
+	modalH := len(modalLines)
+	modalW := lipgloss.Width(modal)
+
+	startRow := (m.Height - modalH) / 2
+	startCol := (m.Width - modalW) / 2
+
+	if startRow < 2 {
+		startRow = 2 // Don't cover header
+	}
+	if startCol < 0 {
+		startCol = 0
+	}
+
+	// Overlay modal on background
+	return placeOverlay(startRow, startCol, modal, background)
+}
+
+func (m *Model) renderCVEInfoModalBox() string {
+	vuln := m.CVEVulnerabilities[m.CVECursor]
+	gemType, group := m.getCVEGemInfo(vuln.GemName)
+
+	// Build content lines
+	lines := []string{}
+
+	// Title
+	title := "CVE Details"
+	titleStyle := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color(ColorPrimary))
+	lines = append(lines, titleStyle.Render(title))
+	lines = append(lines, "")
+
+	// CVE ID
+	lines = append(lines, fmt.Sprintf("ID:       %s", vuln.CVE))
+
+	// Gem name and type
+	gemLine := vuln.GemName
+	if m.isFrameworkGem(vuln.GemName) {
+		gemLine += " [fw]"
+	}
+	gemLine += fmt.Sprintf(" — %s", gemType)
+	lines = append(lines, fmt.Sprintf("Gem:      %s", gemLine))
+
+	// Severity with badge
+	severityBadge := ""
+	switch vuln.Severity {
+	case "CRITICAL":
+		severityBadge = BadgeCriticalDotStyle.Render("●")
+	case "HIGH":
+		severityBadge = BadgeHighDotStyle.Render("●")
+	case "MEDIUM":
+		severityBadge = BadgeWarningDotStyle.Render("●")
+	default:
+		severityBadge = BadgeHealthyDotStyle.Render("●")
+	}
+	severityLine := fmt.Sprintf("Severity: %s %s", severityBadge, vuln.Severity)
+	if vuln.CVSS > 0 {
+		severityLine += fmt.Sprintf(" (CVSS: %.1f)", vuln.CVSS)
+	}
+	lines = append(lines, severityLine)
+
+	// Published date
+	if !vuln.PublishedDate.IsZero() {
+		lines = append(lines, fmt.Sprintf("Published: %s", vuln.PublishedDate.Format("2006-01-02")))
+	}
+
+	// Group
+	lines = append(lines, fmt.Sprintf("Group:    %s", group))
+
+	lines = append(lines, "")
+
+	// Remediation section
+	if vuln.FixedVersion != "" {
+		lines = append(lines, "Remediation:")
+		lines = append(lines, fmt.Sprintf("  Upgrade %s to version %s or later", vuln.GemName, vuln.FixedVersion))
+		lines = append(lines, "")
+	}
+
+	// Workarounds section (if no direct upgrade available or as additional guidance)
+	if vuln.Workarounds != "" {
+		lines = append(lines, "Workarounds:")
+		// Split workaround text into lines and indent them
+		workaroundLines := strings.Split(vuln.Workarounds, "\n")
+		for _, wLine := range workaroundLines {
+			trimmed := strings.TrimSpace(wLine)
+			if trimmed != "" {
+				// Wrap long lines for better display
+				wrapped := wrapText(trimmed, 60)
+				for _, wrappedLine := range wrapped {
+					lines = append(lines, fmt.Sprintf("  %s", wrappedLine))
+				}
+			}
+		}
+		lines = append(lines, "")
+	}
+
+	// OSV link
+	if vuln.OSVId != "" {
+		osvLink := fmt.Sprintf("https://osv.dev/vulnerability/%s", vuln.OSVId)
+		lines = append(lines, fmt.Sprintf("Link:      %s", osvLink))
+		lines = append(lines, "")
+	}
+
+	// Affected versions
+	if len(vuln.AffectedVersions) > 0 {
+		lines = append(lines, "Affected versions:")
+		for _, version := range vuln.AffectedVersions {
+			lines = append(lines, fmt.Sprintf("  • %s", version))
+		}
+		lines = append(lines, "")
+	}
+
+	// For transitive gems, show pulling-in parents
+	if gemType == "Transitive" {
+		parentGems := m.findParentGems(vuln.GemName)
+		if len(parentGems) > 0 {
+			lines = append(lines, "Pulled in by:")
+			for _, parent := range parentGems {
+				lines = append(lines, fmt.Sprintf("  › %s", parent))
+			}
+			lines = append(lines, "")
+		}
+	}
+
+	// Create the modal box with border
+	content := strings.Join(lines, "\n")
+
+	// Calculate width - use enough space
+	modalWidth := lipgloss.Width(content) + 4 // 2 for padding left/right, 2 for border
+	if modalWidth < 60 {
+		modalWidth = 60
+	}
+	if modalWidth > m.Width-4 {
+		modalWidth = m.Width - 4
+	}
+
+	// Calculate available height for modal (leave space for header + footer + margins)
+	// Reserve at least 4 lines for header/footer/margins
+	availableHeight := m.Height - 8
+	if availableHeight < 10 {
+		availableHeight = 10
+	}
+
+	// If content fits within available height, no scrolling needed
+	if len(lines) <= availableHeight {
+		// Apply border and styling
+		boxStyle := lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(lipgloss.Color(ColorBorderActive)).
+			Background(lipgloss.Color(ColorSurface)).
+			Padding(1, 2)
+
+		return boxStyle.Width(modalWidth).Render(content)
+	}
+
+	// Clip content to fit within available height
+	clippedLines := lines
+	if m.CVEInfoScroll > 0 {
+		if m.CVEInfoScroll >= len(lines) {
+			m.CVEInfoScroll = len(lines) - availableHeight
+			if m.CVEInfoScroll < 0 {
+				m.CVEInfoScroll = 0
+			}
+		}
+		clippedLines = lines[m.CVEInfoScroll:]
+	}
+
+	if len(clippedLines) > availableHeight {
+		clippedLines = clippedLines[:availableHeight]
+	}
+
+	clippedContent := strings.Join(clippedLines, "\n")
+
+	// Add scroll indicator if needed
+	scrollHint := ""
+	if m.CVEInfoScroll > 0 || (m.CVEInfoScroll+availableHeight < len(lines)) {
+		scrollPercent := (m.CVEInfoScroll * 100) / len(lines)
+		scrollHint = fmt.Sprintf(" [%d%%]", scrollPercent)
+	}
+
+	// Apply border and styling with height constraint
+	boxStyle := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color(ColorBorderActive)).
+		Background(lipgloss.Color(ColorSurface)).
+		Padding(1, 2)
+
+	rendered := boxStyle.Width(modalWidth).Height(availableHeight + 2).Render(clippedContent)
+
+	// Add scroll hint to the output if content is scrollable
+	if scrollHint != "" {
+		renderedLines := strings.Split(rendered, "\n")
+		if len(renderedLines) > 0 {
+			// Append scroll hint to the last line of the box
+			lastIdx := len(renderedLines) - 1
+			if lastIdx >= 0 && strings.Contains(renderedLines[lastIdx], "╰") {
+				renderedLines[lastIdx] = strings.TrimSuffix(renderedLines[lastIdx], "╯") + scrollHint + "╯"
+			}
+		}
+		rendered = strings.Join(renderedLines, "\n")
+	}
+
+	return rendered
+}
+
+// findParentGems returns a list of direct gems that transitively depend on the given gem
+// Note: This is a simplified version that checks if the gem appears in any first-level's dependency tree
+func (m *Model) findParentGems(gemName string) []string {
+	parents := []string{}
+
+	if m.AnalysisResult == nil || len(m.AnalysisResult.AllGems) == 0 {
+		return parents
+	}
+
+	// Build a map for quick gem lookup
+	gemMap := make(map[string]*gemfile.Gem)
+	for _, gem := range m.AnalysisResult.AllGems {
+		gemMap[gem.Name] = gem
+	}
+
+	// Look through all first-level gems to find which transitively depend on the target gem
+	for _, firstLevel := range m.FirstLevelGems {
+		// Check if this gem transitively depends on the target
+		if m.gemDependsOn(firstLevel.Name, gemName, gemMap) {
+			parents = append(parents, firstLevel.Name)
+		}
+	}
+
+	return parents
+}
+
+// gemDependsOn checks if gem A transitively depends on gem B using gemMap
+func (m *Model) gemDependsOn(gemA, gemB string, gemMap map[string]*gemfile.Gem) bool {
+	// BFS through dependency tree using gemMap
+	queue := []string{gemA}
+	visited := make(map[string]bool)
+
+	for len(queue) > 0 {
+		current := queue[0]
+		queue = queue[1:]
+
+		if visited[current] {
+			continue
+		}
+		visited[current] = true
+
+		if current == gemB {
+			return true
+		}
+
+		// Add direct dependencies to queue
+		if gem, ok := gemMap[current]; ok && gem.Dependencies != nil {
+			for _, depName := range gem.Dependencies {
+				if !visited[depName] {
+					queue = append(queue, depName)
+				}
+			}
+		}
+	}
+
+	return false
 }
 
 // ============================================================================

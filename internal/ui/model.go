@@ -80,6 +80,10 @@ const (
 	ViewProjectInfo
 	// ViewFilterMenu displays options to filter gems by group or upgradability
 	ViewFilterMenu
+	// ViewCVEFilterMenu displays options to filter CVEs by severity or direct/transitive
+	ViewCVEFilterMenu
+	// ViewCVEInfo displays detailed information for a selected CVE
+	ViewCVEInfo
 	// ViewSelectPath displays an input prompt to select a project directory
 	ViewSelectPath
 	// ViewError displays an error message
@@ -229,16 +233,21 @@ type Model struct {
 	UpgradeableOffset         int
 
 	// CVE screen state
-	VulnerableGems       []*gemfile.GemStatus
-	CVECursor            int
-	CVEOffset            int
-	CVEVulnerabilities   []*gemfile.Vulnerability // Actual vulnerability data from OSV.dev
-	LastGemsSignature    string                   // SHA256 of last scanned gems
-	CVERefreshInProgress bool                     // Is a CVE refresh happening in background?
-	CVELastScanTime      time.Time                // When was CVE data last scanned?
-	CVECacheLoadedAt     time.Time                // When was cache loaded?
-	CVECacheTTL          time.Duration            // Default: 1 hour
-	CVELastError         string                   // Last error message if scan failed
+	VulnerableGems        []*gemfile.GemStatus
+	CVECursor             int
+	CVEOffset             int
+	CVEInfoScroll         int                      // Scroll offset for CVE info modal content
+	CVEVulnerabilities    []*gemfile.Vulnerability // Actual vulnerability data from OSV.dev
+	UnfilteredCVEs        []*gemfile.Vulnerability // All CVEs before filtering
+	CVESelectedSeverities map[string]bool          // "CRITICAL","HIGH","MEDIUM","LOW" → true/false
+	CVEShowOnlyDirect     bool                     // Filter to show only direct dependency CVEs
+	CVEFilterMenuCursor   int                      // Position in the CVE filter menu
+	LastGemsSignature     string                   // SHA256 of last scanned gems
+	CVERefreshInProgress  bool                     // Is a CVE refresh happening in background?
+	CVELastScanTime       time.Time                // When was CVE data last scanned?
+	CVECacheLoadedAt      time.Time                // When was cache loaded?
+	CVECacheTTL           time.Duration            // Default: 1 hour
+	CVELastError          string                   // Last error message if scan failed
 
 	// Project Info screen state
 	RubyVersion       string
@@ -752,6 +761,59 @@ func (m *Model) clearFilters() {
 // hasActiveFilters returns true if any filters are applied
 func (m *Model) hasActiveFilters() bool {
 	return len(m.SelectedGroups) > 0 || m.ShowOnlyUpgradable
+}
+
+// applyCVEFilters applies the current CVE filter state to CVEVulnerabilities
+func (m *Model) applyCVEFilters() {
+	if m.UnfilteredCVEs == nil || len(m.UnfilteredCVEs) == 0 {
+		return
+	}
+
+	m.CVEVulnerabilities = make([]*gemfile.Vulnerability, 0)
+
+	for _, vuln := range m.UnfilteredCVEs {
+		// Check severity filter
+		if !m.CVESelectedSeverities[vuln.Severity] {
+			continue
+		}
+
+		// Check direct-only filter
+		if m.CVEShowOnlyDirect {
+			// Check if gem is in first-level gems (direct dependency)
+			isDirectDep := false
+			for _, gem := range m.FirstLevelGems {
+				if gem.Name == vuln.GemName {
+					isDirectDep = true
+					break
+				}
+			}
+			if !isDirectDep {
+				continue
+			}
+		}
+
+		m.CVEVulnerabilities = append(m.CVEVulnerabilities, vuln)
+	}
+
+	// Reset cursor if out of bounds
+	if m.CVECursor >= len(m.CVEVulnerabilities) {
+		m.CVECursor = 0
+	}
+	m.CVEOffset = 0
+}
+
+// initializeCVEFilters sets up the CVE filter state when vulnerabilities are loaded
+func (m *Model) initializeCVEFilters(vulns []*gemfile.Vulnerability) {
+	m.UnfilteredCVEs = vulns
+	m.CVEVulnerabilities = vulns
+	m.CVESelectedSeverities = map[string]bool{
+		"CRITICAL": true,
+		"HIGH":     true,
+		"MEDIUM":   true,
+		"LOW":      true,
+	}
+	m.CVEShowOnlyDirect = false
+	m.CVEFilterMenuCursor = 0
 }
 
 // buildUpgradeableList categorizes outdated gems into first-level, framework, and transitive dependencies
