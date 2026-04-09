@@ -396,7 +396,8 @@ func (m *Model) viewGemList() string {
 	if statusbarHeight < 1 {
 		statusbarHeight = 1
 	}
-	contentHeight := m.Height - 2 - statusbarHeight
+	// Reserve 1 line for footer/statusbar to prevent clipping the last gem
+	contentHeight := m.Height - 2 - statusbarHeight - 1
 	if contentHeight < 1 {
 		contentHeight = 1
 	}

@@ -1001,7 +1001,8 @@ func (m *Model) clampScrollOffsets() {
 	// Use dynamic statusbar height instead of hardcoded FixedChrome
 	// This ensures offset calculation matches the actual rendered content
 	statusbarHeight := m.statusBarTotalHeight()
-	contentHeight := m.Height - 2 - statusbarHeight
+	// Reserve 1 line for footer/statusbar buffer (matches viewGemList calculation)
+	contentHeight := m.Height - 2 - statusbarHeight - 1
 
 	// Account for header row and any filter status lines
 	// renderGemListTable shows: [filter (2)] + header (1) + gems (rest)
@@ -1014,9 +1015,8 @@ func (m *Model) clampScrollOffsets() {
 	}
 
 	// Clamp gem list offset
-	// maxOffset allows scrolling to see all gems without leaving blank space
-	// Add 1 to allow scrolling the very last gem fully into view
-	maxOffset := len(m.FirstLevelGems) - availableGemsRows + 1
+	// Allow scrolling to show all gems with the last gem fully visible
+	maxOffset := len(m.FirstLevelGems) - availableGemsRows
 	if maxOffset < 0 {
 		maxOffset = 0
 	}
@@ -1049,7 +1049,8 @@ func (m *Model) ensureGemListCursorVisible() {
 	// Use dynamic statusbar height instead of hardcoded FixedChrome
 	// This ensures cursor visibility calculation matches the actual rendered content
 	statusbarHeight := m.statusBarTotalHeight()
-	contentHeight := m.Height - 2 - statusbarHeight
+	// Reserve 1 line for footer/statusbar buffer (matches viewGemList and clampScrollOffsets)
+	contentHeight := m.Height - 2 - statusbarHeight - 1
 	// renderGemListTable shows: [filter (2)] + header (1) + gems (rest)
 	availableGemsRows := contentHeight - 1  // -1 for header
 	if m.hasActiveFilters() {
