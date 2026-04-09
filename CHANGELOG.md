@@ -9,11 +9,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [v1.1.7] - 2026-04-09
 
+### Added
+- **CVE Info Modal with Scrolling** - Interactive modal for viewing detailed CVE information
+  - Scroll through detailed vulnerability information with arrow keys or Home/End keys
+  - Modal stays within terminal bounds and displays complete information
+- **Workarounds Support** - Display CVE workarounds extracted from OSV vulnerability details
+  - Temporary mitigations shown when available
+  - Helps users take action before upgrading dependencies
+- **Browser Link Support** - Press 'o' in CVE info modal to open vulnerability link in default browser
+  - Quickly access OSV.dev vulnerability page for additional details
+- **CVSS-Based Severity Mapping** - Severity levels now derived from CVSS scores
+  - Ensures accuracy of vulnerability severity classification
+  - Maps CVSS v3.1 scores: 9.0+ → CRITICAL, 7.0-8.9 → HIGH, 4.0-6.9 → MEDIUM, 0.1-3.9 → LOW
+
 ### Fixed
 - **OSV API Vulnerability Scanning** - Fixed broken vulnerability detection from OSV.dev
   - Corrected batch query endpoint from `/v1/query/batch` to `/v1/querybatch` (actual OSV.dev API)
   - Vulnerability scanning now works correctly for all gems in the project
   - CVE tab now displays detected vulnerabilities as expected
+- **Vulnerability Severity Accuracy** - Fixed incorrect severity levels from OSV API
+  - Now uses CVSS score for accurate severity determination instead of relying solely on OSV text field
+  - Example: addressable gem now correctly shows HIGH severity (7.5 CVSS) instead of MEDIUM
 
 ### Changed
 - **Code Cleanup** - Removed unused vulnerability checker code

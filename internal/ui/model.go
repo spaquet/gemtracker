@@ -236,6 +236,7 @@ type Model struct {
 	VulnerableGems        []*gemfile.GemStatus
 	CVECursor             int
 	CVEOffset             int
+	CVEInfoScroll         int                      // Scroll offset for CVE info modal content
 	CVEVulnerabilities    []*gemfile.Vulnerability // Actual vulnerability data from OSV.dev
 	UnfilteredCVEs        []*gemfile.Vulnerability // All CVEs before filtering
 	CVESelectedSeverities map[string]bool          // "CRITICAL","HIGH","MEDIUM","LOW" → true/false

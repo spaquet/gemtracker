@@ -16,6 +16,32 @@ import (
 // Helper Methods
 // ============================================================================
 
+// wrapText wraps a string to the specified width, maintaining word boundaries
+func wrapText(text string, width int) []string {
+	var result []string
+	words := strings.Fields(text)
+	var currentLine string
+
+	for _, word := range words {
+		if currentLine == "" {
+			currentLine = word
+		} else if len(currentLine)+1+len(word) <= width {
+			currentLine += " " + word
+		} else {
+			if currentLine != "" {
+				result = append(result, currentLine)
+			}
+			currentLine = word
+		}
+	}
+
+	if currentLine != "" {
+		result = append(result, currentLine)
+	}
+
+	return result
+}
+
 func (m *Model) updateBarHeight() int {
 	if m.NewVersionAvailable != "" {
 		return 1
@@ -1890,9 +1916,28 @@ func (m *Model) renderCVEInfoModalBox() string {
 
 	lines = append(lines, "")
 
-	// Fixed version
+	// Remediation section
 	if vuln.FixedVersion != "" {
-		lines = append(lines, fmt.Sprintf("Fixed In:  %s >= %s", vuln.GemName, vuln.FixedVersion))
+		lines = append(lines, "Remediation:")
+		lines = append(lines, fmt.Sprintf("  Upgrade %s to version %s or later", vuln.GemName, vuln.FixedVersion))
+		lines = append(lines, "")
+	}
+
+	// Workarounds section (if no direct upgrade available or as additional guidance)
+	if vuln.Workarounds != "" {
+		lines = append(lines, "Workarounds:")
+		// Split workaround text into lines and indent them
+		workaroundLines := strings.Split(vuln.Workarounds, "\n")
+		for _, wLine := range workaroundLines {
+			trimmed := strings.TrimSpace(wLine)
+			if trimmed != "" {
+				// Wrap long lines for better display
+				wrapped := wrapText(trimmed, 60)
+				for _, wrappedLine := range wrapped {
+					lines = append(lines, fmt.Sprintf("  %s", wrappedLine))
+				}
+			}
+		}
 		lines = append(lines, "")
 	}
 
@@ -1924,12 +1969,6 @@ func (m *Model) renderCVEInfoModalBox() string {
 		}
 	}
 
-	// Footer hint
-	hintStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color(ColorTextMuted)).
-		Italic(true)
-	lines = append(lines, hintStyle.Render("esc close"))
-
 	// Create the modal box with border
 	content := strings.Join(lines, "\n")
 
@@ -1942,14 +1981,73 @@ func (m *Model) renderCVEInfoModalBox() string {
 		modalWidth = m.Width - 4
 	}
 
-	// Apply border and styling
+	// Calculate available height for modal (leave space for header + footer + margins)
+	// Reserve at least 4 lines for header/footer/margins
+	availableHeight := m.Height - 8
+	if availableHeight < 10 {
+		availableHeight = 10
+	}
+
+	// If content fits within available height, no scrolling needed
+	if len(lines) <= availableHeight {
+		// Apply border and styling
+		boxStyle := lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(lipgloss.Color(ColorBorderActive)).
+			Background(lipgloss.Color(ColorSurface)).
+			Padding(1, 2)
+
+		return boxStyle.Width(modalWidth).Render(content)
+	}
+
+	// Clip content to fit within available height
+	clippedLines := lines
+	if m.CVEInfoScroll > 0 {
+		if m.CVEInfoScroll >= len(lines) {
+			m.CVEInfoScroll = len(lines) - availableHeight
+			if m.CVEInfoScroll < 0 {
+				m.CVEInfoScroll = 0
+			}
+		}
+		clippedLines = lines[m.CVEInfoScroll:]
+	}
+
+	if len(clippedLines) > availableHeight {
+		clippedLines = clippedLines[:availableHeight]
+	}
+
+	clippedContent := strings.Join(clippedLines, "\n")
+
+	// Add scroll indicator if needed
+	scrollHint := ""
+	if m.CVEInfoScroll > 0 || (m.CVEInfoScroll+availableHeight < len(lines)) {
+		scrollPercent := (m.CVEInfoScroll * 100) / len(lines)
+		scrollHint = fmt.Sprintf(" [%d%%]", scrollPercent)
+	}
+
+	// Apply border and styling with height constraint
 	boxStyle := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color(ColorBorderActive)).
 		Background(lipgloss.Color(ColorSurface)).
 		Padding(1, 2)
 
-	return boxStyle.Width(modalWidth).Render(content)
+	rendered := boxStyle.Width(modalWidth).Height(availableHeight + 2).Render(clippedContent)
+
+	// Add scroll hint to the output if content is scrollable
+	if scrollHint != "" {
+		renderedLines := strings.Split(rendered, "\n")
+		if len(renderedLines) > 0 {
+			// Append scroll hint to the last line of the box
+			lastIdx := len(renderedLines) - 1
+			if lastIdx >= 0 && strings.Contains(renderedLines[lastIdx], "╰") {
+				renderedLines[lastIdx] = strings.TrimSuffix(renderedLines[lastIdx], "╯") + scrollHint + "╯"
+			}
+		}
+		rendered = strings.Join(renderedLines, "\n")
+	}
+
+	return rendered
 }
 
 // findParentGems returns a list of direct gems that transitively depend on the given gem

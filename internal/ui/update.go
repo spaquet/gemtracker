@@ -186,11 +186,7 @@ func (m *Model) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.handleCVEFilterMenuKeys(msg)
 
 	case ViewCVEInfo:
-		// Handle closing the info modal
-		if msg.String() == "esc" {
-			m.CurrentView = ViewCVE
-		}
-		return m, nil
+		return m.handleCVEInfoKeys(msg)
 
 	case ViewSelectPath:
 		return m.handlePathInputKeys(msg)
@@ -556,11 +552,159 @@ func (m *Model) handleCVEKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		// Open CVE info modal for current CVE
 		if len(m.CVEVulnerabilities) > 0 && m.CVECursor < len(m.CVEVulnerabilities) {
 			m.CurrentView = ViewCVEInfo
+			m.CVEInfoScroll = 0 // Reset scroll when opening
 		}
 		return m, nil
 	}
 
 	return m, nil
+}
+
+func (m *Model) handleCVEInfoKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "esc":
+		m.CurrentView = ViewCVE
+		m.CVEInfoScroll = 0 // Reset scroll when closing
+		return m, nil
+
+	case "up":
+		if m.CVEInfoScroll > 0 {
+			m.CVEInfoScroll--
+		}
+		return m, nil
+
+	case "down":
+		if m.CVEInfoScroll < m.getCVEInfoMaxScroll() {
+			m.CVEInfoScroll++
+		}
+		return m, nil
+
+	case "home":
+		m.CVEInfoScroll = 0
+		return m, nil
+
+	case "end":
+		m.CVEInfoScroll = m.getCVEInfoMaxScroll()
+		return m, nil
+
+	case "o":
+		// Open CVE link in browser
+		if len(m.CVEVulnerabilities) > 0 && m.CVECursor < len(m.CVEVulnerabilities) {
+			vuln := m.CVEVulnerabilities[m.CVECursor]
+			if vuln.OSVId != "" {
+				url := fmt.Sprintf("https://osv.dev/vulnerability/%s", vuln.OSVId)
+				return m, openBrowserCmd(url)
+			}
+		}
+		return m, nil
+	}
+
+	return m, nil
+}
+
+// getCVEInfoMaxScroll calculates the maximum scroll position for the CVE info modal
+func (m *Model) getCVEInfoMaxScroll() int {
+	if len(m.CVEVulnerabilities) == 0 || m.CVECursor >= len(m.CVEVulnerabilities) {
+		return 0
+	}
+
+	vuln := m.CVEVulnerabilities[m.CVECursor]
+	gemType, group := m.getCVEGemInfo(vuln.GemName)
+
+	// Reconstruct the lines to count total content
+	lines := []string{}
+
+	// Title
+	lines = append(lines, "CVE Details")
+	lines = append(lines, "")
+
+	// CVE ID
+	lines = append(lines, fmt.Sprintf("ID:       %s", vuln.CVE))
+
+	// Gem name and type
+	gemLine := vuln.GemName
+	if m.isFrameworkGem(vuln.GemName) {
+		gemLine += " [fw]"
+	}
+	gemLine += fmt.Sprintf(" — %s", gemType)
+	lines = append(lines, fmt.Sprintf("Gem:      %s", gemLine))
+
+	// Severity
+	severityLine := fmt.Sprintf("Severity: %s", vuln.Severity)
+	if vuln.CVSS > 0 {
+		severityLine += fmt.Sprintf(" (CVSS: %.1f)", vuln.CVSS)
+	}
+	lines = append(lines, severityLine)
+
+	// Published date
+	if !vuln.PublishedDate.IsZero() {
+		lines = append(lines, fmt.Sprintf("Published: %s", vuln.PublishedDate.Format("2006-01-02")))
+	}
+
+	// Group
+	lines = append(lines, fmt.Sprintf("Group:    %s", group))
+	lines = append(lines, "")
+
+	// Remediation section
+	if vuln.FixedVersion != "" {
+		lines = append(lines, "Remediation:")
+		lines = append(lines, fmt.Sprintf("  Upgrade %s to version %s or later", vuln.GemName, vuln.FixedVersion))
+		lines = append(lines, "")
+	}
+
+	// Workarounds section
+	if vuln.Workarounds != "" {
+		lines = append(lines, "Workarounds:")
+		workaroundLines := strings.Split(vuln.Workarounds, "\n")
+		for _, wLine := range workaroundLines {
+			trimmed := strings.TrimSpace(wLine)
+			if trimmed != "" {
+				lines = append(lines, fmt.Sprintf("  %s", trimmed))
+			}
+		}
+		lines = append(lines, "")
+	}
+
+	// OSV link
+	if vuln.OSVId != "" {
+		osvLink := fmt.Sprintf("https://osv.dev/vulnerability/%s", vuln.OSVId)
+		lines = append(lines, fmt.Sprintf("Link:      %s", osvLink))
+		lines = append(lines, "")
+	}
+
+	// Affected versions
+	if len(vuln.AffectedVersions) > 0 {
+		lines = append(lines, "Affected versions:")
+		for _, version := range vuln.AffectedVersions {
+			lines = append(lines, fmt.Sprintf("  • %s", version))
+		}
+		lines = append(lines, "")
+	}
+
+	// For transitive gems, show pulling-in parents
+	if gemType == "Transitive" {
+		parentGems := m.findParentGems(vuln.GemName)
+		if len(parentGems) > 0 {
+			lines = append(lines, "Pulled in by:")
+			for _, parent := range parentGems {
+				lines = append(lines, fmt.Sprintf("  › %s", parent))
+			}
+			lines = append(lines, "")
+		}
+	}
+
+	// Calculate available height
+	availableHeight := m.Height - 8
+	if availableHeight < 10 {
+		availableHeight = 10
+	}
+
+	// Return max scroll position
+	maxScroll := len(lines) - availableHeight
+	if maxScroll < 0 {
+		maxScroll = 0
+	}
+	return maxScroll
 }
 
 func (m *Model) handleProjectInfoKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -1362,4 +1506,24 @@ func (m *Model) rebuildVulnerableGemsList() {
 	m.VulnerableGems = vulnerableGems
 	m.CVECursor = 0
 	m.CVEOffset = 0
+}
+
+// openBrowserCmd returns a BubbleTea command that opens a URL in the default browser
+func openBrowserCmd(url string) tea.Cmd {
+	return func() tea.Msg {
+		var cmd *exec.Cmd
+		switch runtime.GOOS {
+		case "darwin":
+			cmd = exec.Command("open", url)
+		case "linux":
+			cmd = exec.Command("xdg-open", url)
+		case "windows":
+			cmd = exec.Command("cmd", "/c", "start", url)
+		}
+
+		if cmd != nil {
+			_ = cmd.Run()
+		}
+		return nil
+	}
 }

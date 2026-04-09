@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/spaquet/gemtracker/internal/logger"
@@ -57,6 +58,9 @@ type OSVVulnerability struct {
 	Severity  string `json:"severity"`
 	Cvss      struct {
 		Score float64 `json:"score"`
+		V3    struct {
+			Score float64 `json:"score"`
+		} `json:"v3,omitempty"`
 	} `json:"cvss,omitempty"`
 	References []struct {
 		Type string `json:"type"`
@@ -187,11 +191,26 @@ func (c *OSVClient) parseOSVResponse(resp OSVBatchResponse, gems []*Gem) []Vulne
 
 		// Only add vulnerabilities for this gem if there are any
 		for _, osvVuln := range result.Vulns {
+			// Extract CVSS score first (prioritize v3 over generic)
+			cvssScore := 0.0
+			if osvVuln.Cvss.V3.Score > 0 {
+				cvssScore = osvVuln.Cvss.V3.Score
+			} else if osvVuln.Cvss.Score > 0 {
+				cvssScore = osvVuln.Cvss.Score
+			}
+
+			// Determine severity: use CVSS-based level if available, otherwise use OSV severity string
+			severity := determineSeverityFromCVSS(cvssScore)
+			if severity == "" {
+				severity = normalizeSeverity(osvVuln.Severity)
+			}
+
 			vuln := Vulnerability{
 				GemName:     gem.Name,
 				CVE:         osvVuln.ID,
 				Description: osvVuln.Summary,
-				Severity:    normalizeSeverity(osvVuln.Severity),
+				Severity:    severity,
+				CVSS:        cvssScore,
 				OSVId:       osvVuln.ID,
 				Source:      "osv.dev",
 			}
@@ -214,9 +233,9 @@ func (c *OSVClient) parseOSVResponse(resp OSVBatchResponse, gems []*Gem) []Vulne
 				}
 			}
 
-			// Set CVSS if available
-			if osvVuln.Cvss.Score > 0 {
-				vuln.CVSS = osvVuln.Cvss.Score
+			// Extract workarounds from details
+			if osvVuln.Details != "" {
+				vuln.Workarounds = extractWorkarounds(osvVuln.Details)
 			}
 
 			logger.Info("Processing CVE %s: %s [%s, CVSS: %.1f]", osvVuln.ID, osvVuln.Summary, vuln.Severity, vuln.CVSS)
@@ -278,4 +297,56 @@ func extractFixedVersion(osVVuln *OSVVulnerability) string {
 		}
 	}
 	return ""
+}
+
+// determineSeverityFromCVSS maps CVSS score to severity level
+// According to CVSS v3.1: None (0.0), Low (0.1-3.9), Medium (4.0-6.9), High (7.0-8.9), Critical (9.0-10.0)
+func determineSeverityFromCVSS(cvssScore float64) string {
+	switch {
+	case cvssScore >= 9.0:
+		return "CRITICAL"
+	case cvssScore >= 7.0:
+		return "HIGH"
+	case cvssScore >= 4.0:
+		return "MEDIUM"
+	case cvssScore > 0:
+		return "LOW"
+	}
+	return ""
+}
+
+// extractWorkarounds extracts the "Workarounds" section from OSV details text
+func extractWorkarounds(details string) string {
+	lines := strings.Split(details, "\n")
+
+	// Find the start of the Workarounds section
+	var workaroundLines []string
+	inWorkarounds := false
+
+	for _, line := range lines {
+		// Start of workarounds section
+		if strings.EqualFold(strings.TrimSpace(line), "Workarounds") {
+			inWorkarounds = true
+			continue
+		}
+
+		// Stop if we hit another major section (indicated by a line with just capital letters followed by newline)
+		if inWorkarounds && strings.TrimSpace(line) != "" {
+			trimmed := strings.TrimSpace(line)
+			// Check if it looks like a new section header (all caps, 3-15 characters)
+			if len(trimmed) > 3 && len(trimmed) < 15 && strings.ToUpper(trimmed) == trimmed {
+				// But continue if it looks like part of content (has punctuation, numbers, or mixed case)
+				if !strings.ContainsAny(trimmed, ".,:-()0123456789") && !strings.ContainsAny(trimmed, "abcdefghijklmnopqrstuvwxyz") {
+					break
+				}
+			}
+		}
+
+		if inWorkarounds {
+			workaroundLines = append(workaroundLines, line)
+		}
+	}
+
+	result := strings.TrimSpace(strings.Join(workaroundLines, "\n"))
+	return result
 }
