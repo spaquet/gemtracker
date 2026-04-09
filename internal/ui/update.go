@@ -1014,8 +1014,8 @@ func (m *Model) clampScrollOffsets() {
 	}
 
 	// Clamp gem list offset
-	// Allow scrolling one position further to ensure the last gem is always visible
-	maxOffset := len(m.FirstLevelGems) - availableGemsRows + 1
+	// maxOffset allows scrolling to see all gems without leaving blank space
+	maxOffset := len(m.FirstLevelGems) - availableGemsRows
 	if maxOffset < 0 {
 		maxOffset = 0
 	}
