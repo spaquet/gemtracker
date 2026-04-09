@@ -1080,111 +1080,80 @@ func (m *Model) renderUpgradeableTable(height int) string {
 			Render(msg)
 	}
 
-	// Build all visible lines first, then apply offset
-	var allLines []string
+	var lines []string
 
 	// Add top spacing
-	allLines = append(allLines, "")
+	lines = append(lines, "")
 
-	lineIndex := 0 // Track line number for cursor comparison
+	// Map gem index to section info
+	// Track which section each gem index belongs to
+	directCount := len(m.UpgradeableGems)
+	frameworkCount := len(m.UpgradeableFrameworkGems)
 
-	// First-level gems section
-	if len(m.UpgradeableGems) > 0 {
-		allLines = append(allLines, lipgloss.NewStyle().
-			Bold(true).
-			Foreground(lipgloss.Color(ColorPrimary)).
-			Render("DIRECT DEPENDENCIES"))
+	// Track which section we're currently rendering
+	var lastSection string
 
-		headerRow := fmt.Sprintf("  %-24s %-11s %-11s %s",
-			"Gem Name", "Installed", "Latest", "")
-		header := TableHeaderStyle.Render(headerRow)
-		allLines = append(allLines, header)
-
-		for _, gem := range m.UpgradeableGems {
-			isSelected := lineIndex == m.UpgradeableCursor
-			row := fmt.Sprintf("  %-24s %-11s %-11s %s",
-				truncateStr(gem.Name, 24),
-				gem.Version,
-				gem.LatestVersion,
-				BadgeOutdatedStyle.Render("↑"),
-			)
-			if isSelected {
-				row = RowSelectedStyle.Render(row)
-			} else {
-				row = RowNormalStyle.Render(row)
-			}
-			allLines = append(allLines, row)
-			lineIndex++
+	// Render gems starting from UpgradeableOffset
+	for gemIdx := m.UpgradeableOffset; gemIdx < len(allUpgradeable); gemIdx++ {
+		if len(lines) >= height {
+			break
 		}
-		allLines = append(allLines, "")
-		lineIndex++
+
+		// Determine which section this gem belongs to
+		var currentSection string
+		if gemIdx < directCount {
+			currentSection = "DIRECT DEPENDENCIES"
+		} else if gemIdx < directCount+frameworkCount {
+			currentSection = "FRAMEWORK COMPONENTS"
+		} else {
+			currentSection = "TRANSITIVE DEPENDENCIES"
+		}
+
+		// Add section header when entering a new section
+		if currentSection != lastSection {
+			// Add blank line before section (except for the very first section)
+			if lastSection != "" && len(lines) < height {
+				lines = append(lines, "")
+			}
+
+			if len(lines) < height {
+				lines = append(lines, lipgloss.NewStyle().
+					Bold(true).
+					Foreground(lipgloss.Color(ColorPrimary)).
+					Render(currentSection))
+			}
+
+			if len(lines) < height {
+				headerRow := fmt.Sprintf("  %-24s %-11s %-11s %s",
+					"Gem Name", "Installed", "Latest", "")
+				header := TableHeaderStyle.Render(headerRow)
+				lines = append(lines, header)
+			}
+
+			lastSection = currentSection
+		}
+
+		if len(lines) >= height {
+			break
+		}
+
+		gem := allUpgradeable[gemIdx]
+		isSelected := gemIdx == m.UpgradeableCursor
+		row := fmt.Sprintf("  %-24s %-11s %-11s %s",
+			truncateStr(gem.Name, 24),
+			gem.Version,
+			gem.LatestVersion,
+			BadgeOutdatedStyle.Render("↑"),
+		)
+		if isSelected {
+			row = RowSelectedStyle.Render(row)
+		} else {
+			row = RowNormalStyle.Render(row)
+		}
+		lines = append(lines, row)
 	}
 
-	// Framework gems section
-	if len(m.UpgradeableFrameworkGems) > 0 {
-		allLines = append(allLines, lipgloss.NewStyle().
-			Bold(true).
-			Foreground(lipgloss.Color(ColorPrimary)).
-			Render("FRAMEWORK COMPONENTS"))
-
-		headerRow := fmt.Sprintf("  %-24s %-11s %-11s %s",
-			"Gem Name", "Installed", "Latest", "")
-		header := TableHeaderStyle.Render(headerRow)
-		allLines = append(allLines, header)
-
-		for _, gem := range m.UpgradeableFrameworkGems {
-			isSelected := lineIndex == m.UpgradeableCursor
-			row := fmt.Sprintf("  %-24s %-11s %-11s %s",
-				truncateStr(gem.Name, 24),
-				gem.Version,
-				gem.LatestVersion,
-				BadgeOutdatedStyle.Render("↑"),
-			)
-			if isSelected {
-				row = RowSelectedStyle.Render(row)
-			} else {
-				row = RowNormalStyle.Render(row)
-			}
-			allLines = append(allLines, row)
-			lineIndex++
-		}
-		allLines = append(allLines, "")
-		lineIndex++
-	}
-
-	// Transitive dependencies section
-	if len(m.UpgradeableTransitiveDeps) > 0 {
-		allLines = append(allLines, lipgloss.NewStyle().
-			Bold(true).
-			Foreground(lipgloss.Color(ColorPrimary)).
-			Render("TRANSITIVE DEPENDENCIES"))
-
-		headerRow := fmt.Sprintf("  %-24s %-11s %-11s %s",
-			"Gem Name", "Installed", "Latest", "")
-		header := TableHeaderStyle.Render(headerRow)
-		allLines = append(allLines, header)
-
-		for _, gem := range m.UpgradeableTransitiveDeps {
-			isSelected := lineIndex == m.UpgradeableCursor
-			row := fmt.Sprintf("  %-24s %-11s %-11s %s",
-				truncateStr(gem.Name, 24),
-				gem.Version,
-				gem.LatestVersion,
-				BadgeOutdatedStyle.Render("↑"),
-			)
-			if isSelected {
-				row = RowSelectedStyle.Render(row)
-			} else {
-				row = RowNormalStyle.Render(row)
-			}
-			allLines = append(allLines, row)
-			lineIndex++
-		}
-	}
-
-	// Apply offset and return visible lines - don't pad, let wrapper handle layout
-	visibleLines := allLines[m.UpgradeableOffset:]
-	return lipgloss.JoinVertical(lipgloss.Left, visibleLines...)
+	return lipgloss.JoinVertical(lipgloss.Left, lines...)
 }
 
 // ============================================================================
