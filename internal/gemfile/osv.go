@@ -55,13 +55,8 @@ type OSVVulnerability struct {
 	Details   string `json:"details"`
 	Published string `json:"published"`
 	Modified  string `json:"modified"`
-	Severity  string `json:"severity"`
-	Cvss      struct {
-		Score float64 `json:"score"`
-		V3    struct {
-			Score float64 `json:"score"`
-		} `json:"v3,omitempty"`
-	} `json:"cvss,omitempty"`
+	Severity  interface{} `json:"severity"` // Can be string or object with nested fields
+	Cvss      interface{} `json:"cvss"`     // Can be object or have multiple formats
 	References []struct {
 		Type string `json:"type"`
 		URL  string `json:"url"`
@@ -160,6 +155,17 @@ func (c *OSVClient) QueryBatch(ctx context.Context, gems []*Gem) ([]Vulnerabilit
 
 	logger.Info("Parsing OSV response: %d results", len(batchResp.Results))
 
+	// Log sample vulnerability for debugging CVSS extraction
+	if len(batchResp.Results) > 0 {
+		for i, result := range batchResp.Results {
+			if len(result.Vulns) > 0 {
+				firstVuln := result.Vulns[0]
+				logger.Info("[OSV Response Sample %d] CVE: %s, Severity field: %v, CVSS field: %v", i, firstVuln.ID, firstVuln.Severity, firstVuln.Cvss)
+				break
+			}
+		}
+	}
+
 	// Convert OSV vulnerabilities to our format, filtering clean gems
 	vulns := c.parseOSVResponse(batchResp, gems)
 	logger.Info("OSV batch query complete: found %d vulnerabilities", len(vulns))
@@ -191,18 +197,13 @@ func (c *OSVClient) parseOSVResponse(resp OSVBatchResponse, gems []*Gem) []Vulne
 
 		// Only add vulnerabilities for this gem if there are any
 		for _, osvVuln := range result.Vulns {
-			// Extract CVSS score first (prioritize v3 over generic)
-			cvssScore := 0.0
-			if osvVuln.Cvss.V3.Score > 0 {
-				cvssScore = osvVuln.Cvss.V3.Score
-			} else if osvVuln.Cvss.Score > 0 {
-				cvssScore = osvVuln.Cvss.Score
-			}
+			// Extract CVSS score and severity from OSV response
+			cvssScore, severityStr := extractCVSSData(osvVuln)
 
 			// Determine severity: use CVSS-based level if available, otherwise use OSV severity string
 			severity := determineSeverityFromCVSS(cvssScore)
 			if severity == "" {
-				severity = normalizeSeverity(osvVuln.Severity)
+				severity = normalizeSeverity(severityStr)
 			}
 
 			vuln := Vulnerability{
@@ -238,7 +239,7 @@ func (c *OSVClient) parseOSVResponse(resp OSVBatchResponse, gems []*Gem) []Vulne
 				vuln.Workarounds = extractWorkarounds(osvVuln.Details)
 			}
 
-			logger.Info("Processing CVE %s: %s [%s, CVSS: %.1f]", osvVuln.ID, osvVuln.Summary, vuln.Severity, vuln.CVSS)
+			logger.Info("✓ CVE %s [%s] (CVSS: %.1f) - %s | Gem: %s@%s", osvVuln.ID, vuln.Severity, vuln.CVSS, osvVuln.Summary, gem.Name, gem.Version)
 			vulnerabilities = append(vulnerabilities, vuln)
 		}
 	}
@@ -313,6 +314,77 @@ func determineSeverityFromCVSS(cvssScore float64) string {
 		return "LOW"
 	}
 	return ""
+}
+
+// extractCVSSData extracts CVSS score and severity from OSV vulnerability response
+// Handles multiple possible response formats from OSV.dev
+func extractCVSSData(osvVuln OSVVulnerability) (float64, string) {
+	cvssScore := 0.0
+	severity := ""
+
+	// Try to extract severity string
+	if osvVuln.Severity != nil {
+		switch v := osvVuln.Severity.(type) {
+		case string:
+			severity = v
+			logger.Info("CVE %s: Severity string = %s", osvVuln.ID, v)
+		case map[string]interface{}:
+			// Could be {value: "HIGH"} format
+			if val, ok := v["value"]; ok {
+				if str, ok := val.(string); ok {
+					severity = str
+					logger.Info("CVE %s: Severity from object = %s", osvVuln.ID, str)
+				}
+			}
+		}
+	}
+
+	// Try to extract CVSS score from cvss field
+	if osvVuln.Cvss != nil {
+		switch cvss := osvVuln.Cvss.(type) {
+		case map[string]interface{}:
+			// Try v3.score first (most common)
+			if v3, ok := cvss["v3"]; ok {
+				if v3Map, ok := v3.(map[string]interface{}); ok {
+					if score, ok := v3Map["score"]; ok {
+						if floatScore, ok := score.(float64); ok {
+							cvssScore = floatScore
+							logger.Info("CVE %s: CVSS v3 score = %.1f", osvVuln.ID, floatScore)
+							return cvssScore, severity
+						}
+					}
+				}
+			}
+
+			// Try generic score field
+			if score, ok := cvss["score"]; ok {
+				if floatScore, ok := score.(float64); ok {
+					cvssScore = floatScore
+					logger.Info("CVE %s: CVSS score = %.1f", osvVuln.ID, floatScore)
+					return cvssScore, severity
+				}
+			}
+
+			// Try v2 score as fallback
+			if v2, ok := cvss["v2"]; ok {
+				if v2Map, ok := v2.(map[string]interface{}); ok {
+					if score, ok := v2Map["score"]; ok {
+						if floatScore, ok := score.(float64); ok {
+							cvssScore = floatScore
+							logger.Info("CVE %s: CVSS v2 score = %.1f", osvVuln.ID, floatScore)
+							return cvssScore, severity
+						}
+					}
+				}
+			}
+
+			// Log if no score was found
+			logger.Info("CVE %s: No CVSS score found in response. Available fields: %v", osvVuln.ID, cvss)
+		}
+	}
+
+	logger.Info("CVE %s: Final extracted - CVSS: %.1f, Severity: %s", osvVuln.ID, cvssScore, severity)
+	return cvssScore, severity
 }
 
 // extractWorkarounds extracts the "Workarounds" section from OSV details text
