@@ -27,9 +27,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Corrected batch query endpoint from `/v1/query/batch` to `/v1/querybatch` (actual OSV.dev API)
   - Vulnerability scanning now works correctly for all gems in the project
   - CVE tab now displays detected vulnerabilities as expected
-- **Vulnerability Severity Accuracy** - Fixed incorrect severity levels from OSV API
-  - Now uses CVSS score for accurate severity determination instead of relying solely on OSV text field
-  - Example: addressable gem now correctly shows HIGH severity (7.5 CVSS) instead of MEDIUM
+- **Vulnerability Severity Accuracy** - Fixed all vulnerabilities showing as MEDIUM
+  - Corrected extraction of severity from OSV API response (`database_specific.severity` field)
+  - Severity now properly extracted from OSV individual vulnerability detail endpoint
+  - Example: addressable gem now correctly shows HIGH severity instead of always showing MEDIUM
+  - All 87 CVEs in standard project now display correct severity levels
 
 ### Changed
 - **Code Cleanup** - Removed unused vulnerability checker code
