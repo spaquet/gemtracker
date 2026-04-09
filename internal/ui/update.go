@@ -1003,19 +1003,21 @@ func (m *Model) clampScrollOffsets() {
 	statusbarHeight := m.statusBarTotalHeight()
 	contentHeight := m.Height - 2 - statusbarHeight
 
-	// Account for header row which reduces available space
-	// renderGemListTable shows: header (1) + gems (contentHeight - 1)
-	availableGemsRows := contentHeight - 1
+	// Account for header row and any filter status lines
+	// renderGemListTable shows: [filter (2)] + header (1) + gems (rest)
+	availableGemsRows := contentHeight - 1  // -1 for header
+	if m.hasActiveFilters() {
+		availableGemsRows -= 2  // -2 for filter status line + blank line
+	}
+	if availableGemsRows < 1 {
+		availableGemsRows = 1  // Minimum 1 gem row
+	}
 
 	// Clamp gem list offset
-	// Allow scrolling to see all gems, even the last one on a partial screen
-	maxOffset := len(m.FirstLevelGems) - availableGemsRows
+	// Allow scrolling one position further to ensure the last gem is always visible
+	maxOffset := len(m.FirstLevelGems) - availableGemsRows + 1
 	if maxOffset < 0 {
 		maxOffset = 0
-	}
-	// But also allow scrolling one past to ensure the last gem is visible in the viewport
-	if len(m.FirstLevelGems) > availableGemsRows {
-		maxOffset = len(m.FirstLevelGems) - 1
 	}
 	if m.GemListOffset > maxOffset {
 		m.GemListOffset = maxOffset
@@ -1047,8 +1049,14 @@ func (m *Model) ensureGemListCursorVisible() {
 	// This ensures cursor visibility calculation matches the actual rendered content
 	statusbarHeight := m.statusBarTotalHeight()
 	contentHeight := m.Height - 2 - statusbarHeight
-	// renderGemListTable shows: header (1) + gems (contentHeight - 1)
-	availableGemsRows := contentHeight - 1
+	// renderGemListTable shows: [filter (2)] + header (1) + gems (rest)
+	availableGemsRows := contentHeight - 1  // -1 for header
+	if m.hasActiveFilters() {
+		availableGemsRows -= 2  // -2 for filter status line + blank line
+	}
+	if availableGemsRows < 1 {
+		availableGemsRows = 1
+	}
 	if m.GemListCursor < m.GemListOffset {
 		m.GemListOffset = m.GemListCursor
 	} else if m.GemListCursor >= m.GemListOffset+availableGemsRows {
