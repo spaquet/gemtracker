@@ -362,11 +362,11 @@ func (rg *ReportGenerator) generateJSONReport(data *ReportData, outputPath strin
 		"generated_at": data.GeneratedAt,
 		"project_path": data.ProjectPath,
 		"summary": map[string]interface{}{
-			"total_gems":               data.TotalGems,
-			"direct_dependencies":      data.FirstLevelGems,
-			"transitive_dependencies":  data.TransitiveDependencies,
-			"outdated_count":           data.OutdatedCount,
-			"vulnerable_count":         data.VulnerableCount,
+			"total_gems":              data.TotalGems,
+			"direct_dependencies":     data.FirstLevelGems,
+			"transitive_dependencies": data.TransitiveDependencies,
+			"outdated_count":          data.OutdatedCount,
+			"vulnerable_count":        data.VulnerableCount,
 		},
 		"gems": data.AllGems,
 	}

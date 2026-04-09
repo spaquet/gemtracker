@@ -1006,12 +1006,12 @@ func (m *Model) clampScrollOffsets() {
 
 	// Account for header row and any filter status lines
 	// renderGemListTable shows: [filter (2)] + header (1) + gems (rest)
-	availableGemsRows := contentHeight - 1  // -1 for header
+	availableGemsRows := contentHeight - 1 // -1 for header
 	if m.hasActiveFilters() {
-		availableGemsRows -= 2  // -2 for filter status line + blank line
+		availableGemsRows -= 2 // -2 for filter status line + blank line
 	}
 	if availableGemsRows < 1 {
-		availableGemsRows = 1  // Minimum 1 gem row
+		availableGemsRows = 1 // Minimum 1 gem row
 	}
 
 	// Clamp gem list offset
@@ -1052,9 +1052,9 @@ func (m *Model) ensureGemListCursorVisible() {
 	// Reserve 1 line for footer/statusbar buffer (matches viewGemList and clampScrollOffsets)
 	contentHeight := m.Height - 2 - statusbarHeight - 1
 	// renderGemListTable shows: [filter (2)] + header (1) + gems (rest)
-	availableGemsRows := contentHeight - 1  // -1 for header
+	availableGemsRows := contentHeight - 1 // -1 for header
 	if m.hasActiveFilters() {
-		availableGemsRows -= 2  // -2 for filter status line + blank line
+		availableGemsRows -= 2 // -2 for filter status line + blank line
 	}
 	if availableGemsRows < 1 {
 		availableGemsRows = 1
