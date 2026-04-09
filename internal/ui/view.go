@@ -247,8 +247,8 @@ func (m *Model) renderTabBar() string {
 			if upgradableCount > 0 {
 				label = fmt.Sprintf("%s (%d)", label, upgradableCount)
 			}
-		} else if mode == ViewCVE && len(m.VulnerableGems) > 0 {
-			label = fmt.Sprintf("%s (%d)", label, len(m.VulnerableGems))
+		} else if mode == ViewCVE && len(m.CVEVulnerabilities) > 0 {
+			label = fmt.Sprintf("%s (%d)", label, len(m.CVEVulnerabilities))
 		}
 		if mode == m.ActiveTab {
 			tabs = append(tabs, TabActiveStyle.Render(label))
