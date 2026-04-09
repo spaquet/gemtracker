@@ -159,6 +159,13 @@ func (m *Model) assembleViewWithChrome(contentString string) string {
 		allLines = append(allLines, contentLines...)
 	}
 
+	// Pad content area to available height (before statusbar)
+	contentHeight := len(allLines) - 2 // -2 for header and tabbar
+	paddingNeeded := availableForContent - contentHeight
+	for i := 0; i < paddingNeeded; i++ {
+		allLines = append(allLines, "")
+	}
+
 	// Add status bar (can be multi-line)
 	statusbarContent := m.renderStatusBar()
 	if statusbarContent != "" {
@@ -434,12 +441,14 @@ func (m *Model) renderGemListTable(height int) string {
 	header := TableHeaderStyle.Render(headerRow)
 	lines = append(lines, header)
 
-	// Table rows
-	visibleRows := height - len(lines)
-	if visibleRows < 0 {
-		visibleRows = 0
+	// Table rows - don't reserve space for padding, show as many gems as will fit
+	// The wrapper will pad the content area to fill the terminal
+	maxGems := height - len(lines)
+	if maxGems < 0 {
+		maxGems = 0
 	}
-	endIdx := m.GemListOffset + visibleRows
+
+	endIdx := m.GemListOffset + maxGems
 	if endIdx > len(m.FirstLevelGems) {
 		endIdx = len(m.FirstLevelGems)
 	}
@@ -456,11 +465,7 @@ func (m *Model) renderGemListTable(height int) string {
 		lines = append(lines, line)
 	}
 
-	// Padding
-	for len(lines) < height {
-		lines = append(lines, "")
-	}
-
+	// Don't pad - let wrapper handle layout
 	return lipgloss.JoinVertical(lipgloss.Left, lines...)
 }
 
@@ -1176,15 +1181,9 @@ func (m *Model) renderUpgradeableTable(height int) string {
 		}
 	}
 
-	// Apply offset and return visible lines
+	// Apply offset and return visible lines - don't pad, let wrapper handle layout
 	visibleLines := allLines[m.UpgradeableOffset:]
-
-	// Ensure we have at least height lines
-	for len(visibleLines) < height {
-		visibleLines = append(visibleLines, "")
-	}
-
-	return lipgloss.JoinVertical(lipgloss.Left, visibleLines[:height]...)
+	return lipgloss.JoinVertical(lipgloss.Left, visibleLines...)
 }
 
 // ============================================================================
@@ -1222,7 +1221,7 @@ func (m *Model) renderCVETable(height int) string {
 
 	// Calculate available space after header
 	headerLines := strings.Count(headerSection, "\n") + 1
-	remainingHeight := height - headerLines - 1 // -1 for spacing
+	remainingHeight := height - headerLines
 
 	if remainingHeight < 1 {
 		return headerSection
@@ -1231,16 +1230,8 @@ func (m *Model) renderCVETable(height int) string {
 	// Build vulnerability list
 	vulnList := m.renderCVEVulnerabilitiesList(remainingHeight)
 
-	// Combine header and list
-	result := lipgloss.JoinVertical(lipgloss.Left, headerSection, vulnList)
-
-	// Pad to full height
-	lines := strings.Split(result, "\n")
-	for len(lines) < height {
-		lines = append(lines, "")
-	}
-
-	return lipgloss.JoinVertical(lipgloss.Left, lines[:height]...)
+	// Combine header and list - don't pad here, let the wrapper handle it
+	return lipgloss.JoinVertical(lipgloss.Left, headerSection, vulnList)
 }
 
 func (m *Model) renderCVEHeader(maxHeight int) string {
@@ -1343,13 +1334,13 @@ func (m *Model) renderCVEVulnerabilitiesList(height int) string {
 		"CVE ID", "Gem", "Severity", "Description")
 	lines = append(lines, TableHeaderStyle.Render(headerRow))
 
-	// Render vulnerabilities
-	visibleRows := height - 1 // -1 for header
-	if visibleRows < 0 {
-		visibleRows = 0
+	// Render vulnerabilities - don't reserve space for padding
+	maxVulns := height - 1 // -1 for header
+	if maxVulns < 0 {
+		maxVulns = 0
 	}
 
-	endIdx := m.CVEOffset + visibleRows
+	endIdx := m.CVEOffset + maxVulns
 	if endIdx > len(m.CVEVulnerabilities) {
 		endIdx = len(m.CVEVulnerabilities)
 	}
@@ -1388,12 +1379,8 @@ func (m *Model) renderCVEVulnerabilitiesList(height int) string {
 		lines = append(lines, row)
 	}
 
-	// Padding
-	for len(lines) < height {
-		lines = append(lines, "")
-	}
-
-	return lipgloss.JoinVertical(lipgloss.Left, lines[:height]...)
+	// Don't pad - let wrapper handle layout
+	return lipgloss.JoinVertical(lipgloss.Left, lines...)
 }
 
 // formatDuration converts a duration to a human-readable string
