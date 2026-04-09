@@ -483,7 +483,13 @@ func (rg *ReportGenerator) mergeVulnerabilitiesIntoGems(gemStatuses []*gemfile.G
 			gemStatus.IsVulnerable = true
 			// Use the first vulnerability for the summary info
 			vuln := vulns[0]
-			gemStatus.VulnerabilityInfo = fmt.Sprintf("%s: %s", vuln.CVE, vuln.Description)
+			// Include severity in the vulnerability info, matching UI display
+			info := fmt.Sprintf("%s [%s]: %s", vuln.CVE, vuln.Severity, vuln.Description)
+			// Append CVSS score if available
+			if vuln.CVSS > 0 {
+				info += fmt.Sprintf(" (CVSS: %.1f)", vuln.CVSS)
+			}
+			gemStatus.VulnerabilityInfo = info
 		} else {
 			gemStatus.IsVulnerable = false
 			gemStatus.VulnerabilityInfo = ""

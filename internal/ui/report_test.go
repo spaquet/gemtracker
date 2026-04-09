@@ -48,7 +48,7 @@ func TestBuildReportData(t *testing.T) {
 				IsOutdated:        false,
 				LatestVersion:     "",
 				IsVulnerable:      true,
-				VulnerabilityInfo: "CVE-2021-41113: Auth bypass",
+				VulnerabilityInfo: "CVE-2021-41113 [HIGH]: Auth bypass (CVSS: 7.5)",
 			},
 			{
 				Name:              "rake",
@@ -117,7 +117,7 @@ func TestGenerateTextReport(t *testing.T) {
 		OutdatedCount:   1,
 		VulnerableCount: 1,
 		AllGems: []*GemReport{
-			{Name: "devise", Version: "4.8.0", IsFirstLevel: true, IsVulnerable: true, VulnerabilityInfo: "CVE-2021-41113: Auth bypass"},
+			{Name: "devise", Version: "4.8.0", IsFirstLevel: true, IsVulnerable: true, VulnerabilityInfo: "CVE-2021-41113 [HIGH]: Auth bypass (CVSS: 7.5)"},
 			{Name: "rails", Version: "7.0.0", IsFirstLevel: true, IsOutdated: true, LatestVersion: "8.0.0"},
 			{Name: "rake", Version: "13.0.6", IsFirstLevel: false},
 		},
@@ -125,7 +125,7 @@ func TestGenerateTextReport(t *testing.T) {
 			{Name: "rails", Version: "7.0.0", LatestVersion: "8.0.0"},
 		},
 		VulnerableGems: []*GemReport{
-			{Name: "devise", Version: "4.8.0", VulnerabilityInfo: "CVE-2021-41113: Auth bypass"},
+			{Name: "devise", Version: "4.8.0", VulnerabilityInfo: "CVE-2021-41113 [HIGH]: Auth bypass (CVSS: 7.5)"},
 		},
 		Summary: "Test summary",
 	}

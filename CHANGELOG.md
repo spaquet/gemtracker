@@ -32,6 +32,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Severity now properly extracted from OSV individual vulnerability detail endpoint
   - Example: addressable gem now correctly shows HIGH severity instead of always showing MEDIUM
   - All 87 CVEs in standard project now display correct severity levels
+- **CVE Severity in Exports** - Severity and CVSS scores now included in exported reports
+  - Text, CSV, and JSON exports now include CVE severity level and CVSS score
+  - Exports now match the CVE information displayed in the UI
+  - Format: `CVE-ID [SEVERITY]: Description (CVSS: score)`
 
 ### Changed
 - **Code Cleanup** - Removed unused vulnerability checker code
