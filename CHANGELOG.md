@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v1.1.7] - 2026-04-09
+
+### Fixed
+- **OSV API Vulnerability Scanning** - Fixed broken vulnerability detection from OSV.dev
+  - Corrected batch query endpoint from `/v1/query/batch` to `/v1/querybatch` (actual OSV.dev API)
+  - Vulnerability scanning now works correctly for all gems in the project
+  - CVE tab now displays detected vulnerabilities as expected
+
+### Changed
+- **Code Cleanup** - Removed unused vulnerability checker code
+  - Deleted hardcoded `VulnerabilityChecker` class (replaced by OSVClient with live API)
+  - Removed associated test suite for dead code
+  - Retained `Vulnerability` struct for API response handling
+
 ## [v1.1.6] - 2026-04-08
 
 ### Fixed
