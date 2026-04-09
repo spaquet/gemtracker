@@ -182,6 +182,16 @@ func (m *Model) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case ViewFilterMenu:
 		return m.handleFilterMenuKeys(msg)
 
+	case ViewCVEFilterMenu:
+		return m.handleCVEFilterMenuKeys(msg)
+
+	case ViewCVEInfo:
+		// Handle closing the info modal
+		if msg.String() == "esc" {
+			m.CurrentView = ViewCVE
+		}
+		return m, nil
+
 	case ViewSelectPath:
 		return m.handlePathInputKeys(msg)
 
@@ -535,6 +545,19 @@ func (m *Model) handleCVEKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 		}
 		return m, nil
+
+	case "f":
+		// Open CVE filter modal
+		m.CurrentView = ViewCVEFilterMenu
+		m.CVEFilterMenuCursor = 0
+		return m, nil
+
+	case "i":
+		// Open CVE info modal for current CVE
+		if len(m.CVEVulnerabilities) > 0 && m.CVECursor < len(m.CVEVulnerabilities) {
+			m.CurrentView = ViewCVEInfo
+		}
+		return m, nil
 	}
 
 	return m, nil
@@ -609,6 +632,50 @@ func (m *Model) handleFilterMenuKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "enter", "esc":
 		m.CurrentView = ViewGemList
 		m.FilterMenuCursor = 0
+		return m, nil
+	}
+
+	return m, nil
+}
+
+func (m *Model) handleCVEFilterMenuKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// 4 severity options + 1 direct option + 1 separator + 1 close = 7 items
+	totalOptions := 6
+
+	switch msg.String() {
+	case "up":
+		if m.CVEFilterMenuCursor > 0 {
+			m.CVEFilterMenuCursor--
+		}
+		return m, nil
+
+	case "down":
+		if m.CVEFilterMenuCursor < totalOptions-1 {
+			m.CVEFilterMenuCursor++
+		}
+		return m, nil
+
+	case " ":
+		// Toggle the selected filter
+		switch m.CVEFilterMenuCursor {
+		case 0: // CRITICAL
+			m.CVESelectedSeverities["CRITICAL"] = !m.CVESelectedSeverities["CRITICAL"]
+		case 1: // HIGH
+			m.CVESelectedSeverities["HIGH"] = !m.CVESelectedSeverities["HIGH"]
+		case 2: // MEDIUM
+			m.CVESelectedSeverities["MEDIUM"] = !m.CVESelectedSeverities["MEDIUM"]
+		case 3: // LOW
+			m.CVESelectedSeverities["LOW"] = !m.CVESelectedSeverities["LOW"]
+		case 4: // Direct only
+			m.CVEShowOnlyDirect = !m.CVEShowOnlyDirect
+		}
+		// Apply filters immediately
+		m.applyCVEFilters()
+		return m, nil
+
+	case "enter", "esc":
+		m.CurrentView = ViewCVE
+		m.CVEFilterMenuCursor = 0
 		return m, nil
 	}
 
@@ -1078,13 +1145,48 @@ func (m *Model) ensureSearchCursorVisible() {
 }
 
 func (m *Model) ensureCVECursorVisible() {
-	contentHeight := m.Height - FixedChrome - m.updateBarHeight()
-	// renderCVETable shows: title (1) + header (1) + results (contentHeight - 2)
-	availableCVERows := contentHeight - 2
+	statusbarHeight := m.statusBarTotalHeight()
+	contentHeight := m.Height - 2 - statusbarHeight
+	if contentHeight < 1 {
+		contentHeight = 1
+	}
+
+	// The CVE view shows:
+	// - Header info (severity summary, cache status, etc.) - ~3-4 lines
+	// - Table header (CVE ID | Gem | Severity | Type | Group) - 1 line
+	// - Vulnerability rows - rest of space
+	// We need to reserve ~5 lines for all headers to be safe
+	headerReserve := 5
+	availableCVERows := contentHeight - headerReserve
+
+	if availableCVERows < 1 {
+		availableCVERows = 1
+	}
+
+	// Ensure cursor stays within bounds
+	maxCursor := len(m.CVEVulnerabilities) - 1
+	if m.CVECursor > maxCursor {
+		m.CVECursor = maxCursor
+	}
+	if m.CVECursor < 0 {
+		m.CVECursor = 0
+	}
+
+	// Adjust offset to keep cursor visible
 	if m.CVECursor < m.CVEOffset {
 		m.CVEOffset = m.CVECursor
-	} else if m.CVECursor >= m.CVEOffset+availableCVERows {
+	}
+	if m.CVECursor >= m.CVEOffset+availableCVERows {
 		m.CVEOffset = m.CVECursor - availableCVERows + 1
+	}
+
+	// Clamp offset to valid range
+	maxOffset := len(m.CVEVulnerabilities) - availableCVERows
+	if maxOffset < 0 {
+		maxOffset = 0
+	}
+	if m.CVEOffset > maxOffset {
+		m.CVEOffset = maxOffset
 	}
 }
 
@@ -1173,8 +1275,8 @@ func (m *Model) handleCVEProgress(msg CVEProgressMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m *Model) handleCVELoadFromCache(msg CVELoadFromCacheMsg) (tea.Model, tea.Cmd) {
-	// Load cached vulnerabilities into model
-	m.CVEVulnerabilities = msg.Vulnerabilities
+	// Initialize CVE filters with loaded vulnerabilities
+	m.initializeCVEFilters(msg.Vulnerabilities)
 	m.CVELastScanTime = time.Now().Add(-msg.CacheAge)
 	m.CVECacheLoadedAt = time.Now()
 
@@ -1204,8 +1306,8 @@ func (m *Model) handleCVEComplete(msg CVECompleteMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	// Update with fresh data
-	m.CVEVulnerabilities = msg.Vulnerabilities
+	// Initialize CVE filters with fresh data
+	m.initializeCVEFilters(msg.Vulnerabilities)
 	m.CVELastScanTime = time.Now()
 	m.CVECacheLoadedAt = time.Now()
 	m.CVELastError = ""
