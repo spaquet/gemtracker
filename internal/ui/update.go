@@ -1001,13 +1001,21 @@ func (m *Model) clampScrollOffsets() {
 	// Use dynamic statusbar height instead of hardcoded FixedChrome
 	// This ensures offset calculation matches the actual rendered content
 	statusbarHeight := m.statusBarTotalHeight()
-	contentHeight := m.Height - 2 - statusbarHeight
+	// Reserve 1 line for footer/statusbar buffer (matches viewGemList calculation)
+	contentHeight := m.Height - 2 - statusbarHeight - 1
 
-	// Account for header row which reduces available space
-	// renderGemListTable shows: header (1) + gems (contentHeight - 1)
-	availableGemsRows := contentHeight - 1
+	// Account for header row and any filter status lines
+	// renderGemListTable shows: [filter (2)] + header (1) + gems (rest)
+	availableGemsRows := contentHeight - 1 // -1 for header
+	if m.hasActiveFilters() {
+		availableGemsRows -= 2 // -2 for filter status line + blank line
+	}
+	if availableGemsRows < 1 {
+		availableGemsRows = 1 // Minimum 1 gem row
+	}
 
 	// Clamp gem list offset
+	// Allow scrolling to show all gems with the last gem fully visible
 	maxOffset := len(m.FirstLevelGems) - availableGemsRows
 	if maxOffset < 0 {
 		maxOffset = 0
@@ -1041,9 +1049,16 @@ func (m *Model) ensureGemListCursorVisible() {
 	// Use dynamic statusbar height instead of hardcoded FixedChrome
 	// This ensures cursor visibility calculation matches the actual rendered content
 	statusbarHeight := m.statusBarTotalHeight()
-	contentHeight := m.Height - 2 - statusbarHeight
-	// renderGemListTable shows: header (1) + gems (contentHeight - 1)
-	availableGemsRows := contentHeight - 1
+	// Reserve 1 line for footer/statusbar buffer (matches viewGemList and clampScrollOffsets)
+	contentHeight := m.Height - 2 - statusbarHeight - 1
+	// renderGemListTable shows: [filter (2)] + header (1) + gems (rest)
+	availableGemsRows := contentHeight - 1 // -1 for header
+	if m.hasActiveFilters() {
+		availableGemsRows -= 2 // -2 for filter status line + blank line
+	}
+	if availableGemsRows < 1 {
+		availableGemsRows = 1
+	}
 	if m.GemListCursor < m.GemListOffset {
 		m.GemListOffset = m.GemListCursor
 	} else if m.GemListCursor >= m.GemListOffset+availableGemsRows {
@@ -1074,10 +1089,15 @@ func (m *Model) ensureCVECursorVisible() {
 }
 
 func (m *Model) ensureUpgradeableCursorVisible() {
-	contentHeight := m.Height - FixedChrome - m.updateBarHeight()
-	// renderUpgradeableTable shows sections with headers, so estimate visible rows as available height
-	// Rough estimate: title (1) + blank line (1) + headers and data
-	availableRows := contentHeight - 4
+	statusbarLines := m.statusBarTotalHeight()
+	contentHeight := m.Height - 2 - statusbarLines
+	if contentHeight < 1 {
+		contentHeight = 1
+	}
+	// renderUpgradeableTable consumes lines for headers and spacing, so actual gem rows < contentHeight
+	// Conservative estimate: subtract 4 lines per section header (title + blank + header + spacing)
+	// In practice, we show maybe 75-80% of contentHeight as actual gems
+	availableRows := contentHeight * 3 / 4
 	if availableRows < 1 {
 		availableRows = 1
 	}

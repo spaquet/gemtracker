@@ -159,6 +159,13 @@ func (m *Model) assembleViewWithChrome(contentString string) string {
 		allLines = append(allLines, contentLines...)
 	}
 
+	// Pad content area to available height (before statusbar)
+	contentHeight := len(allLines) - 2 // -2 for header and tabbar
+	paddingNeeded := availableForContent - contentHeight
+	for i := 0; i < paddingNeeded; i++ {
+		allLines = append(allLines, "")
+	}
+
 	// Add status bar (can be multi-line)
 	statusbarContent := m.renderStatusBar()
 	if statusbarContent != "" {
@@ -389,7 +396,8 @@ func (m *Model) viewGemList() string {
 	if statusbarHeight < 1 {
 		statusbarHeight = 1
 	}
-	contentHeight := m.Height - 2 - statusbarHeight
+	// Reserve 1 line for footer/statusbar to prevent clipping the last gem
+	contentHeight := m.Height - 2 - statusbarHeight - 1
 	if contentHeight < 1 {
 		contentHeight = 1
 	}
@@ -434,12 +442,14 @@ func (m *Model) renderGemListTable(height int) string {
 	header := TableHeaderStyle.Render(headerRow)
 	lines = append(lines, header)
 
-	// Table rows
-	visibleRows := height - len(lines)
-	if visibleRows < 0 {
-		visibleRows = 0
+	// Table rows - don't reserve space for padding, show as many gems as will fit
+	// The wrapper will pad the content area to fill the terminal
+	maxGems := height - len(lines)
+	if maxGems < 0 {
+		maxGems = 0
 	}
-	endIdx := m.GemListOffset + visibleRows
+
+	endIdx := m.GemListOffset + maxGems
 	if endIdx > len(m.FirstLevelGems) {
 		endIdx = len(m.FirstLevelGems)
 	}
@@ -456,11 +466,7 @@ func (m *Model) renderGemListTable(height int) string {
 		lines = append(lines, line)
 	}
 
-	// Padding
-	for len(lines) < height {
-		lines = append(lines, "")
-	}
-
+	// Don't pad - let wrapper handle layout
 	return lipgloss.JoinVertical(lipgloss.Left, lines...)
 }
 
@@ -1074,117 +1080,80 @@ func (m *Model) renderUpgradeableTable(height int) string {
 			Render(msg)
 	}
 
-	// Build all visible lines first, then apply offset
-	var allLines []string
+	var lines []string
 
 	// Add top spacing
-	allLines = append(allLines, "")
+	lines = append(lines, "")
 
-	lineIndex := 0 // Track line number for cursor comparison
+	// Map gem index to section info
+	// Track which section each gem index belongs to
+	directCount := len(m.UpgradeableGems)
+	frameworkCount := len(m.UpgradeableFrameworkGems)
 
-	// First-level gems section
-	if len(m.UpgradeableGems) > 0 {
-		allLines = append(allLines, lipgloss.NewStyle().
-			Bold(true).
-			Foreground(lipgloss.Color(ColorPrimary)).
-			Render("DIRECT DEPENDENCIES"))
+	// Track which section we're currently rendering
+	var lastSection string
 
-		headerRow := fmt.Sprintf("  %-24s %-11s %-11s %s",
-			"Gem Name", "Installed", "Latest", "")
-		header := TableHeaderStyle.Render(headerRow)
-		allLines = append(allLines, header)
-
-		for _, gem := range m.UpgradeableGems {
-			isSelected := lineIndex == m.UpgradeableCursor
-			row := fmt.Sprintf("  %-24s %-11s %-11s %s",
-				truncateStr(gem.Name, 24),
-				gem.Version,
-				gem.LatestVersion,
-				BadgeOutdatedStyle.Render("↑"),
-			)
-			if isSelected {
-				row = RowSelectedStyle.Render(row)
-			} else {
-				row = RowNormalStyle.Render(row)
-			}
-			allLines = append(allLines, row)
-			lineIndex++
+	// Render gems starting from UpgradeableOffset
+	for gemIdx := m.UpgradeableOffset; gemIdx < len(allUpgradeable); gemIdx++ {
+		if len(lines) >= height {
+			break
 		}
-		allLines = append(allLines, "")
-		lineIndex++
-	}
 
-	// Framework gems section
-	if len(m.UpgradeableFrameworkGems) > 0 {
-		allLines = append(allLines, lipgloss.NewStyle().
-			Bold(true).
-			Foreground(lipgloss.Color(ColorPrimary)).
-			Render("FRAMEWORK COMPONENTS"))
-
-		headerRow := fmt.Sprintf("  %-24s %-11s %-11s %s",
-			"Gem Name", "Installed", "Latest", "")
-		header := TableHeaderStyle.Render(headerRow)
-		allLines = append(allLines, header)
-
-		for _, gem := range m.UpgradeableFrameworkGems {
-			isSelected := lineIndex == m.UpgradeableCursor
-			row := fmt.Sprintf("  %-24s %-11s %-11s %s",
-				truncateStr(gem.Name, 24),
-				gem.Version,
-				gem.LatestVersion,
-				BadgeOutdatedStyle.Render("↑"),
-			)
-			if isSelected {
-				row = RowSelectedStyle.Render(row)
-			} else {
-				row = RowNormalStyle.Render(row)
-			}
-			allLines = append(allLines, row)
-			lineIndex++
+		// Determine which section this gem belongs to
+		var currentSection string
+		if gemIdx < directCount {
+			currentSection = "DIRECT DEPENDENCIES"
+		} else if gemIdx < directCount+frameworkCount {
+			currentSection = "FRAMEWORK COMPONENTS"
+		} else {
+			currentSection = "TRANSITIVE DEPENDENCIES"
 		}
-		allLines = append(allLines, "")
-		lineIndex++
-	}
 
-	// Transitive dependencies section
-	if len(m.UpgradeableTransitiveDeps) > 0 {
-		allLines = append(allLines, lipgloss.NewStyle().
-			Bold(true).
-			Foreground(lipgloss.Color(ColorPrimary)).
-			Render("TRANSITIVE DEPENDENCIES"))
-
-		headerRow := fmt.Sprintf("  %-24s %-11s %-11s %s",
-			"Gem Name", "Installed", "Latest", "")
-		header := TableHeaderStyle.Render(headerRow)
-		allLines = append(allLines, header)
-
-		for _, gem := range m.UpgradeableTransitiveDeps {
-			isSelected := lineIndex == m.UpgradeableCursor
-			row := fmt.Sprintf("  %-24s %-11s %-11s %s",
-				truncateStr(gem.Name, 24),
-				gem.Version,
-				gem.LatestVersion,
-				BadgeOutdatedStyle.Render("↑"),
-			)
-			if isSelected {
-				row = RowSelectedStyle.Render(row)
-			} else {
-				row = RowNormalStyle.Render(row)
+		// Add section header when entering a new section
+		if currentSection != lastSection {
+			// Add blank line before section (except for the very first section)
+			if lastSection != "" && len(lines) < height {
+				lines = append(lines, "")
 			}
-			allLines = append(allLines, row)
-			lineIndex++
+
+			if len(lines) < height {
+				lines = append(lines, lipgloss.NewStyle().
+					Bold(true).
+					Foreground(lipgloss.Color(ColorPrimary)).
+					Render(currentSection))
+			}
+
+			if len(lines) < height {
+				headerRow := fmt.Sprintf("  %-24s %-11s %-11s %s",
+					"Gem Name", "Installed", "Latest", "")
+				header := TableHeaderStyle.Render(headerRow)
+				lines = append(lines, header)
+			}
+
+			lastSection = currentSection
 		}
+
+		if len(lines) >= height {
+			break
+		}
+
+		gem := allUpgradeable[gemIdx]
+		isSelected := gemIdx == m.UpgradeableCursor
+		row := fmt.Sprintf("  %-24s %-11s %-11s %s",
+			truncateStr(gem.Name, 24),
+			gem.Version,
+			gem.LatestVersion,
+			BadgeOutdatedStyle.Render("↑"),
+		)
+		if isSelected {
+			row = RowSelectedStyle.Render(row)
+		} else {
+			row = RowNormalStyle.Render(row)
+		}
+		lines = append(lines, row)
 	}
 
-	// Apply offset and return visible lines
-	visibleLines := allLines[m.UpgradeableOffset:]
-
-	// Ensure we have at least height lines
-	for len(visibleLines) < height {
-		visibleLines = append(visibleLines, "")
-	}
-
-	return lipgloss.JoinVertical(lipgloss.Left, visibleLines[:height]...)
+	return lipgloss.JoinVertical(lipgloss.Left, lines...)
 }
 
 // ============================================================================
@@ -1222,7 +1191,7 @@ func (m *Model) renderCVETable(height int) string {
 
 	// Calculate available space after header
 	headerLines := strings.Count(headerSection, "\n") + 1
-	remainingHeight := height - headerLines - 1 // -1 for spacing
+	remainingHeight := height - headerLines
 
 	if remainingHeight < 1 {
 		return headerSection
@@ -1231,16 +1200,8 @@ func (m *Model) renderCVETable(height int) string {
 	// Build vulnerability list
 	vulnList := m.renderCVEVulnerabilitiesList(remainingHeight)
 
-	// Combine header and list
-	result := lipgloss.JoinVertical(lipgloss.Left, headerSection, vulnList)
-
-	// Pad to full height
-	lines := strings.Split(result, "\n")
-	for len(lines) < height {
-		lines = append(lines, "")
-	}
-
-	return lipgloss.JoinVertical(lipgloss.Left, lines[:height]...)
+	// Combine header and list - don't pad here, let the wrapper handle it
+	return lipgloss.JoinVertical(lipgloss.Left, headerSection, vulnList)
 }
 
 func (m *Model) renderCVEHeader(maxHeight int) string {
@@ -1343,13 +1304,13 @@ func (m *Model) renderCVEVulnerabilitiesList(height int) string {
 		"CVE ID", "Gem", "Severity", "Description")
 	lines = append(lines, TableHeaderStyle.Render(headerRow))
 
-	// Render vulnerabilities
-	visibleRows := height - 1 // -1 for header
-	if visibleRows < 0 {
-		visibleRows = 0
+	// Render vulnerabilities - don't reserve space for padding
+	maxVulns := height - 1 // -1 for header
+	if maxVulns < 0 {
+		maxVulns = 0
 	}
 
-	endIdx := m.CVEOffset + visibleRows
+	endIdx := m.CVEOffset + maxVulns
 	if endIdx > len(m.CVEVulnerabilities) {
 		endIdx = len(m.CVEVulnerabilities)
 	}
@@ -1388,12 +1349,8 @@ func (m *Model) renderCVEVulnerabilitiesList(height int) string {
 		lines = append(lines, row)
 	}
 
-	// Padding
-	for len(lines) < height {
-		lines = append(lines, "")
-	}
-
-	return lipgloss.JoinVertical(lipgloss.Left, lines[:height]...)
+	// Don't pad - let wrapper handle layout
+	return lipgloss.JoinVertical(lipgloss.Left, lines...)
 }
 
 // formatDuration converts a duration to a human-readable string

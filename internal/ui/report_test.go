@@ -191,8 +191,18 @@ func TestGenerateCSVReport(t *testing.T) {
 		t.Errorf("expected at least 2 lines in CSV (header + data), got %d", len(lines))
 	}
 
-	// Check header row
-	if !strings.Contains(lines[0], "Name") || !strings.Contains(lines[0], "Version") {
+	// Check header row (skip comment lines at the top)
+	headerIdx := -1
+	for i, line := range lines {
+		if strings.HasPrefix(line, "Name,") || strings.Contains(line, "Name") && !strings.HasPrefix(line, "#") {
+			headerIdx = i
+			break
+		}
+	}
+	if headerIdx == -1 {
+		t.Errorf("CSV header not found in output")
+	}
+	if headerIdx >= 0 && (!strings.Contains(lines[headerIdx], "Name") || !strings.Contains(lines[headerIdx], "Version")) {
 		t.Errorf("CSV header doesn't contain expected columns")
 	}
 
