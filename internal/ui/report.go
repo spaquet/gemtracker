@@ -35,6 +35,8 @@ type ReportData struct {
 	TotalGems int
 	// FirstLevelGems is the count of directly required gems
 	FirstLevelGems int
+	// TransitiveDependencies is the count of transitive gem dependencies
+	TransitiveDependencies int
 	// OutdatedGems lists gems with available updates
 	OutdatedGems []*GemReport
 	// VulnerableGems lists gems with known CVEs
@@ -205,21 +207,25 @@ func (rg *ReportGenerator) buildReportData(analysis *gemfile.AnalysisResult, gem
 		}
 	}
 
+	// Calculate transitive dependencies
+	transitiveDeps := len(allGems) - firstLevelCount
+
 	// Build summary
-	summary := fmt.Sprintf("Total gems: %d, First-level: %d, Outdated: %d, Vulnerable: %d",
-		len(allGems), firstLevelCount, len(outdatedGems), len(vulnerableGems))
+	summary := fmt.Sprintf("Total gems: %d, Direct: %d, Transitive: %d, Outdated: %d, Vulnerable: %d",
+		len(allGems), firstLevelCount, transitiveDeps, len(outdatedGems), len(vulnerableGems))
 
 	return &ReportData{
-		GeneratedAt:     time.Now().Format(time.RFC3339),
-		ProjectPath:     rg.projectPath,
-		TotalGems:       len(allGems),
-		FirstLevelGems:  firstLevelCount,
-		AllGems:         allGems,
-		OutdatedGems:    outdatedGems,
-		VulnerableGems:  vulnerableGems,
-		Summary:         summary,
-		OutdatedCount:   len(outdatedGems),
-		VulnerableCount: len(vulnerableGems),
+		GeneratedAt:            time.Now().Format(time.RFC3339),
+		ProjectPath:            rg.projectPath,
+		TotalGems:              len(allGems),
+		FirstLevelGems:         firstLevelCount,
+		TransitiveDependencies: transitiveDeps,
+		AllGems:                allGems,
+		OutdatedGems:           outdatedGems,
+		VulnerableGems:         vulnerableGems,
+		Summary:                summary,
+		OutdatedCount:          len(outdatedGems),
+		VulnerableCount:        len(vulnerableGems),
 	}
 }
 
@@ -232,7 +238,14 @@ func (rg *ReportGenerator) generateTextReport(data *ReportData, outputPath strin
 	output.WriteString("==================\n\n")
 
 	output.WriteString(fmt.Sprintf("Generated: %s\n", data.GeneratedAt))
-	output.WriteString(fmt.Sprintf("Project: %s\n", data.ProjectPath))
+	output.WriteString(fmt.Sprintf("Project: %s\n\n", data.ProjectPath))
+
+	// Gem statistics
+	output.WriteString("Total Gems: " + fmt.Sprintf("%d\n", data.TotalGems))
+	output.WriteString("  Direct Dependencies: " + fmt.Sprintf("%d\n", data.FirstLevelGems))
+	output.WriteString("  Transitive Dependencies: " + fmt.Sprintf("%d\n", data.TransitiveDependencies))
+	output.WriteString("\n")
+
 	output.WriteString(fmt.Sprintf("Summary: %s\n\n", data.Summary))
 
 	// Vulnerable gems section
@@ -291,6 +304,14 @@ func (rg *ReportGenerator) generateTextReport(data *ReportData, outputPath strin
 func (rg *ReportGenerator) generateCSVReport(data *ReportData, outputPath string) error {
 	var output strings.Builder
 
+	// Add summary header comments
+	output.WriteString(fmt.Sprintf("# Generated: %s\n", data.GeneratedAt))
+	output.WriteString(fmt.Sprintf("# Project: %s\n", data.ProjectPath))
+	output.WriteString(fmt.Sprintf("# Total Gems: %d\n", data.TotalGems))
+	output.WriteString(fmt.Sprintf("# Direct Dependencies: %d\n", data.FirstLevelGems))
+	output.WriteString(fmt.Sprintf("# Transitive Dependencies: %d\n", data.TransitiveDependencies))
+	output.WriteString(fmt.Sprintf("# Outdated: %d, Vulnerable: %d\n#\n", data.OutdatedCount, data.VulnerableCount))
+
 	writer := csv.NewWriter(&output)
 	defer writer.Flush()
 
@@ -331,11 +352,6 @@ func (rg *ReportGenerator) generateCSVReport(data *ReportData, outputPath string
 		return fmt.Errorf("CSV writer error: %w", err)
 	}
 
-	// Add summary as comments at the end
-	summary := fmt.Sprintf("\n# Generated: %s\n# Project: %s\n# %s\n",
-		data.GeneratedAt, data.ProjectPath, data.Summary)
-	output.WriteString(summary)
-
 	return rg.writeOutput(output.String(), outputPath)
 }
 
@@ -346,10 +362,11 @@ func (rg *ReportGenerator) generateJSONReport(data *ReportData, outputPath strin
 		"generated_at": data.GeneratedAt,
 		"project_path": data.ProjectPath,
 		"summary": map[string]interface{}{
-			"total_gems":       data.TotalGems,
-			"first_level_gems": data.FirstLevelGems,
-			"outdated_count":   data.OutdatedCount,
-			"vulnerable_count": data.VulnerableCount,
+			"total_gems":               data.TotalGems,
+			"direct_dependencies":      data.FirstLevelGems,
+			"transitive_dependencies":  data.TransitiveDependencies,
+			"outdated_count":           data.OutdatedCount,
+			"vulnerable_count":         data.VulnerableCount,
 		},
 		"gems": data.AllGems,
 	}
