@@ -1746,8 +1746,9 @@ func (m *Model) allGemsForSanity() []*gemfile.GemStatus {
 
 	// Add transitive dependencies (gems in GemStatuses but not in FirstLevelGems)
 	if m.AnalysisResult != nil && m.AnalysisResult.GemStatuses != nil {
+		// Build directMap from the gems we already added (safe approach)
 		directMap := make(map[string]bool)
-		for _, gem := range m.FirstLevelGems {
+		for _, gem := range allGems {
 			directMap[gem.Name] = true
 		}
 
