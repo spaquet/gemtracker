@@ -1524,6 +1524,15 @@ func (m *Model) renderSanityTable(height int) string {
 			Render(msg)
 	}
 
+	allGems := m.allGemsForSanity()
+	if len(allGems) == 0 {
+		msg := "No gems found."
+		return lipgloss.NewStyle().
+			Foreground(lipgloss.Color(ColorTextMuted)).
+			Padding(2, 2).
+			Render(msg)
+	}
+
 	var lines []string
 
 	// Add header with Ruby manager and total size
@@ -1537,29 +1546,21 @@ func (m *Model) renderSanityTable(height int) string {
 	lines = append(lines, headerStyle.Render(headerLine))
 	lines = append(lines, "")
 
-	// Build list of all gems with their sizes
-	allGems := m.allGemsForSanity()
-	if len(allGems) == 0 {
-		lines = append(lines, "No gems found.")
-		return lipgloss.JoinVertical(lipgloss.Left, lines...)
-	}
+	// Pre-calculate section counts for index-based determination
+	directCount := len(m.FirstLevelGems)
 
-	// Track section for breaks
+	// Track which section we're currently rendering
 	var lastSection string
 
 	// Render gems starting from SanityOffset
-	gemIndex := 0
-	displayIndex := 1
-
 	for gemIdx := m.SanityOffset; gemIdx < len(allGems); gemIdx++ {
 		if len(lines) >= height {
 			break
 		}
 
-		// Determine section (direct vs transitive)
-		gem := allGems[gemIdx]
+		// Determine which section this gem belongs to based on index
 		var currentSection string
-		if m.isDirectDependency(gem.Name) {
+		if gemIdx < directCount {
 			currentSection = "DIRECT DEPENDENCIES"
 		} else {
 			currentSection = "TRANSITIVE DEPENDENCIES"
@@ -1567,6 +1568,7 @@ func (m *Model) renderSanityTable(height int) string {
 
 		// Add section header when entering a new section
 		if currentSection != lastSection {
+			// Add blank line before section (except for the very first section)
 			if lastSection != "" && len(lines) < height {
 				lines = append(lines, "")
 			}
@@ -1592,12 +1594,13 @@ func (m *Model) renderSanityTable(height int) string {
 			break
 		}
 
+		gem := allGems[gemIdx]
 		size := m.GemSizes[gem.Name]
 		sizeStr := gemfile.FormatBytes(size)
 
 		isSelected := gemIdx == m.SanityCursor
 		row := fmt.Sprintf("  %-3d %-24s %-11s %s",
-			displayIndex,
+			gemIdx+1, // Display ID: 1-based index
 			truncateStr(gem.Name, 24),
 			gem.Version,
 			sizeStr,
@@ -1608,9 +1611,6 @@ func (m *Model) renderSanityTable(height int) string {
 			row = RowNormalStyle.Render(row)
 		}
 		lines = append(lines, row)
-
-		displayIndex++
-		gemIndex++
 	}
 
 	return lipgloss.JoinVertical(lipgloss.Left, lines...)
@@ -1759,16 +1759,6 @@ func (m *Model) allGemsForSanity() []*gemfile.GemStatus {
 	}
 
 	return allGems
-}
-
-// Helper function to check if a gem is a direct dependency
-func (m *Model) isDirectDependency(gemName string) bool {
-	for _, gem := range m.FirstLevelGems {
-		if gem.Name == gemName {
-			return true
-		}
-	}
-	return false
 }
 
 // ============================================================================
