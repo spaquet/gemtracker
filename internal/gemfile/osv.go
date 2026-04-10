@@ -175,7 +175,13 @@ func (c *OSVClient) QueryBatch(ctx context.Context, gems []*Gem) ([]Vulnerabilit
 	// Enrich vulnerabilities with detailed CVSS/Severity data
 	// The batch endpoint doesn't include this, so we need individual requests
 	logger.Info("Enriching %d vulnerabilities with detailed CVSS/Severity data...", len(vulns))
-	c.enrichVulnerabilitiesWithDetails(ctx, vulns)
+
+	// Convert to pointers for enrichment
+	vulnPtrs := make([]*Vulnerability, len(vulns))
+	for i := range vulns {
+		vulnPtrs[i] = &vulns[i]
+	}
+	c.EnrichVulnerabilitiesWithDetails(ctx, vulnPtrs)
 
 	logger.Info("OSV batch query complete: found %d vulnerabilities", len(vulns))
 	return vulns, nil
@@ -381,10 +387,11 @@ func extractCVSSData(osvVuln OSVVulnerability) (float64, string) {
 	return cvssScore, severity
 }
 
-// enrichVulnerabilitiesWithDetails fetches detailed CVSS/Severity data for vulnerabilities
+// EnrichVulnerabilitiesWithDetails fetches detailed CVSS/Severity data and workarounds for vulnerabilities
 // The batch endpoint doesn't include this data, so we query individual vulnerabilities
 // Uses rate limiting to avoid overwhelming the OSV API (10 req/sec)
-func (c *OSVClient) enrichVulnerabilitiesWithDetails(ctx context.Context, vulns []Vulnerability) {
+// Accepts pointers to allow modifying cached vulnerabilities
+func (c *OSVClient) EnrichVulnerabilitiesWithDetails(ctx context.Context, vulns []*Vulnerability) {
 	// Create a rate limiter: 10 requests per second
 	limiter := rate.NewLimiter(rate.Limit(10), 1)
 
@@ -418,6 +425,25 @@ func (c *OSVClient) enrichVulnerabilitiesWithDetails(ctx context.Context, vulns 
 				vulns[i].Severity = severity
 			}
 			logger.Info("✓ Enriched %s: CVSS %.1f, Severity: %s", vulns[i].OSVId, cvssScore, vulns[i].Severity)
+		}
+
+		// Extract workarounds from detailed response (batch endpoint doesn't include Details)
+		if detailVuln.Details != "" && vulns[i].Workarounds == "" {
+			vulns[i].Workarounds = extractWorkarounds(detailVuln.Details)
+			if vulns[i].Workarounds != "" {
+				// Count lines in workarounds
+				workaroundLineCount := len(strings.Split(vulns[i].Workarounds, "\n"))
+				logger.Info("✓ Extracted workarounds for %s (%d lines)", vulns[i].OSVId, workaroundLineCount)
+			} else {
+				logger.Info("✗ No workarounds found in Details for %s (Details length: %d)", vulns[i].OSVId, len(detailVuln.Details))
+			}
+		} else {
+			if detailVuln.Details == "" {
+				logger.Info("✗ Details field empty for %s", vulns[i].OSVId)
+			}
+			if vulns[i].Workarounds != "" {
+				logger.Info("✓ Workarounds already populated for %s", vulns[i].OSVId)
+			}
 		}
 	}
 	logger.Info("Vulnerability enrichment complete")
@@ -464,38 +490,82 @@ func (c *OSVClient) queryVulnerabilityDetails(ctx context.Context, vulnID string
 	return &vuln, nil
 }
 
-// extractWorkarounds extracts the "Workarounds" section from OSV details text
+// extractWorkarounds extracts remediation guidance sections from OSV details text
+// Looks for sections like: Workarounds, Mitigation, Mitigation/Remediation, etc.
+// Preserves markdown formatting for rendering with glamour
 func extractWorkarounds(details string) string {
 	lines := strings.Split(details, "\n")
 
-	// Find the start of the Workarounds section
-	var workaroundLines []string
-	inWorkarounds := false
+	// Find the start of any remediation section (Workarounds, Mitigation, etc.)
+	var remediationLines []string
+	inSection := false
+	sectionHeaderIdx := -1
 
-	for _, line := range lines {
-		// Start of workarounds section
-		if strings.EqualFold(strings.TrimSpace(line), "Workarounds") {
-			inWorkarounds = true
+	for i, line := range lines {
+		trimmed := strings.TrimSpace(line)
+
+		// Start of remediation section - check if header contains remediation keywords
+		if !inSection && isRemediationHeader(trimmed) {
+			inSection = true
+			sectionHeaderIdx = i
+			remediationLines = append(remediationLines, line)
 			continue
 		}
 
-		// Stop if we hit another major section (indicated by a line with just capital letters followed by newline)
-		if inWorkarounds && strings.TrimSpace(line) != "" {
-			trimmed := strings.TrimSpace(line)
-			// Check if it looks like a new section header (all caps, 3-15 characters)
-			if len(trimmed) > 3 && len(trimmed) < 15 && strings.ToUpper(trimmed) == trimmed {
-				// But continue if it looks like part of content (has punctuation, numbers, or mixed case)
-				if !strings.ContainsAny(trimmed, ".,:-()0123456789") && !strings.ContainsAny(trimmed, "abcdefghijklmnopqrstuvwxyz") {
-					break
-				}
-			}
+		// Stop if we hit another major section header (### or ##)
+		if inSection && sectionHeaderIdx >= 0 && i > sectionHeaderIdx && isSectionHeader(trimmed) {
+			break
 		}
 
-		if inWorkarounds {
-			workaroundLines = append(workaroundLines, line)
+		if inSection {
+			remediationLines = append(remediationLines, line)
 		}
 	}
 
-	result := strings.TrimSpace(strings.Join(workaroundLines, "\n"))
+	result := strings.TrimSpace(strings.Join(remediationLines, "\n"))
 	return result
+}
+
+// isRemediationHeader checks if a line is a Markdown header for a remediation section
+// Matches various keywords: Workarounds, Mitigation, Remediation, Solutions, etc.
+func isRemediationHeader(line string) bool {
+	// Remove Markdown header markers (###, ##, #)
+	cleanLine := strings.TrimLeft(line, "#")
+	cleanLine = strings.TrimSpace(cleanLine)
+	lowerLine := strings.ToLower(cleanLine)
+
+	// Check for common remediation keywords (case-insensitive)
+	remediationKeywords := []string{
+		"workaround",
+		"workarounds",
+		"mitigation",
+		"remediation",
+		"recommendation",
+		"recommendations",
+		"solution",
+		"solutions",
+		"fix",
+		"fixes",
+		"patch",
+		"patches",
+		"upgrade",
+		"mitigation/remediation", // Combined keyword some CVEs use
+	}
+
+	for _, keyword := range remediationKeywords {
+		if strings.Contains(lowerLine, keyword) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// isSectionHeader checks if a line is a Markdown section header
+func isSectionHeader(line string) bool {
+	if !strings.HasPrefix(line, "#") {
+		return false
+	}
+	// Only major headers (##, ###, ####) mark section boundaries
+	return strings.HasPrefix(line, "##")
 }

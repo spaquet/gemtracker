@@ -17,8 +17,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/charmbracelet/bubbles/textinput"
-	tea "github.com/charmbracelet/bubbletea"
+	"charm.land/bubbles/v2/textinput"
+	tea "charm.land/bubbletea/v2"
 	"github.com/spaquet/gemtracker/internal/cache"
 	"github.com/spaquet/gemtracker/internal/gemfile"
 	"github.com/spaquet/gemtracker/internal/logger"
@@ -265,6 +265,9 @@ type Model struct {
 	CVECacheLoadedAt      time.Time                // When was cache loaded?
 	CVECacheTTL           time.Duration            // Default: 1 hour
 	CVELastError          string                   // Last error message if scan failed
+	CVEInfoCachedCVEID    string                   // CVE ID of currently cached modal content
+	CVEInfoCachedLines    []string                 // Cached rendered lines for modal
+	CVEInfoCachedWidth    int                      // Terminal width when modal was cached
 
 	// Sanity screen state
 	GemDirPath            string                 // Result of `gem env gemdir`
@@ -364,18 +367,12 @@ func NewModel(version, commit, date, projectPath string, noCache, verbose bool) 
 	}
 
 	// Configure search input
+	m.SearchInput = textinput.New()
 	m.SearchInput.Placeholder = "Search gems..."
-	m.SearchInput.PlaceholderStyle = textinput.NewModel().PlaceholderStyle
-	m.SearchInput.PromptStyle = textinput.NewModel().PromptStyle
-	m.SearchInput.TextStyle = textinput.NewModel().TextStyle
-	m.SearchInput.Cursor.Style = textinput.NewModel().Cursor.Style
 
 	// Configure path input
+	m.PathInput = textinput.New()
 	m.PathInput.Placeholder = "/path/to/project"
-	m.PathInput.PlaceholderStyle = textinput.NewModel().PlaceholderStyle
-	m.PathInput.PromptStyle = textinput.NewModel().PromptStyle
-	m.PathInput.TextStyle = textinput.NewModel().TextStyle
-	m.PathInput.Cursor.Style = textinput.NewModel().Cursor.Style
 
 	// Load the provided project path
 	m.loadProject(projectPath)
@@ -1051,6 +1048,16 @@ func performCVEScan(gems []*gemfile.Gem) tea.Cmd {
 			for i := range cacheEntry.Vulnerabilities {
 				vulnPtrs[i] = &cacheEntry.Vulnerabilities[i]
 			}
+
+			// Enrich cached data with workarounds and detailed CVSS/Severity
+			// This is needed because:
+			// 1. Old cached data may not have workarounds (feature was added later)
+			// 2. Enrichment fetches individual vulnerability details from OSV API
+			logger.Info("Enriching %d cached vulnerabilities with workarounds and details...", len(vulnPtrs))
+			osv := gemfile.NewOSVClient()
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			osv.EnrichVulnerabilitiesWithDetails(ctx, vulnPtrs)
 
 			return CVELoadFromCacheMsg{
 				Vulnerabilities: vulnPtrs,

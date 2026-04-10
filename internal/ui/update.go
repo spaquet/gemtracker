@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/getsentry/sentry-go"
 	"github.com/spaquet/gemtracker/internal/cache"
 	"github.com/spaquet/gemtracker/internal/gemfile"
@@ -67,7 +67,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case ProgressTickMsg:
 		return m.handleProgressTick()
 
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		return m.handleKeyPress(msg)
 
 	case AnalysisCompleteMsg:
@@ -139,7 +139,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 // Key Handling
 // ============================================================================
 
-func (m *Model) handleErrorViewKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m *Model) handleErrorViewKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if msg.String() == "enter" || msg.String() == "esc" {
 		m.CurrentView = m.ActiveTab
 		m.ErrorMessage = ""
@@ -147,7 +147,7 @@ func (m *Model) handleErrorViewKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m *Model) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m *Model) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	// Global keys
 	if msg.String() == "ctrl+c" || msg.String() == "q" {
 		m.Quitting = true
@@ -210,7 +210,7 @@ func (m *Model) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m *Model) handleGemListKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m *Model) handleGemListKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "up":
 		if m.GemListCursor > 0 {
@@ -326,7 +326,7 @@ func (m *Model) openGemURL(url string) {
 	_ = cmd.Start()
 }
 
-func (m *Model) handleGemDetailKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m *Model) handleGemDetailKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "esc":
 		m.CurrentView = m.ActiveTab
@@ -394,7 +394,7 @@ func (m *Model) handleGemDetailKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m *Model) handleSearchKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m *Model) handleSearchKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "tab":
 		m.CurrentView = ViewUpgradeable
@@ -456,7 +456,7 @@ func (m *Model) handleSearchKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 }
 
-func (m *Model) handleUpgradeableKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m *Model) handleUpgradeableKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "tab":
 		m.CurrentView = ViewCVE
@@ -504,7 +504,7 @@ func (m *Model) handleUpgradeableKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m *Model) handleCVEKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m *Model) handleCVEKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "tab":
 		m.CurrentView = ViewSanity
@@ -572,22 +572,27 @@ func (m *Model) handleCVEKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m *Model) handleCVEInfoKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m *Model) handleCVEInfoKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "esc":
 		m.CurrentView = ViewCVE
-		m.CVEInfoScroll = 0 // Reset scroll when closing
+		m.CVEInfoScroll = 0       // Reset scroll when closing
+		m.CVEInfoCachedCVEID = "" // Invalidate cache when closing
 		return m, nil
 
 	case "up":
-		if m.CVEInfoScroll > 0 {
-			m.CVEInfoScroll--
+		if len(m.CVEVulnerabilities) > 0 && m.CVECursor < len(m.CVEVulnerabilities) {
+			if m.CVEInfoScroll > 0 {
+				m.CVEInfoScroll--
+			}
 		}
 		return m, nil
 
 	case "down":
-		if m.CVEInfoScroll < m.getCVEInfoMaxScroll() {
-			m.CVEInfoScroll++
+		if len(m.CVEVulnerabilities) > 0 && m.CVECursor < len(m.CVEVulnerabilities) {
+			if m.CVEInfoScroll < m.getCVEInfoMaxScroll() {
+				m.CVEInfoScroll++
+			}
 		}
 		return m, nil
 
@@ -614,7 +619,7 @@ func (m *Model) handleCVEInfoKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m *Model) handleSanityKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m *Model) handleSanityKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	allGems := m.allGemsForSanity()
 
 	switch msg.String() {
@@ -681,7 +686,7 @@ func (m *Model) handleSanityKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m *Model) handleGemInfoKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m *Model) handleGemInfoKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "esc", "q":
 		m.ShowingGemInfo = false
@@ -773,14 +778,30 @@ func (m *Model) getCVEInfoMaxScroll() int {
 		lines = append(lines, "")
 	}
 
-	// Workarounds section
+	// Workarounds section (account for glamour rendering which may expand lines)
 	if vuln.Workarounds != "" {
-		lines = append(lines, "Workarounds:")
-		workaroundLines := strings.Split(vuln.Workarounds, "\n")
-		for _, wLine := range workaroundLines {
-			trimmed := strings.TrimSpace(wLine)
-			if trimmed != "" {
-				lines = append(lines, fmt.Sprintf("  %s", trimmed))
+		// Estimate width for glamour rendering
+		estimatedWidth := 60
+		if m.Width > 80 {
+			estimatedWidth = m.Width - 20
+		}
+
+		// Try to render with glamour to get accurate line count
+		renderer := NewMarkdownRenderer(estimatedWidth)
+		renderedWorkarounds, err := renderer.Render(vuln.Workarounds)
+		if err == nil {
+			// Use rendered markdown lines for accurate count
+			renderedLines := strings.Split(strings.TrimSpace(renderedWorkarounds), "\n")
+			lines = append(lines, renderedLines...)
+		} else {
+			// Fallback: estimate with plain lines
+			lines = append(lines, "Workarounds:")
+			workaroundLines := strings.Split(vuln.Workarounds, "\n")
+			for _, wLine := range workaroundLines {
+				trimmed := strings.TrimSpace(wLine)
+				if trimmed != "" {
+					lines = append(lines, fmt.Sprintf("  %s", trimmed))
+				}
 			}
 		}
 		lines = append(lines, "")
@@ -828,7 +849,7 @@ func (m *Model) getCVEInfoMaxScroll() int {
 	return maxScroll
 }
 
-func (m *Model) handleProjectInfoKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m *Model) handleProjectInfoKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "tab":
 		m.CurrentView = ViewGemList
@@ -863,7 +884,7 @@ func (m *Model) ensureCVEScanStarted() (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m *Model) handleFilterMenuKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m *Model) handleFilterMenuKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	// Calculate total filter options: 1 for upgradable + number of groups
 	totalOptions := 1 + len(m.AvailableGroups)
 
@@ -880,7 +901,7 @@ func (m *Model) handleFilterMenuKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
-	case " ":
+	case "space":
 		// Toggle the selected filter
 		if m.FilterMenuCursor == 0 {
 			// Upgradable filter
@@ -903,7 +924,7 @@ func (m *Model) handleFilterMenuKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m *Model) handleCVEFilterMenuKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m *Model) handleCVEFilterMenuKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	// 4 severity options + 1 direct option + 1 separator + 1 close = 7 items
 	totalOptions := 6
 
@@ -920,7 +941,7 @@ func (m *Model) handleCVEFilterMenuKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
-	case " ":
+	case "space":
 		// Toggle the selected filter
 		switch m.CVEFilterMenuCursor {
 		case 0: // CRITICAL
@@ -947,7 +968,7 @@ func (m *Model) handleCVEFilterMenuKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m *Model) handlePathInputKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m *Model) handlePathInputKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "enter":
 		path := m.PathInput.Value()

@@ -8,14 +8,24 @@ import (
 	"strings"
 	"time"
 
-	"github.com/charmbracelet/lipgloss"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/spaquet/gemtracker/internal/gemfile"
+	"github.com/spaquet/gemtracker/internal/logger"
 )
 
 // ============================================================================
 // Helper Methods
 // ============================================================================
+
+// minInt returns the minimum of two integers
+func minInt(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
 
 // wrapText wraps a string to the specified width, maintaining word boundaries
 func wrapText(text string, width int) []string {
@@ -109,47 +119,52 @@ func placeOverlay(startRow, startCol int, fg, bg string) string {
 // View Rendering
 // ============================================================================
 
-func (m *Model) View() string {
+func (m *Model) View() tea.View {
 	defer func() {
 		if r := recover(); r != nil {
 			fmt.Fprintf(os.Stderr, "PANIC in View(): %v\n", r)
 		}
 	}()
 
+	var content string
 	if m.Quitting {
-		return ""
+		content = ""
+	} else {
+		switch m.CurrentView {
+		case ViewLoading:
+			content = m.viewLoading()
+		case ViewGemList:
+			content = m.viewGemList()
+		case ViewGemDetail:
+			content = m.viewGemDetail()
+		case ViewSearch:
+			content = m.viewSearch()
+		case ViewUpgradeable:
+			content = m.viewUpgradeable()
+		case ViewCVE:
+			content = m.viewCVE()
+		case ViewSanity:
+			content = m.viewSanity()
+		case ViewProjectInfo:
+			content = m.viewProjectInfo()
+		case ViewFilterMenu:
+			content = m.viewFilterMenu()
+		case ViewCVEFilterMenu:
+			content = m.viewCVEFilterMenu()
+		case ViewCVEInfo:
+			content = m.viewCVEInfo()
+		case ViewSelectPath:
+			content = m.viewSelectPath()
+		case ViewError:
+			content = m.viewError()
+		default:
+			content = m.viewGemList()
+		}
 	}
 
-	switch m.CurrentView {
-	case ViewLoading:
-		return m.viewLoading()
-	case ViewGemList:
-		return m.viewGemList()
-	case ViewGemDetail:
-		return m.viewGemDetail()
-	case ViewSearch:
-		return m.viewSearch()
-	case ViewUpgradeable:
-		return m.viewUpgradeable()
-	case ViewCVE:
-		return m.viewCVE()
-	case ViewSanity:
-		return m.viewSanity()
-	case ViewProjectInfo:
-		return m.viewProjectInfo()
-	case ViewFilterMenu:
-		return m.viewFilterMenu()
-	case ViewCVEFilterMenu:
-		return m.viewCVEFilterMenu()
-	case ViewCVEInfo:
-		return m.viewCVEInfo()
-	case ViewSelectPath:
-		return m.viewSelectPath()
-	case ViewError:
-		return m.viewError()
-	default:
-		return m.viewGemList()
-	}
+	v := tea.NewView(content)
+	v.AltScreen = true
+	return v
 }
 
 // ============================================================================
@@ -2252,6 +2267,13 @@ func (m *Model) viewCVEInfo() string {
 
 func (m *Model) renderCVEInfoModalBox() string {
 	vuln := m.CVEVulnerabilities[m.CVECursor]
+
+	// Check if we have cached content for this CVE and width hasn't changed
+	if m.CVEInfoCachedCVEID == vuln.CVE && m.CVEInfoCachedWidth == m.Width && len(m.CVEInfoCachedLines) > 0 {
+		// Use cached lines to avoid re-rendering on every keystroke
+		return m.renderCVEInfoModalWithLines(m.CVEInfoCachedLines)
+	}
+
 	gemType, group := m.getCVEGemInfo(vuln.GemName)
 
 	// Build content lines
@@ -2311,20 +2333,35 @@ func (m *Model) renderCVEInfoModalBox() string {
 		lines = append(lines, "")
 	}
 
-	// Workarounds section (if no direct upgrade available or as additional guidance)
+	// Workarounds section rendered with glamour for markdown formatting
 	if vuln.Workarounds != "" {
-		lines = append(lines, "Workarounds:")
-		// Split workaround text into lines and indent them
-		workaroundLines := strings.Split(vuln.Workarounds, "\n")
-		for _, wLine := range workaroundLines {
-			trimmed := strings.TrimSpace(wLine)
-			if trimmed != "" {
-				// Wrap long lines for better display
-				wrapped := wrapText(trimmed, 60)
-				for _, wrappedLine := range wrapped {
-					lines = append(lines, fmt.Sprintf("  %s", wrappedLine))
+		// Estimate modal width for glamour rendering
+		estimatedWidth := 60
+		if m.Width > 80 {
+			estimatedWidth = m.Width - 20
+		}
+
+		// Render workarounds markdown with glamour
+		renderer := NewMarkdownRenderer(estimatedWidth)
+		renderedWorkarounds, err := renderer.Render(vuln.Workarounds)
+		if err != nil {
+			logger.Warn("Glamour rendering failed for %s: %v, using fallback", vuln.CVE, err)
+			// Fallback to plain text if rendering fails
+			lines = append(lines, "Remediation:")
+			workaroundLines := strings.Split(vuln.Workarounds, "\n")
+			for _, wLine := range workaroundLines {
+				trimmed := strings.TrimSpace(wLine)
+				if trimmed != "" {
+					wrapped := wrapText(trimmed, 60)
+					for _, wrappedLine := range wrapped {
+						lines = append(lines, fmt.Sprintf("  %s", wrappedLine))
+					}
 				}
 			}
+		} else {
+			// Add rendered markdown (trim trailing newlines)
+			renderedLines := strings.Split(strings.TrimSpace(renderedWorkarounds), "\n")
+			lines = append(lines, renderedLines...)
 		}
 		lines = append(lines, "")
 	}
@@ -2357,6 +2394,17 @@ func (m *Model) renderCVEInfoModalBox() string {
 		}
 	}
 
+	// Cache the lines for this CVE to avoid re-rendering on every keystroke
+	m.CVEInfoCachedCVEID = vuln.CVE
+	m.CVEInfoCachedLines = lines
+	m.CVEInfoCachedWidth = m.Width
+
+	return m.renderCVEInfoModalWithLines(lines)
+}
+
+// renderCVEInfoModalWithLines renders the CVE modal using pre-built lines
+// This is extracted to avoid re-rendering on every keystroke during scrolling
+func (m *Model) renderCVEInfoModalWithLines(lines []string) string {
 	// Create the modal box with border
 	content := strings.Join(lines, "\n")
 
@@ -2376,32 +2424,25 @@ func (m *Model) renderCVEInfoModalBox() string {
 		availableHeight = 10
 	}
 
-	// If content fits within available height, no scrolling needed
-	if len(lines) <= availableHeight {
-		// Apply border and styling
-		boxStyle := lipgloss.NewStyle().
-			Border(lipgloss.RoundedBorder()).
-			BorderForeground(lipgloss.Color(ColorBorderActive)).
-			Background(lipgloss.Color(ColorSurface)).
-			Padding(1, 2)
-
-		return boxStyle.Width(modalWidth).Render(content)
+	// Clamp scroll position to valid range
+	maxScroll := len(lines) - availableHeight
+	if maxScroll < 0 {
+		maxScroll = 0
+	}
+	if m.CVEInfoScroll > maxScroll {
+		m.CVEInfoScroll = maxScroll
 	}
 
 	// Clip content to fit within available height
 	clippedLines := lines
-	if m.CVEInfoScroll > 0 {
-		if m.CVEInfoScroll >= len(lines) {
-			m.CVEInfoScroll = len(lines) - availableHeight
-			if m.CVEInfoScroll < 0 {
-				m.CVEInfoScroll = 0
-			}
+	if m.CVEInfoScroll > 0 && len(lines) > availableHeight {
+		endIdx := m.CVEInfoScroll + availableHeight
+		if endIdx > len(lines) {
+			endIdx = len(lines)
 		}
-		clippedLines = lines[m.CVEInfoScroll:]
-	}
-
-	if len(clippedLines) > availableHeight {
-		clippedLines = clippedLines[:availableHeight]
+		clippedLines = lines[m.CVEInfoScroll:endIdx]
+	} else if len(lines) > availableHeight {
+		clippedLines = lines[:availableHeight]
 	}
 
 	clippedContent := strings.Join(clippedLines, "\n")
