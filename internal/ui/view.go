@@ -1533,16 +1533,6 @@ func (m *Model) renderProjectInfo(height int) string {
 	sections = append(sections, m.formatInfoLine("Direct Dependencies", fmt.Sprintf("%d", m.FirstLevelCount)))
 	sections = append(sections, m.formatInfoLine("Transitive Dependencies", fmt.Sprintf("%d", m.TransitiveDeps)))
 
-	// Vulnerabilities summary
-	if len(m.VulnerableGems) > 0 {
-		sections = append(sections, "")
-		vulnLabel := fmt.Sprintf("⚠ Vulnerabilities Found (%d)", len(m.VulnerableGems))
-		vulnStyle := lipgloss.NewStyle().
-			Bold(true).
-			Foreground(lipgloss.Color(ColorDanger))
-		sections = append(sections, vulnStyle.Render(vulnLabel))
-	}
-
 	// Insecure sources summary
 	if len(m.InsecureSourceGems) > 0 {
 		sections = append(sections, "")
