@@ -265,6 +265,9 @@ type Model struct {
 	CVECacheLoadedAt      time.Time                // When was cache loaded?
 	CVECacheTTL           time.Duration            // Default: 1 hour
 	CVELastError          string                   // Last error message if scan failed
+	CVEInfoCachedCVEID    string                   // CVE ID of currently cached modal content
+	CVEInfoCachedLines    []string                 // Cached rendered lines for modal
+	CVEInfoCachedWidth    int                      // Terminal width when modal was cached
 
 	// Sanity screen state
 	GemDirPath            string                 // Result of `gem env gemdir`

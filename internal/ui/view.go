@@ -2261,6 +2261,13 @@ func (m *Model) viewCVEInfo() string {
 
 func (m *Model) renderCVEInfoModalBox() string {
 	vuln := m.CVEVulnerabilities[m.CVECursor]
+
+	// Check if we have cached content for this CVE and width hasn't changed
+	if m.CVEInfoCachedCVEID == vuln.CVE && m.CVEInfoCachedWidth == m.Width && len(m.CVEInfoCachedLines) > 0 {
+		// Use cached lines to avoid re-rendering on every keystroke
+		return m.renderCVEInfoModalWithLines(m.CVEInfoCachedLines)
+	}
+
 	gemType, group := m.getCVEGemInfo(vuln.GemName)
 
 	// Build content lines
@@ -2322,9 +2329,6 @@ func (m *Model) renderCVEInfoModalBox() string {
 
 	// Workarounds section rendered with glamour for markdown formatting
 	if vuln.Workarounds != "" {
-		logger.Info("Rendering workarounds for %s: %d chars, first 100: %s...", vuln.CVE, len(vuln.Workarounds),
-			strings.TrimSpace(vuln.Workarounds)[:minInt(100, len(vuln.Workarounds))])
-
 		// Estimate modal width for glamour rendering
 		estimatedWidth := 60
 		if m.Width > 80 {
@@ -2337,7 +2341,7 @@ func (m *Model) renderCVEInfoModalBox() string {
 		if err != nil {
 			logger.Warn("Glamour rendering failed for %s: %v, using fallback", vuln.CVE, err)
 			// Fallback to plain text if rendering fails
-			lines = append(lines, "Workarounds:")
+			lines = append(lines, "Remediation:")
 			workaroundLines := strings.Split(vuln.Workarounds, "\n")
 			for _, wLine := range workaroundLines {
 				trimmed := strings.TrimSpace(wLine)
@@ -2351,7 +2355,6 @@ func (m *Model) renderCVEInfoModalBox() string {
 		} else {
 			// Add rendered markdown (trim trailing newlines)
 			renderedLines := strings.Split(strings.TrimSpace(renderedWorkarounds), "\n")
-			logger.Info("Glamour rendered %d lines for workarounds", len(renderedLines))
 			lines = append(lines, renderedLines...)
 		}
 		lines = append(lines, "")
@@ -2385,6 +2388,17 @@ func (m *Model) renderCVEInfoModalBox() string {
 		}
 	}
 
+	// Cache the lines for this CVE to avoid re-rendering on every keystroke
+	m.CVEInfoCachedCVEID = vuln.CVE
+	m.CVEInfoCachedLines = lines
+	m.CVEInfoCachedWidth = m.Width
+
+	return m.renderCVEInfoModalWithLines(lines)
+}
+
+// renderCVEInfoModalWithLines renders the CVE modal using pre-built lines
+// This is extracted to avoid re-rendering on every keystroke during scrolling
+func (m *Model) renderCVEInfoModalWithLines(lines []string) string {
 	// Create the modal box with border
 	content := strings.Join(lines, "\n")
 
