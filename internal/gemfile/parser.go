@@ -75,6 +75,88 @@ func FindGemfile(dir string) string {
 	return ""
 }
 
+// parseState tracks the current parsing state while processing a Gemfile.lock.
+type parseState struct {
+	inSection     string
+	currentSource string
+	currentGem    *Gem
+}
+
+// resolveLockFilePath resolves a path to a lock file, handling tilde expansion and directory lookup.
+func resolveLockFilePath(path string) (string, error) {
+	// Expand ~ if needed
+	if strings.HasPrefix(path, "~") {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", fmt.Errorf("failed to get home directory: %w", err)
+		}
+		path = filepath.Join(home, path[1:])
+	}
+
+	// Check if it's a directory, if so look for Gemfile.lock
+	info, err := os.Stat(path)
+	if err != nil {
+		return "", fmt.Errorf("path does not exist: %w", err)
+	}
+
+	if info.IsDir() {
+		lockFile := FindLockFile(path)
+		if lockFile == "" {
+			logger.Warn("No lock file found (gems.locked or Gemfile.lock) in %s", path)
+			return "", fmt.Errorf("no lock file found (gems.locked or Gemfile.lock) in %s", path)
+		}
+		logger.Info("Using lock file: %s", filepath.Base(lockFile))
+		return lockFile, nil
+	}
+
+	return path, nil
+}
+
+// processParserLine processes a single line from the Gemfile.lock file.
+// Returns true if parsing should break, false otherwise.
+func processParserLine(line string, gf *Gemfile, state *parseState, gemLineRegex, dependencyRegex, dependencyItemRegex, remoteRegex *regexp.Regexp) bool {
+	// Check for section headers
+	if newSection, isSectionHeader := detectSection(line); isSectionHeader {
+		if newSection == "BUNDLED" {
+			return true
+		}
+		state.inSection = newSection
+		if newSection == "GEM" {
+			state.currentSource = "https://rubygems.org/"
+		}
+		return false
+	}
+
+	if shouldSkipLine(line, state.inSection) {
+		return false
+	}
+
+	// Parse remote lines in GIT section
+	if state.inSection == "GIT" {
+		remoteMatches := remoteRegex.FindStringSubmatch(line)
+		if len(remoteMatches) > 0 {
+			state.currentSource = strings.TrimSpace(remoteMatches[1])
+			return false
+		}
+	}
+
+	// Parse GIT and GEM sections
+	if state.inSection == "GIT" || state.inSection == "GEM" {
+		state.currentGem = parseGemOrGitLine(line, gf, state.currentGem, gemLineRegex, dependencyRegex)
+		if state.currentGem != nil && state.currentGem.Source == "" {
+			state.currentGem.Source = state.currentSource
+			state.currentGem.InsecureSource = isInsecureSource(state.currentSource)
+		}
+	}
+
+	// Parse DEPENDENCIES section
+	if state.inSection == "DEPENDENCIES" {
+		parseDependenciesLine(line, gf, dependencyItemRegex)
+	}
+
+	return false
+}
+
 // detectSection checks if a line is a Gemfile.lock section header and returns the section name
 // and a boolean indicating whether it's a section header.
 func detectSection(line string) (string, bool) {
@@ -181,98 +263,40 @@ func parseDependenciesLine(line string, gf *Gemfile, depItemRegex *regexp.Regexp
 // a lock file in that directory. Expands ~/ in paths. Returns an error if the file cannot be
 // found, opened, or parsed.
 func Parse(path string) (*Gemfile, error) {
-	// Expand ~ if needed
-	if strings.HasPrefix(path, "~") {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return nil, fmt.Errorf("failed to get home directory: %w", err)
-		}
-		path = filepath.Join(home, path[1:])
-	}
-
-	// Check if it's a directory, if so look for Gemfile.lock
-	info, err := os.Stat(path)
+	resolvedPath, err := resolveLockFilePath(path)
 	if err != nil {
-		return nil, fmt.Errorf("path does not exist: %w", err)
+		return nil, err
 	}
 
-	if info.IsDir() {
-		lockFile := FindLockFile(path)
-		if lockFile == "" {
-			logger.Warn("No lock file found (gems.locked or Gemfile.lock) in %s", path)
-			return nil, fmt.Errorf("no lock file found (gems.locked or Gemfile.lock) in %s", path)
-		}
-		path = lockFile
-		logger.Info("Using lock file: %s", filepath.Base(lockFile))
-	}
-
-	// Read the file
-	file, err := os.Open(path)
+	file, err := os.Open(resolvedPath)
 	if err != nil {
-		logger.Error("Failed to open lock file %s: %v", path, err)
+		logger.Error("Failed to open lock file %s: %v", resolvedPath, err)
 		return nil, fmt.Errorf("failed to open lock file: %w", err)
 	}
 	defer file.Close()
 
 	gf := &Gemfile{
-		Path:           path,
+		Path:           resolvedPath,
 		Gems:           make(map[string]*Gem),
 		FirstLevelGems: []string{},
 	}
 
 	scanner := bufio.NewScanner(file)
-	inSection := ""
-	currentSource := "https://rubygems.org/" // Default source
+	state := &parseState{
+		inSection:     "",
+		currentSource: "https://rubygems.org/",
+		currentGem:    nil,
+	}
 
 	gemLineRegex := regexp.MustCompile(`(?i)^\s{4}([a-z0-9_-]+)\s+\(([^)]+)\)`)
 	dependencyRegex := regexp.MustCompile(`(?i)^\s{6}([a-z0-9_-]+)`)
 	dependencyItemRegex := regexp.MustCompile(`(?i)^\s{2}([a-z0-9_-]+)`)
 	remoteRegex := regexp.MustCompile(`^\s{2}remote:\s+(.+)$`)
 
-	var currentGem *Gem
-
 	for scanner.Scan() {
 		line := scanner.Text()
-
-		// Check for section headers
-		if newSection, isSectionHeader := detectSection(line); isSectionHeader {
-			if newSection == "BUNDLED" {
-				break
-			}
-			inSection = newSection
-			// Reset source to default when entering new section
-			if newSection == "GEM" {
-				currentSource = "https://rubygems.org/"
-			}
-			continue
-		}
-
-		if shouldSkipLine(line, inSection) {
-			continue
-		}
-
-		// Parse remote lines in GIT section
-		if inSection == "GIT" {
-			remoteMatches := remoteRegex.FindStringSubmatch(line)
-			if len(remoteMatches) > 0 {
-				currentSource = strings.TrimSpace(remoteMatches[1])
-				continue
-			}
-		}
-
-		// Parse GIT and GEM sections
-		if inSection == "GIT" || inSection == "GEM" {
-			currentGem = parseGemOrGitLine(line, gf, currentGem, gemLineRegex, dependencyRegex)
-			// Set source on newly created gem
-			if currentGem != nil && currentGem.Source == "" {
-				currentGem.Source = currentSource
-				currentGem.InsecureSource = isInsecureSource(currentSource)
-			}
-		}
-
-		// Parse DEPENDENCIES section
-		if inSection == "DEPENDENCIES" {
-			parseDependenciesLine(line, gf, dependencyItemRegex)
+		if shouldBreak := processParserLine(line, gf, state, gemLineRegex, dependencyRegex, dependencyItemRegex, remoteRegex); shouldBreak {
+			break
 		}
 	}
 

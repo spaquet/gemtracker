@@ -1145,7 +1145,22 @@ func (m *Model) renderUpgradeableTable(height int) string {
 	}
 
 	allUpgradeable := m.allUpgradeableGems()
-	if len(allUpgradeable) == 0 {
+
+	// If checking for updates and no upgradeable gems yet, show loading indicator
+	if len(allUpgradeable) == 0 && m.OutdatedLoading {
+		frames := []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
+		frameIdx := (time.Now().UnixNano() / 80000000) % int64(len(frames))
+		spinner := frames[frameIdx]
+		doneCount := len(m.FirstLevelGems) - len(m.OutdatedPending)
+		msg := fmt.Sprintf("%s Checking for updates... (%d/%d)", spinner, doneCount, len(m.FirstLevelGems))
+		return lipgloss.NewStyle().
+			Foreground(lipgloss.Color(ColorWarning)).
+			Padding(2, 2).
+			Render(msg)
+	}
+
+	// If no upgradeable gems found and not checking, show clean state
+	if len(allUpgradeable) == 0 && !m.OutdatedLoading {
 		msg := "All gems are up to date! ✓"
 		return lipgloss.NewStyle().
 			Foreground(lipgloss.Color(ColorSuccess)).

@@ -18,41 +18,9 @@ import (
 // are extracted but cannot be compared against actual installed versions without Gemfile.lock.
 // Returns a Gemfile structure with all gems marked as first-level dependencies.
 func ParseGemspec(path string) (*Gemfile, error) {
-	// Expand ~ if needed
-	if strings.HasPrefix(path, "~") {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return nil, fmt.Errorf("failed to get home directory: %w", err)
-		}
-		path = filepath.Join(home, path[1:])
-	}
-
-	// Check if it's a directory, if so look for *.gemspec
-	info, err := os.Stat(path)
+	gemspecPath, err := resolveGemspecPath(path)
 	if err != nil {
-		return nil, fmt.Errorf("path does not exist: %w", err)
-	}
-
-	var gemspecPath string
-	if info.IsDir() {
-		// Look for any .gemspec file in the directory
-		files, err := os.ReadDir(path)
-		if err != nil {
-			return nil, fmt.Errorf("failed to read directory: %w", err)
-		}
-
-		for _, file := range files {
-			if !file.IsDir() && strings.HasSuffix(file.Name(), ".gemspec") {
-				gemspecPath = filepath.Join(path, file.Name())
-				break
-			}
-		}
-
-		if gemspecPath == "" {
-			return nil, fmt.Errorf("no .gemspec file found in %s", path)
-		}
-	} else {
-		gemspecPath = path
+		return nil, err
 	}
 
 	file, err := os.Open(gemspecPath)
@@ -73,65 +41,12 @@ func ParseGemspec(path string) (*Gemfile, error) {
 	scanner := bufio.NewScanner(file)
 
 	// Regex patterns for dependency declarations
-	// Matches: add_runtime_dependency 'gem_name', '>= 1.0' or add_development_dependency, etc.
-	// Also matches spec.add_runtime_dependency and s.add_runtime_dependency patterns
 	runtimeDepRegex := regexp.MustCompile(`(?:spec\.|s\.)?add_(?:runtime_)?dependency\s+['"]([^'"]+)['"]\s*(?:,\s*['"]([^'"]+)['"])?`)
 	developmentDepRegex := regexp.MustCompile(`(?:spec\.|s\.)?add_development_dependency\s+['"]([^'"]+)['"]\s*(?:,\s*['"]([^'"]+)['"])?`)
 
 	for scanner.Scan() {
 		line := scanner.Text()
-
-		// Skip comments and empty lines
-		trimmed := strings.TrimSpace(line)
-		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
-			continue
-		}
-
-		// Check for development dependency
-		matches := developmentDepRegex.FindStringSubmatch(line)
-		if len(matches) > 0 {
-			gemName := strings.ToLower(matches[1])
-			version := ""
-			if len(matches) > 2 && matches[2] != "" {
-				version = matches[2]
-			}
-
-			gem := &Gem{
-				Name:         gemName,
-				Version:      version,
-				Dependencies: []string{},
-				Groups:       []string{"development"},
-				IsFirstLevel: true,
-			}
-
-			gf.Gems[gemName] = gem
-			gf.FirstLevelGems = append(gf.FirstLevelGems, gemName)
-			continue
-		}
-
-		// Check for runtime dependency (including plain add_dependency)
-		matches = runtimeDepRegex.FindStringSubmatch(line)
-		if len(matches) > 0 {
-			gemName := strings.ToLower(matches[1])
-			version := ""
-			if len(matches) > 2 && matches[2] != "" {
-				version = matches[2]
-			}
-
-			// Only add if not already added as development dependency
-			if _, exists := gf.Gems[gemName]; !exists {
-				gem := &Gem{
-					Name:         gemName,
-					Version:      version,
-					Dependencies: []string{},
-					Groups:       []string{"production"},
-					IsFirstLevel: true,
-				}
-
-				gf.Gems[gemName] = gem
-				gf.FirstLevelGems = append(gf.FirstLevelGems, gemName)
-			}
-		}
+		processGemspecLine(line, gf, runtimeDepRegex, developmentDepRegex)
 	}
 
 	if err := scanner.Err(); err != nil {
@@ -145,6 +60,90 @@ func ParseGemspec(path string) (*Gemfile, error) {
 		countGemsByGroup(gf, "development"))
 
 	return gf, nil
+}
+
+// resolveGemspecPath resolves a path to a gemspec file, handling tilde expansion and directory lookup.
+func resolveGemspecPath(path string) (string, error) {
+	// Expand ~ if needed
+	if strings.HasPrefix(path, "~") {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", fmt.Errorf("failed to get home directory: %w", err)
+		}
+		path = filepath.Join(home, path[1:])
+	}
+
+	// Check if it's a directory, if so look for *.gemspec
+	info, err := os.Stat(path)
+	if err != nil {
+		return "", fmt.Errorf("path does not exist: %w", err)
+	}
+
+	if info.IsDir() {
+		return findGemspecInDir(path)
+	}
+
+	return path, nil
+}
+
+// findGemspecInDir searches for a .gemspec file in the given directory.
+func findGemspecInDir(path string) (string, error) {
+	files, err := os.ReadDir(path)
+	if err != nil {
+		return "", fmt.Errorf("failed to read directory: %w", err)
+	}
+
+	for _, file := range files {
+		if !file.IsDir() && strings.HasSuffix(file.Name(), ".gemspec") {
+			return filepath.Join(path, file.Name()), nil
+		}
+	}
+
+	return "", fmt.Errorf("no .gemspec file found in %s", path)
+}
+
+// processGemspecLine processes a single line from a gemspec file and adds dependencies to the gemfile.
+func processGemspecLine(line string, gf *Gemfile, runtimeDepRegex, developmentDepRegex *regexp.Regexp) {
+	// Skip comments and empty lines
+	trimmed := strings.TrimSpace(line)
+	if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+		return
+	}
+
+	// Check for development dependency
+	if matches := developmentDepRegex.FindStringSubmatch(line); len(matches) > 0 {
+		addGemFromMatch(gf, matches, []string{"development"})
+		return
+	}
+
+	// Check for runtime dependency (including plain add_dependency)
+	if matches := runtimeDepRegex.FindStringSubmatch(line); len(matches) > 0 {
+		// Only add if not already added as development dependency
+		gemName := strings.ToLower(matches[1])
+		if _, exists := gf.Gems[gemName]; !exists {
+			addGemFromMatch(gf, matches, []string{"production"})
+		}
+	}
+}
+
+// addGemFromMatch creates a gem from a regex match and adds it to the gemfile.
+func addGemFromMatch(gf *Gemfile, matches []string, groups []string) {
+	gemName := strings.ToLower(matches[1])
+	version := ""
+	if len(matches) > 2 && matches[2] != "" {
+		version = matches[2]
+	}
+
+	gem := &Gem{
+		Name:         gemName,
+		Version:      version,
+		Dependencies: []string{},
+		Groups:       groups,
+		IsFirstLevel: true,
+	}
+
+	gf.Gems[gemName] = gem
+	gf.FirstLevelGems = append(gf.FirstLevelGems, gemName)
 }
 
 // countGemsByGroup returns the count of gems in a specific group.
