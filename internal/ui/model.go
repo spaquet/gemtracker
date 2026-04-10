@@ -257,7 +257,7 @@ type Model struct {
 	TotalGems          int
 	FirstLevelCount    int
 	TransitiveDeps     int
-	FrameworkDetected  string // The name of the framework detected
+	FrameworkDetected  string         // The name of the framework detected
 	InsecureSourceGems []*gemfile.Gem // Gems sourced from insecure protocols (http://, git://)
 
 	// Path selection modal
