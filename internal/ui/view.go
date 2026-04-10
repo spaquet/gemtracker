@@ -1517,7 +1517,9 @@ func (m *Model) formatCVERow(vuln *gemfile.Vulnerability, selected bool, rowNum 
 		if stale {
 			commentIcon = "⚠"
 		} else {
-			commentIcon = "💬"
+			// Style "C" with blue color
+			cStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(ColorPrimary)).Bold(true)
+			commentIcon = cStyle.Render("C")
 		}
 	} else {
 		commentIcon = ""
