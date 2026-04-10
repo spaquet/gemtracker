@@ -580,23 +580,33 @@ func (m *Model) handleCVEInfoKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case "up":
-		if m.CVEInfoScroll > 0 {
-			m.CVEInfoScroll--
+		if len(m.CVEVulnerabilities) > 0 && m.CVECursor < len(m.CVEVulnerabilities) {
+			maxScroll := m.getCVEInfoMaxScroll()
+			logger.Info("CVE Info: up pressed - scroll %d/%d", m.CVEInfoScroll, maxScroll)
+			if m.CVEInfoScroll > 0 {
+				m.CVEInfoScroll--
+			}
 		}
 		return m, nil
 
 	case "down":
-		if m.CVEInfoScroll < m.getCVEInfoMaxScroll() {
-			m.CVEInfoScroll++
+		if len(m.CVEVulnerabilities) > 0 && m.CVECursor < len(m.CVEVulnerabilities) {
+			maxScroll := m.getCVEInfoMaxScroll()
+			logger.Info("CVE Info: down pressed - scroll %d/%d", m.CVEInfoScroll, maxScroll)
+			if m.CVEInfoScroll < maxScroll {
+				m.CVEInfoScroll++
+			}
 		}
 		return m, nil
 
 	case "home":
 		m.CVEInfoScroll = 0
+		logger.Info("CVE Info: home pressed - scroll to 0")
 		return m, nil
 
 	case "end":
 		m.CVEInfoScroll = m.getCVEInfoMaxScroll()
+		logger.Info("CVE Info: end pressed - scroll to max")
 		return m, nil
 
 	case "o":
@@ -841,6 +851,8 @@ func (m *Model) getCVEInfoMaxScroll() int {
 	if maxScroll < 0 {
 		maxScroll = 0
 	}
+	logger.Info("CVE Info Max Scroll: totalLines=%d, availHeight=%d, termHeight=%d, maxScroll=%d, workarounds=%d chars",
+		len(lines), availableHeight, m.Height, maxScroll, len(vuln.Workarounds))
 	return maxScroll
 }
 

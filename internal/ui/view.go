@@ -11,11 +11,20 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/spaquet/gemtracker/internal/gemfile"
+	"github.com/spaquet/gemtracker/internal/logger"
 )
 
 // ============================================================================
 // Helper Methods
 // ============================================================================
+
+// minInt returns the minimum of two integers
+func minInt(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
 
 // wrapText wraps a string to the specified width, maintaining word boundaries
 func wrapText(text string, width int) []string {
@@ -2313,6 +2322,9 @@ func (m *Model) renderCVEInfoModalBox() string {
 
 	// Workarounds section rendered with glamour for markdown formatting
 	if vuln.Workarounds != "" {
+		logger.Info("Rendering workarounds for %s: %d chars, first 100: %s...", vuln.CVE, len(vuln.Workarounds),
+			strings.TrimSpace(vuln.Workarounds)[:minInt(100, len(vuln.Workarounds))])
+
 		// Estimate modal width for glamour rendering
 		estimatedWidth := 60
 		if m.Width > 80 {
@@ -2323,6 +2335,7 @@ func (m *Model) renderCVEInfoModalBox() string {
 		renderer := NewMarkdownRenderer(estimatedWidth)
 		renderedWorkarounds, err := renderer.Render(vuln.Workarounds)
 		if err != nil {
+			logger.Warn("Glamour rendering failed for %s: %v, using fallback", vuln.CVE, err)
 			// Fallback to plain text if rendering fails
 			lines = append(lines, "Workarounds:")
 			workaroundLines := strings.Split(vuln.Workarounds, "\n")
@@ -2338,6 +2351,7 @@ func (m *Model) renderCVEInfoModalBox() string {
 		} else {
 			// Add rendered markdown (trim trailing newlines)
 			renderedLines := strings.Split(strings.TrimSpace(renderedWorkarounds), "\n")
+			logger.Info("Glamour rendered %d lines for workarounds", len(renderedLines))
 			lines = append(lines, renderedLines...)
 		}
 		lines = append(lines, "")
