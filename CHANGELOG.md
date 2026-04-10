@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v1.1.8] - 2026-04-09
+
+### Added
+- **Report Generation Progress Feedback** - Real-time progress indicators during report analysis
+  - Parse status with gem count displayed
+  - Live counter during outdated gem checks showing (N/total) progress
+  - Vulnerability scan cache hit/miss detection
+  - Final report destination confirmation
+  - All progress output goes to stderr to prevent polluting report content
+- **Redesigned Text Report Layout** - Improved readability and structure for `--report text` output
+  - Gems grouped by bundle group (default, development, test, staging, production, etc.)
+  - Clear [direct] vs [transitive] dependency markers
+  - Shows reverse dependencies: "[used by: X, Y, Z]" indicating which gems depend on each gem
+  - Gem groups marked with "-" when not identified (typically transitive gems)
+  - Applied to both "OUTDATED GEMS" and "ALL GEMS" sections
+- **Output File Overwrite Protection** - Interactive prompt when report output file already exists
+  - Options to Replace, Cancel, or specify a new filename
+  - Automatically preserves file extension when entering new filename
+  - Prevents accidental loss of existing report files
+- **Redesigned Vulnerable Gems Section** - Enhanced clarity for vulnerability information in text reports
+  - Full OSV advisory URL (https://osv.dev/vulnerability/GHSA-...) displayed for each vulnerability
+  - Shows bundle group membership (default, development, test, etc.)
+  - Clear [direct] vs [transitive] markers to indicate gem scope
+  - For transitive vulnerabilities: lists which gems depend on the vulnerable gem
+  - Removed trailing colon after severity level for cleaner formatting
+
+### Fixed
+- **Project Name Display in Reports** - Reports now show the actual project directory name instead of "."
+  - Extracts project directory name from absolute Gemfile.lock path
+  - Shows project name (e.g., "listopia") instead of full path or relative "."
+
 ## [v1.1.7] - 2026-04-09
 
 ### Added

@@ -22,6 +22,8 @@ type GemStatus struct {
 	IsVulnerable bool
 	// VulnerabilityInfo contains CVE ID and description (only set if IsVulnerable is true)
 	VulnerabilityInfo string
+	// VulnerabilityURL is the canonical OSV advisory URL (only set if IsVulnerable is true)
+	VulnerabilityURL string
 	// HomepageURL is the gem's homepage or source code repository URL
 	HomepageURL string
 	// Description is the gem description from rubygems.org
