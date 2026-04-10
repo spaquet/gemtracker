@@ -127,9 +127,6 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case SanityDataMsg:
 		return m.handleSanityData(msg)
-
-	case GemInfoMsg:
-		return m.handleGemInfo(msg)
 	}
 
 	return m, nil
@@ -643,12 +640,9 @@ func (m *Model) handleSanityKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case "enter", "i":
-		// Fetch gem info asynchronously
+		// Open gem info modal with current gem data
 		if len(allGems) > 0 && m.SanityCursor < len(allGems) {
-			gem := allGems[m.SanityCursor]
 			m.ShowingGemInfo = true
-			m.GemInfoScroll = 0 // Reset scroll when opening
-			return m, fetchGemInfo(gem.Name)
 		}
 		return m, nil
 	}
@@ -658,34 +652,8 @@ func (m *Model) handleSanityKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 func (m *Model) handleGemInfoKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
-	case "esc":
+	case "esc", "q":
 		m.ShowingGemInfo = false
-		m.GemInfoScroll = 0
-		return m, nil
-
-	case "up":
-		if m.GemInfoScroll > 0 {
-			m.GemInfoScroll--
-		}
-		return m, nil
-
-	case "down":
-		if m.GemInfoScroll < m.getGemInfoMaxScroll() {
-			m.GemInfoScroll++
-		}
-		return m, nil
-
-	case "home":
-		m.GemInfoScroll = 0
-		return m, nil
-
-	case "end":
-		m.GemInfoScroll = m.getGemInfoMaxScroll()
-		return m, nil
-
-	case "q":
-		m.ShowingGemInfo = false
-		m.GemInfoScroll = 0
 		return m, nil
 	}
 
@@ -710,23 +678,6 @@ func (m *Model) ensureSanityCursorVisible() {
 	} else if m.SanityCursor >= m.SanityOffset+visibleRows {
 		m.SanityOffset = m.SanityCursor - visibleRows + 1
 	}
-}
-
-// getGemInfoMaxScroll calculates the maximum scroll position for the gem info modal
-func (m *Model) getGemInfoMaxScroll() int {
-	gemInfoLines := strings.Split(m.CurrentGemInfoOutput, "\n")
-	availableHeight := m.Height - 10 // Reserve space for border, title, etc.
-
-	if availableHeight < 1 {
-		availableHeight = 1
-	}
-
-	maxScroll := len(gemInfoLines) - availableHeight
-	if maxScroll < 0 {
-		maxScroll = 0
-	}
-
-	return maxScroll
 }
 
 // getCVEInfoMaxScroll calculates the maximum scroll position for the CVE info modal
@@ -1573,21 +1524,6 @@ func (m *Model) handleSanityData(msg SanityDataMsg) (tea.Model, tea.Cmd) {
 	m.RubyManager = msg.RubyManager
 	m.ProjectTotalSizeBytes = msg.ProjectTotalSize
 	m.GemSizes = msg.GemSizes
-
-	return m, nil
-}
-
-func (m *Model) handleGemInfo(msg GemInfoMsg) (tea.Model, tea.Cmd) {
-	if msg.Error != nil {
-		// Show error message in the output
-		m.CurrentGemInfoOutput = fmt.Sprintf("Error fetching gem info: %v\n\nOutput:\n%s", msg.Error, msg.Output)
-		logger.Warn("Failed to get gem info for %s: %v", msg.GemName, msg.Error)
-	} else if msg.Output == "" {
-		// Gem not found or no output
-		m.CurrentGemInfoOutput = fmt.Sprintf("No information found for gem '%s'.\n\nThe gem may not be installed.", msg.GemName)
-	} else {
-		m.CurrentGemInfoOutput = msg.Output
-	}
 
 	return m, nil
 }

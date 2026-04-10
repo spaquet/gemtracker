@@ -1663,65 +1663,38 @@ func (m *Model) renderGemInfoModalBox() string {
 	lines = append(lines, titleStyle.Render(title))
 	lines = append(lines, "")
 
-	// Show loading state if no output yet
-	if m.CurrentGemInfoOutput == "" {
-		lines = append(lines, "Loading gem info...")
-		content := strings.Join(lines, "\n")
-		boxStyle := lipgloss.NewStyle().
-			Border(lipgloss.RoundedBorder()).
-			BorderForeground(lipgloss.Color(ColorBorderActive)).
-			Background(lipgloss.Color(ColorSurface)).
-			Padding(1, 2)
-		return boxStyle.Width(60).Render(content)
-	}
+	// Gem details
+	lines = append(lines, fmt.Sprintf("Name: %s", gem.Name))
+	lines = append(lines, fmt.Sprintf("Version: %s", gem.Version))
 
-	// Parse gem info output
-	gemInfoLines := strings.Split(m.CurrentGemInfoOutput, "\n")
+	size := m.GemSizes[gem.Name]
+	lines = append(lines, fmt.Sprintf("Size: %s", gemfile.FormatBytes(size)))
+	lines = append(lines, "")
 
-	// Calculate available height for scrolling
-	availableHeight := m.Height - 10 // Reserve space for border, title, etc.
-
-	if availableHeight < 1 {
-		availableHeight = 1
-	}
-
-	// Clip content to fit within available height
-	clippedLines := gemInfoLines
-	if m.GemInfoScroll > 0 {
-		if m.GemInfoScroll >= len(gemInfoLines) {
-			m.GemInfoScroll = len(gemInfoLines) - availableHeight
-			if m.GemInfoScroll < 0 {
-				m.GemInfoScroll = 0
-			}
-		}
-		clippedLines = gemInfoLines[m.GemInfoScroll:]
-	}
-
-	if len(clippedLines) > availableHeight {
-		clippedLines = clippedLines[:availableHeight]
-	}
-
-	// Add scroll indicator if needed
-	scrollHint := ""
-	if m.GemInfoScroll > 0 || (m.GemInfoScroll+availableHeight < len(gemInfoLines)) {
-		scrollPercent := (m.GemInfoScroll * 100) / len(gemInfoLines)
-		scrollHint = fmt.Sprintf(" [%d%%]", scrollPercent)
-	}
-
-	// Add content lines
-	for _, line := range clippedLines {
-		if strings.TrimSpace(line) != "" {
-			lines = append(lines, line)
+	// Show gem type
+	isDirect := false
+	for _, direct := range m.FirstLevelGems {
+		if direct.Name == gem.Name {
+			isDirect = true
+			break
 		}
 	}
 
-	// Add scroll indicator hint
-	if scrollHint != "" {
+	if isDirect {
+		lines = append(lines, "Type: Direct Dependency")
+	} else {
+		lines = append(lines, "Type: Transitive Dependency")
+	}
+
+	// Show description if available
+	if gem.Description != "" {
 		lines = append(lines, "")
-		hintStyle := lipgloss.NewStyle().
-			Foreground(lipgloss.Color(ColorTextMuted)).
-			Italic(true)
-		lines = append(lines, hintStyle.Render("Scroll: "+scrollHint))
+		lines = append(lines, "Description:")
+		// Wrap description text
+		descLines := wrapText(gem.Description, 60)
+		for _, line := range descLines {
+			lines = append(lines, fmt.Sprintf("  %s", line))
+		}
 	}
 
 	// Create the modal box with border
