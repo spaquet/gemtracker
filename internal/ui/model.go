@@ -176,11 +176,11 @@ type CVELoadFromCacheMsg struct {
 }
 
 type SanityDataMsg struct {
-	GemDirPath           string
-	RubyManager          string
-	ProjectTotalSize     int64
-	GemSizes             map[string]int64
-	Error                error
+	GemDirPath       string
+	RubyManager      string
+	ProjectTotalSize int64
+	GemSizes         map[string]int64
+	Error            error
 }
 
 // ============================================================================
@@ -260,16 +260,16 @@ type Model struct {
 	CVELastError          string                   // Last error message if scan failed
 
 	// Sanity screen state
-	GemDirPath              string            // Result of `gem env gemdir`
-	RubyManager             string            // Detected Ruby version manager
-	ProjectTotalSizeBytes   int64             // Total size of all project gems
-	GemSizes                map[string]int64  // Gem name → size in bytes
-	SanityCursor            int               // Selection position in gem list
-	SanityOffset            int               // Scroll offset for pagination
-	GemInfoScroll           int               // Scroll offset for gem info modal
-	ShowingGemInfo          bool              // Toggle for modal visibility
-	CurrentGemInfoOutput    string            // Cached output from `gem info`
-	SanityLoading           bool              // Is size calculation in progress?
+	GemDirPath            string           // Result of `gem env gemdir`
+	RubyManager           string           // Detected Ruby version manager
+	ProjectTotalSizeBytes int64            // Total size of all project gems
+	GemSizes              map[string]int64 // Gem name → size in bytes
+	SanityCursor          int              // Selection position in gem list
+	SanityOffset          int              // Scroll offset for pagination
+	GemInfoScroll         int              // Scroll offset for gem info modal
+	ShowingGemInfo        bool             // Toggle for modal visibility
+	CurrentGemInfoOutput  string           // Cached output from `gem info`
+	SanityLoading         bool             // Is size calculation in progress?
 
 	// Project Info screen state
 	RubyVersion        string

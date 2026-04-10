@@ -11,10 +11,11 @@ import (
 
 // DetectRubyManager extracts the Ruby version manager name from gem env gemdir output.
 // Examples:
-//   /Users/user/.frum/versions/3.4.4/lib/ruby/gems/3.4.0 → "frum"
-//   /Users/user/.rbenv/versions/3.4.4/lib/ruby/gems/3.4.0 → "rbenv"
-//   /Users/user/.rvm/gems/ruby-3.4.4 → "rvm"
-//   /usr/lib/ruby/gems/3.4.0 → "system"
+//
+//	/Users/user/.frum/versions/3.4.4/lib/ruby/gems/3.4.0 → "frum"
+//	/Users/user/.rbenv/versions/3.4.4/lib/ruby/gems/3.4.0 → "rbenv"
+//	/Users/user/.rvm/gems/ruby-3.4.4 → "rvm"
+//	/usr/lib/ruby/gems/3.4.0 → "system"
 func DetectRubyManager(gemDirPath string) string {
 	// Check for known manager directories in the path
 	if strings.Contains(gemDirPath, "/.frum/") {
