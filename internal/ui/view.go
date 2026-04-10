@@ -8,7 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/charmbracelet/lipgloss"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/spaquet/gemtracker/internal/gemfile"
 	"github.com/spaquet/gemtracker/internal/logger"
@@ -118,47 +119,52 @@ func placeOverlay(startRow, startCol int, fg, bg string) string {
 // View Rendering
 // ============================================================================
 
-func (m *Model) View() string {
+func (m *Model) View() tea.View {
 	defer func() {
 		if r := recover(); r != nil {
 			fmt.Fprintf(os.Stderr, "PANIC in View(): %v\n", r)
 		}
 	}()
 
+	var content string
 	if m.Quitting {
-		return ""
+		content = ""
+	} else {
+		switch m.CurrentView {
+		case ViewLoading:
+			content = m.viewLoading()
+		case ViewGemList:
+			content = m.viewGemList()
+		case ViewGemDetail:
+			content = m.viewGemDetail()
+		case ViewSearch:
+			content = m.viewSearch()
+		case ViewUpgradeable:
+			content = m.viewUpgradeable()
+		case ViewCVE:
+			content = m.viewCVE()
+		case ViewSanity:
+			content = m.viewSanity()
+		case ViewProjectInfo:
+			content = m.viewProjectInfo()
+		case ViewFilterMenu:
+			content = m.viewFilterMenu()
+		case ViewCVEFilterMenu:
+			content = m.viewCVEFilterMenu()
+		case ViewCVEInfo:
+			content = m.viewCVEInfo()
+		case ViewSelectPath:
+			content = m.viewSelectPath()
+		case ViewError:
+			content = m.viewError()
+		default:
+			content = m.viewGemList()
+		}
 	}
 
-	switch m.CurrentView {
-	case ViewLoading:
-		return m.viewLoading()
-	case ViewGemList:
-		return m.viewGemList()
-	case ViewGemDetail:
-		return m.viewGemDetail()
-	case ViewSearch:
-		return m.viewSearch()
-	case ViewUpgradeable:
-		return m.viewUpgradeable()
-	case ViewCVE:
-		return m.viewCVE()
-	case ViewSanity:
-		return m.viewSanity()
-	case ViewProjectInfo:
-		return m.viewProjectInfo()
-	case ViewFilterMenu:
-		return m.viewFilterMenu()
-	case ViewCVEFilterMenu:
-		return m.viewCVEFilterMenu()
-	case ViewCVEInfo:
-		return m.viewCVEInfo()
-	case ViewSelectPath:
-		return m.viewSelectPath()
-	case ViewError:
-		return m.viewError()
-	default:
-		return m.viewGemList()
-	}
+	v := tea.NewView(content)
+	v.AltScreen = true
+	return v
 }
 
 // ============================================================================

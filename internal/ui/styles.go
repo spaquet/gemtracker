@@ -2,7 +2,7 @@ package ui
 
 import (
 	"charm.land/glamour/v2"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/lipgloss/v2"
 )
 
 // This file defines all terminal UI styling constants for gemtracker.

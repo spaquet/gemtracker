@@ -10,7 +10,7 @@ import (
 	"fmt"
 	"os"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/spaquet/gemtracker/internal/logger"
 	"github.com/spaquet/gemtracker/internal/telemetry"
 	"github.com/spaquet/gemtracker/internal/ui"
@@ -127,7 +127,7 @@ func main() {
 
 	// Start the interactive TUI
 	model := ui.NewModel(version, commit, date, projectPath, *noCache, *verbose)
-	p := tea.NewProgram(model, tea.WithAltScreen())
+	p := tea.NewProgram(model)
 
 	if _, err := p.Run(); err != nil {
 		telemetry.CaptureError(err)

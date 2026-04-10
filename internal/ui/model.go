@@ -17,8 +17,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/charmbracelet/bubbles/textinput"
-	tea "github.com/charmbracelet/bubbletea"
+	"charm.land/bubbles/v2/textinput"
+	tea "charm.land/bubbletea/v2"
 	"github.com/spaquet/gemtracker/internal/cache"
 	"github.com/spaquet/gemtracker/internal/gemfile"
 	"github.com/spaquet/gemtracker/internal/logger"
@@ -367,18 +367,12 @@ func NewModel(version, commit, date, projectPath string, noCache, verbose bool) 
 	}
 
 	// Configure search input
+	m.SearchInput = textinput.New()
 	m.SearchInput.Placeholder = "Search gems..."
-	m.SearchInput.PlaceholderStyle = textinput.NewModel().PlaceholderStyle
-	m.SearchInput.PromptStyle = textinput.NewModel().PromptStyle
-	m.SearchInput.TextStyle = textinput.NewModel().TextStyle
-	m.SearchInput.Cursor.Style = textinput.NewModel().Cursor.Style
 
 	// Configure path input
+	m.PathInput = textinput.New()
 	m.PathInput.Placeholder = "/path/to/project"
-	m.PathInput.PlaceholderStyle = textinput.NewModel().PlaceholderStyle
-	m.PathInput.PromptStyle = textinput.NewModel().PromptStyle
-	m.PathInput.TextStyle = textinput.NewModel().TextStyle
-	m.PathInput.Cursor.Style = textinput.NewModel().Cursor.Style
 
 	// Load the provided project path
 	m.loadProject(projectPath)
