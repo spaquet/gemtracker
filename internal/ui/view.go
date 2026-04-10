@@ -153,6 +153,8 @@ func (m *Model) View() tea.View {
 			content = m.viewCVEFilterMenu()
 		case ViewCVEInfo:
 			content = m.viewCVEInfo()
+		case ViewCVEComment:
+			content = m.viewCVEComment()
 		case ViewSelectPath:
 			content = m.viewSelectPath()
 		case ViewError:
@@ -176,7 +178,7 @@ var viewHints = map[ViewMode][]string{
 	ViewGemDetail:     {"esc back", "tab section", "↑↓ navigate", "enter select", "o open url", "q quit"},
 	ViewSearch:        {"type search", "↑↓ navigate", "enter select", "esc clear"},
 	ViewUpgradeable:   {"↑↓ navigate", "enter select", "tab next", "q quit"},
-	ViewCVE:           {"↑↓ navigate", "enter select", "f filter", "i info", "tab next", "q quit"},
+	ViewCVE:           {"↑↓ navigate", "enter select", "f filter", "i info", "c comment", "tab next", "q quit"},
 	ViewSanity:        {"↑↓ navigate", "enter select", "i info", "tab next", "q quit"},
 	ViewProjectInfo:   {"tab next", "shift+tab prev", "q quit"},
 	ViewFilterMenu:    {"↑↓ navigate", "space toggle", "enter back", "q quit"},
@@ -1416,6 +1418,26 @@ func (m *Model) isFrameworkGem(gemName string) bool {
 	return isFramework
 }
 
+// getCVECommentStatus returns the comment for a CVE and whether it's stale
+func (m *Model) getCVECommentStatus(vuln *gemfile.Vulnerability) (*gemfile.CVEComment, bool) {
+	if m.CVEComments == nil || len(m.CVEComments.Entries) == 0 {
+		return nil, false
+	}
+
+	// Try CVE ID first, then OSVId
+	key := gemfile.GetCVECommentKey(vuln)
+	comment, ok := m.CVEComments.Entries[key]
+	if !ok || comment == nil {
+		return nil, false
+	}
+
+	// Check if stale: has the gem version changed?
+	installedVersion := m.getInstalledGemVersion(vuln.GemName)
+	stale := installedVersion != "" && installedVersion != comment.GemVersion
+
+	return comment, stale
+}
+
 func (m *Model) renderCVEVulnerabilitiesList(height int) string {
 	if len(m.CVEVulnerabilities) == 0 {
 		if m.CVERefreshInProgress {
@@ -1426,9 +1448,9 @@ func (m *Model) renderCVEVulnerabilitiesList(height int) string {
 
 	lines := []string{}
 
-	// Table header: # | CVE ID | Gem | ● Severity | Type | Group
-	headerRow := fmt.Sprintf("  %3s %-18s %-14s %s %-12s %-10s %-15s",
-		"#", "CVE ID", "Gem", " ", "Severity", "Type", "Group")
+	// Table header: # | CVE ID | Gem | ● Severity | Type | Group | ●
+	headerRow := fmt.Sprintf("  %3s %-18s %-14s %s %-12s %-10s %-15s %-3s",
+		"#", "CVE ID", "Gem", " ", "Severity", "Type", "Group", "")
 	lines = append(lines, TableHeaderStyle.Render(headerRow))
 
 	// Calculate how many vulnerabilities can fit (like Gems tab does)
@@ -1488,8 +1510,21 @@ func (m *Model) formatCVERow(vuln *gemfile.Vulnerability, selected bool, rowNum 
 		gemDisplay = gemDisplay + " [fw]"
 	}
 
+	// Determine comment icon
+	var commentIcon string
+	comment, stale := m.getCVECommentStatus(vuln)
+	if comment != nil {
+		if stale {
+			commentIcon = "⚠"
+		} else {
+			commentIcon = "💬"
+		}
+	} else {
+		commentIcon = ""
+	}
+
 	// Build plain text row matching Gems tab pattern
-	row := fmt.Sprintf("  %3d %-18s %-14s %s %-12s %-10s %-15s",
+	row := fmt.Sprintf("  %3d %-18s %-14s %s %-12s %-10s %-15s %-3s",
 		rowNum,
 		truncateStr(vuln.CVE, 18),
 		truncateStr(gemDisplay, 14),
@@ -1497,6 +1532,7 @@ func (m *Model) formatCVERow(vuln *gemfile.Vulnerability, selected bool, rowNum 
 		vuln.Severity,
 		gemType,
 		truncateStr(group, 15),
+		commentIcon,
 	)
 
 	// Apply selection styling - mirrors formatGemListRow
@@ -2535,6 +2571,111 @@ func (m *Model) gemDependsOn(gemA, gemB string, gemMap map[string]*gemfile.Gem) 
 	}
 
 	return false
+}
+
+// ============================================================================
+// View: CVE Comment Modal
+// ============================================================================
+
+func (m *Model) viewCVEComment() string {
+	if len(m.CVEVulnerabilities) == 0 || m.CVECursor >= len(m.CVEVulnerabilities) {
+		return m.viewCVE()
+	}
+
+	// Render CVE list as background
+	background := m.viewCVE()
+
+	// Create comment modal
+	modal := m.renderCVECommentModalBox()
+
+	// Calculate centered position
+	modalLines := strings.Split(modal, "\n")
+	modalH := len(modalLines)
+	modalW := lipgloss.Width(modal)
+
+	startRow := (m.Height - modalH) / 2
+	startCol := (m.Width - modalW) / 2
+
+	if startRow < 2 {
+		startRow = 2 // Don't cover header
+	}
+	if startCol < 0 {
+		startCol = 0
+	}
+
+	// Overlay modal on background
+	return placeOverlay(startRow, startCol, modal, background)
+}
+
+func (m *Model) renderCVECommentModalBox() string {
+	vuln := m.CVEVulnerabilities[m.CVECursor]
+	_, group := m.getCVEGemInfo(vuln.GemName)
+
+	lines := []string{}
+
+	// Title
+	title := "Comment on Advisory"
+	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(ColorPrimary))
+	lines = append(lines, titleStyle.Render(title))
+	lines = append(lines, "")
+
+	// CVE header (read-only)
+	headerLine := fmt.Sprintf("CVE: %s  |  Gem: %s  |  Group: %s", vuln.CVE, vuln.GemName, group)
+	headerStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color(ColorTextMuted)).
+		Italic(true)
+	lines = append(lines, headerStyle.Render(headerLine))
+	lines = append(lines, "")
+
+	// Check if stale
+	comment, stale := m.getCVECommentStatus(vuln)
+	if stale && comment != nil {
+		warningLine := fmt.Sprintf("⚠  Gem version changed (was %s, now %s) — please review this decision", comment.GemVersion, m.getInstalledGemVersion(vuln.GemName))
+		warningStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(ColorWarning))
+		lines = append(lines, warningStyle.Render(warningLine))
+		lines = append(lines, "")
+	}
+
+	// Decision selector
+	ackLabel := "○ Acknowledged"
+	ignLabel := "○ Ignored"
+	if m.CVECommentDecisionIdx == 0 {
+		ackLabel = "● Acknowledged"
+	} else {
+		ignLabel = "● Ignored"
+	}
+	decisionLine := fmt.Sprintf("Decision:  %s    %s  (Tab to toggle)", ackLabel, ignLabel)
+	lines = append(lines, decisionLine)
+	lines = append(lines, "")
+
+	// Comment label
+	lines = append(lines, "Comment:")
+	lines = append(lines, "")
+
+	// Text input
+	inputStyle := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color(ColorBorder)).
+		Padding(0, 1).
+		Width(80)
+	inputView := inputStyle.Render(m.CVECommentInput.View())
+	lines = append(lines, inputView)
+	lines = append(lines, "")
+
+	// Footer hints
+	footerLine := "enter save  esc cancel  tab toggle decision"
+	footerStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(ColorTextMuted))
+	lines = append(lines, footerStyle.Render(footerLine))
+
+	// Build modal box
+	content := strings.Join(lines, "\n")
+	modalStyle := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color(ColorBorderActive)).
+		Background(lipgloss.Color(ColorSurface)).
+		Padding(1, 2)
+
+	return modalStyle.Render(content)
 }
 
 // ============================================================================

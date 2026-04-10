@@ -86,6 +86,8 @@ const (
 	ViewCVEFilterMenu
 	// ViewCVEInfo displays detailed information for a selected CVE
 	ViewCVEInfo
+	// ViewCVEComment displays a modal for adding/editing comments on a CVE
+	ViewCVEComment
 	// ViewSelectPath displays an input prompt to select a project directory
 	ViewSelectPath
 	// ViewError displays an error message
@@ -173,6 +175,11 @@ type CVELoadFromCacheMsg struct {
 	Vulnerabilities []*gemfile.Vulnerability
 	CacheAge        time.Duration
 	CacheTTL        time.Duration
+}
+
+type CVECommentsLoadedMsg struct {
+	Comments *gemfile.CVEComments
+	Error    error
 }
 
 type SanityDataMsg struct {
@@ -268,6 +275,12 @@ type Model struct {
 	CVEInfoCachedCVEID    string                   // CVE ID of currently cached modal content
 	CVEInfoCachedLines    []string                 // Cached rendered lines for modal
 	CVEInfoCachedWidth    int                      // Terminal width when modal was cached
+
+	// CVE comment modal state
+	CVEComments           *gemfile.CVEComments     // Loaded CVE comments from project
+	CVECommentInput       textinput.Model          // Text input for comment body
+	CVECommentDecision    gemfile.CVECommentDecision // Current decision being edited (acknowledged/ignored)
+	CVECommentDecisionIdx int                      // 0=Acknowledged, 1=Ignored (for toggle)
 
 	// Sanity screen state
 	GemDirPath            string                 // Result of `gem env gemdir`
@@ -373,6 +386,10 @@ func NewModel(version, commit, date, projectPath string, noCache, verbose bool) 
 	// Configure path input
 	m.PathInput = textinput.New()
 	m.PathInput.Placeholder = "/path/to/project"
+
+	// Configure CVE comment input
+	m.CVECommentInput = textinput.New()
+	m.CVECommentInput.Placeholder = "e.g. only in dev, workaround applied, patched in production..."
 
 	// Load the provided project path
 	m.loadProject(projectPath)
@@ -1103,6 +1120,19 @@ func performCVEScan(gems []*gemfile.Gem) tea.Cmd {
 		}
 
 		return CVECompleteMsg{Vulnerabilities: vulnPtrs, Error: nil}
+	}
+}
+
+// loadCVECommentsCmd loads CVE comments from the project directory
+func (m *Model) loadCVECommentsCmd() tea.Cmd {
+	return func() tea.Msg {
+		projectDir := filepath.Dir(m.GemfileLockPath)
+		comments, err := gemfile.LoadCVEComments(projectDir)
+		if err != nil {
+			logger.Warn("Failed to load CVE comments: %v", err)
+			return CVECommentsLoadedMsg{Comments: nil, Error: err}
+		}
+		return CVECommentsLoadedMsg{Comments: comments, Error: nil}
 	}
 }
 

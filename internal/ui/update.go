@@ -3,6 +3,7 @@ package ui
 import (
 	"fmt"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"sort"
 	"strings"
@@ -125,6 +126,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case CVELoadFromCacheMsg:
 		return m.handleCVELoadFromCache(msg)
 
+	case CVECommentsLoadedMsg:
+		return m.handleCVECommentsLoaded(msg)
+
 	case SanityDataMsg:
 		return m.handleSanityData(msg)
 
@@ -199,6 +203,9 @@ func (m *Model) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 
 	case ViewCVEInfo:
 		return m.handleCVEInfoKeys(msg)
+
+	case ViewCVEComment:
+		return m.handleCVECommentKeys(msg)
 
 	case ViewSelectPath:
 		return m.handlePathInputKeys(msg)
@@ -567,6 +574,14 @@ func (m *Model) handleCVEKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			m.CVEInfoScroll = 0 // Reset scroll when opening
 		}
 		return m, nil
+
+	case "c":
+		// Open CVE comment modal for current CVE
+		if len(m.CVEVulnerabilities) > 0 && m.CVECursor < len(m.CVEVulnerabilities) {
+			m.CurrentView = ViewCVEComment
+			m.openCVECommentModal()
+		}
+		return m, nil
 	}
 
 	return m, nil
@@ -617,6 +632,116 @@ func (m *Model) handleCVEInfoKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	}
 
 	return m, nil
+}
+
+func (m *Model) openCVECommentModal() {
+	if len(m.CVEVulnerabilities) == 0 || m.CVECursor >= len(m.CVEVulnerabilities) {
+		return
+	}
+
+	vuln := m.CVEVulnerabilities[m.CVECursor]
+	key := gemfile.GetCVECommentKey(vuln)
+
+	// Clear input and reset to defaults
+	m.CVECommentInput.Reset()
+	m.CVECommentDecision = gemfile.DecisionAcknowledged
+	m.CVECommentDecisionIdx = 0
+
+	// If there's an existing comment, load it
+	if m.CVEComments != nil && len(m.CVEComments.Entries) > 0 {
+		if comment, ok := m.CVEComments.Entries[key]; ok && comment != nil {
+			m.CVECommentInput.SetValue(comment.Comment)
+			m.CVECommentDecision = comment.Decision
+			if comment.Decision == gemfile.DecisionIgnored {
+				m.CVECommentDecisionIdx = 1
+			} else {
+				m.CVECommentDecisionIdx = 0
+			}
+		}
+	}
+
+	m.CVECommentInput.Focus()
+}
+
+func (m *Model) handleCVECommentKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "esc":
+		m.CurrentView = ViewCVE
+		m.CVECommentInput.Reset()
+		return m, nil
+
+	case "tab":
+		// Toggle between Acknowledged (0) and Ignored (1)
+		m.CVECommentDecisionIdx = 1 - m.CVECommentDecisionIdx
+		if m.CVECommentDecisionIdx == 0 {
+			m.CVECommentDecision = gemfile.DecisionAcknowledged
+		} else {
+			m.CVECommentDecision = gemfile.DecisionIgnored
+		}
+		return m, nil
+
+	case "enter":
+		// Save the comment
+		if len(m.CVEVulnerabilities) > 0 && m.CVECursor < len(m.CVEVulnerabilities) {
+			vuln := m.CVEVulnerabilities[m.CVECursor]
+			key := gemfile.GetCVECommentKey(vuln)
+
+			if m.CVEComments == nil {
+				m.CVEComments = &gemfile.CVEComments{
+					Version: 1,
+					Entries: make(map[string]*gemfile.CVEComment),
+				}
+			}
+
+			now := time.Now()
+			installedVersion := m.getInstalledGemVersion(vuln.GemName)
+
+			m.CVEComments.Entries[key] = &gemfile.CVEComment{
+				Decision:   m.CVECommentDecision,
+				Comment:    m.CVECommentInput.Value(),
+				GemName:    vuln.GemName,
+				GemVersion: installedVersion,
+				CreatedAt:  now,
+				UpdatedAt:  now,
+			}
+
+			// Save to file
+			projectDir := filepath.Dir(m.GemfileLockPath)
+			if err := gemfile.SaveCVEComments(projectDir, m.CVEComments); err != nil {
+				logger.Error("Failed to save CVE comments: %v", err)
+			}
+		}
+
+		m.CurrentView = ViewCVE
+		m.CVECommentInput.Reset()
+		return m, nil
+
+	default:
+		// Delegate to textinput
+		var cmd tea.Cmd
+		m.CVECommentInput, cmd = m.CVECommentInput.Update(msg)
+		return m, cmd
+	}
+}
+
+func (m *Model) getInstalledGemVersion(gemName string) string {
+	// Search in analysis result first (all gems)
+	if m.AnalysisResult != nil {
+		for _, gem := range m.AnalysisResult.GemStatuses {
+			if gem.Name == gemName && gem.Version != "" {
+				return gem.Version
+			}
+		}
+	}
+
+	// Fall back to first-level gems
+	for _, gem := range m.FirstLevelGems {
+		if gem.Name == gemName && gem.Version != "" {
+			return gem.Version
+		}
+	}
+
+	return ""
 }
 
 func (m *Model) handleSanityKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
@@ -1149,11 +1274,12 @@ func (m *Model) handleAnalysisComplete(msg AnalysisCompleteMsg) (tea.Model, tea.
 	// Start Sanity data loading (gem sizes)
 	m.SanityLoading = true
 
-	// Batch outdated checking, CVE scanning, and Sanity data loading
+	// Batch outdated checking, CVE scanning, Sanity data loading, and load CVE comments
 	return m, tea.Batch(
 		fetchNextOutdatedItem(m.OutdatedPending, m.OutdatedChecker),
 		performCVEScan(msg.Result.AllGems),
 		loadSanityData(msg.Result.AllGems),
+		m.loadCVECommentsCmd(),
 	)
 }
 
@@ -1635,6 +1761,29 @@ func (m *Model) handleCVEComplete(msg CVECompleteMsg) (tea.Model, tea.Cmd) {
 
 	// Rebuild vulnerable gems list (only gems with vulnerabilities)
 	m.rebuildVulnerableGemsList()
+
+	return m, nil
+}
+
+func (m *Model) handleCVECommentsLoaded(msg CVECommentsLoadedMsg) (tea.Model, tea.Cmd) {
+	if msg.Error != nil {
+		logger.Warn("Failed to load CVE comments: %v", msg.Error)
+		// Initialize with empty comments on error
+		m.CVEComments = &gemfile.CVEComments{
+			Version: 1,
+			Entries: make(map[string]*gemfile.CVEComment),
+		}
+		return m, nil
+	}
+
+	if msg.Comments == nil {
+		m.CVEComments = &gemfile.CVEComments{
+			Version: 1,
+			Entries: make(map[string]*gemfile.CVEComment),
+		}
+	} else {
+		m.CVEComments = msg.Comments
+	}
 
 	return m, nil
 }
