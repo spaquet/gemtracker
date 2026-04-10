@@ -1251,6 +1251,18 @@ func (m *Model) renderCVETable(height int) string {
 		height = 1
 	}
 
+	// If refreshing and no vulnerabilities yet, show loading indicator
+	if len(m.CVEVulnerabilities) == 0 && m.CVERefreshInProgress {
+		frames := []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
+		frameIdx := (time.Now().UnixNano() / 80000000) % int64(len(frames))
+		spinner := frames[frameIdx]
+		msg := fmt.Sprintf("%s Scanning for vulnerabilities...", spinner)
+		return lipgloss.NewStyle().
+			Foreground(lipgloss.Color(ColorPrimary)).
+			Padding(2, 2).
+			Render(msg)
+	}
+
 	// If no vulnerabilities found and not refreshing, show clean state
 	if len(m.CVEVulnerabilities) == 0 && !m.CVERefreshInProgress {
 		msg := "No vulnerabilities found. Your gems are safe! ✓"
@@ -2242,6 +2254,22 @@ func (m *Model) renderCVEFilterModalBox() string {
 		lines = append(lines, RowSelectedStyle.Render("› "+directLine))
 	} else {
 		lines = append(lines, "  "+directLine)
+	}
+
+	lines = append(lines, "")
+
+	// Acknowledgment filter
+	ackStatus := ""
+	if m.CVEAcknowledgmentFilter == "acknowledged" {
+		ackStatus = " (acknowledged)"
+	} else if m.CVEAcknowledgmentFilter == "unacknowledged" {
+		ackStatus = " (unacknowledged)"
+	}
+	ackLine := "Filter by acknowledgment" + ackStatus
+	if m.CVEFilterMenuCursor == 5 {
+		lines = append(lines, RowSelectedStyle.Render("› "+ackLine))
+	} else {
+		lines = append(lines, "  "+ackLine)
 	}
 
 	// Footer hint

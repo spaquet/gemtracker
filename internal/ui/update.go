@@ -129,6 +129,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case CVECommentsLoadedMsg:
 		return m.handleCVECommentsLoaded(msg)
 
+	case CVEEnrichmentCompleteMsg:
+		return m.handleCVEEnrichmentComplete(msg)
+
 	case SanityDataMsg:
 		return m.handleSanityData(msg)
 
@@ -1002,7 +1005,8 @@ func (m *Model) ensureCVEScanStarted() (tea.Model, tea.Cmd) {
 	needsRefresh := currentGemsSignature != m.LastGemsSignature || m.CVECacheLoadedAt.IsZero()
 
 	if needsRefresh {
-		// Start CVE scan
+		// Set flag and start CVE scan
+		m.CVERefreshInProgress = true
 		return m, performCVEScan(m.AnalysisResult.AllGems)
 	}
 
@@ -1050,7 +1054,7 @@ func (m *Model) handleFilterMenuKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m *Model) handleCVEFilterMenuKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
-	// 4 severity options + 1 direct option + 1 separator + 1 close = 7 items
+	// 4 severity options + 1 direct option + 1 acknowledgment option
 	totalOptions := 6
 
 	switch msg.String() {
@@ -1079,6 +1083,16 @@ func (m *Model) handleCVEFilterMenuKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd
 			m.CVESelectedSeverities["LOW"] = !m.CVESelectedSeverities["LOW"]
 		case 4: // Direct only
 			m.CVEShowOnlyDirect = !m.CVEShowOnlyDirect
+		case 5: // Acknowledgment filter
+			// Cycle through: "" (all) -> "acknowledged" -> "unacknowledged" -> ""
+			switch m.CVEAcknowledgmentFilter {
+			case "":
+				m.CVEAcknowledgmentFilter = "acknowledged"
+			case "acknowledged":
+				m.CVEAcknowledgmentFilter = "unacknowledged"
+			case "unacknowledged":
+				m.CVEAcknowledgmentFilter = ""
+			}
 		}
 		// Apply filters immediately
 		m.applyCVEFilters()
@@ -1691,11 +1705,35 @@ func (m *Model) handleCVELoadFromCache(msg CVELoadFromCacheMsg) (tea.Model, tea.
 	m.initializeCVEFilters(msg.Vulnerabilities)
 	m.CVELastScanTime = time.Now().Add(-msg.CacheAge)
 	m.CVECacheLoadedAt = time.Now()
+	m.CVERefreshInProgress = true // Set flag to show enrichment is in progress
 
 	// Merge CVE results into gem statuses so Gems tab shows vulnerability indicators
 	m.mergeVulnerabilityDataIntoGems(msg.Vulnerabilities)
 
 	// Rebuild vulnerable gems list (only gems with vulnerabilities)
+	m.rebuildVulnerableGemsList()
+
+	// Send command to enrich vulnerabilities in background
+	return m, enrichCachedVulnerabilitiesCmd(msg.Vulnerabilities)
+}
+
+func (m *Model) handleCVEEnrichmentComplete(msg CVEEnrichmentCompleteMsg) (tea.Model, tea.Cmd) {
+	// Enrichment complete - update the vulnerabilities with enriched data
+	m.CVERefreshInProgress = false
+
+	if msg.Error != nil {
+		logger.Warn("CVE enrichment failed: %v", msg.Error)
+		// Keep the cached data even if enrichment failed
+		return m, nil
+	}
+
+	// Update with enriched vulnerabilities
+	m.initializeCVEFilters(msg.Vulnerabilities)
+
+	// Merge CVE results into gem statuses
+	m.mergeVulnerabilityDataIntoGems(msg.Vulnerabilities)
+
+	// Rebuild vulnerable gems list
 	m.rebuildVulnerableGemsList()
 
 	return m, nil
