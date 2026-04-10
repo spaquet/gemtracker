@@ -1697,6 +1697,19 @@ func (m *Model) renderGemInfoModalBox() string {
 		}
 	}
 
+	// Show full gem info output if available
+	if m.CurrentGemInfoOutput != "" {
+		lines = append(lines, "")
+		lines = append(lines, "Gem Info:")
+		lines = append(lines, "----------")
+		gemInfoLines := strings.Split(m.CurrentGemInfoOutput, "\n")
+		for _, line := range gemInfoLines {
+			if strings.TrimSpace(line) != "" {
+				lines = append(lines, line)
+			}
+		}
+	}
+
 	// Create the modal box with border
 	content := strings.Join(lines, "\n")
 

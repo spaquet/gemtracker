@@ -183,6 +183,12 @@ type SanityDataMsg struct {
 	Error            error
 }
 
+type GemInfoMsg struct {
+	GemName string
+	Output  string
+	Error   error
+}
+
 // ============================================================================
 // Model
 // ============================================================================
@@ -267,6 +273,7 @@ type Model struct {
 	SanityCursor          int              // Selection position in gem list
 	SanityOffset          int              // Scroll offset for pagination
 	ShowingGemInfo        bool             // Toggle for modal visibility
+	CurrentGemInfoOutput  string           // Output from `gem info` command
 	SanityLoading         bool             // Is size calculation in progress?
 
 	// Project Info screen state
@@ -1112,6 +1119,17 @@ func loadSanityData(gems []*gemfile.Gem) tea.Cmd {
 			ProjectTotalSize: totalSize,
 			GemSizes:         sizes,
 			Error:            nil,
+		}
+	}
+}
+
+func fetchGemInfo(gemName string) tea.Cmd {
+	return func() tea.Msg {
+		output, err := gemfile.GetGemInfo(gemName)
+		return GemInfoMsg{
+			GemName: gemName,
+			Output:  output,
+			Error:   err,
 		}
 	}
 }
