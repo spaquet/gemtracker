@@ -175,7 +175,13 @@ func (c *OSVClient) QueryBatch(ctx context.Context, gems []*Gem) ([]Vulnerabilit
 	// Enrich vulnerabilities with detailed CVSS/Severity data
 	// The batch endpoint doesn't include this, so we need individual requests
 	logger.Info("Enriching %d vulnerabilities with detailed CVSS/Severity data...", len(vulns))
-	c.enrichVulnerabilitiesWithDetails(ctx, vulns)
+
+	// Convert to pointers for enrichment
+	vulnPtrs := make([]*Vulnerability, len(vulns))
+	for i := range vulns {
+		vulnPtrs[i] = &vulns[i]
+	}
+	c.EnrichVulnerabilitiesWithDetails(ctx, vulnPtrs)
 
 	logger.Info("OSV batch query complete: found %d vulnerabilities", len(vulns))
 	return vulns, nil
@@ -381,10 +387,11 @@ func extractCVSSData(osvVuln OSVVulnerability) (float64, string) {
 	return cvssScore, severity
 }
 
-// enrichVulnerabilitiesWithDetails fetches detailed CVSS/Severity data for vulnerabilities
+// EnrichVulnerabilitiesWithDetails fetches detailed CVSS/Severity data and workarounds for vulnerabilities
 // The batch endpoint doesn't include this data, so we query individual vulnerabilities
 // Uses rate limiting to avoid overwhelming the OSV API (10 req/sec)
-func (c *OSVClient) enrichVulnerabilitiesWithDetails(ctx context.Context, vulns []Vulnerability) {
+// Accepts pointers to allow modifying cached vulnerabilities
+func (c *OSVClient) EnrichVulnerabilitiesWithDetails(ctx context.Context, vulns []*Vulnerability) {
 	// Create a rate limiter: 10 requests per second
 	limiter := rate.NewLimiter(rate.Limit(10), 1)
 

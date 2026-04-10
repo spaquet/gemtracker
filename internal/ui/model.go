@@ -1052,6 +1052,16 @@ func performCVEScan(gems []*gemfile.Gem) tea.Cmd {
 				vulnPtrs[i] = &cacheEntry.Vulnerabilities[i]
 			}
 
+			// Enrich cached data with workarounds and detailed CVSS/Severity
+			// This is needed because:
+			// 1. Old cached data may not have workarounds (feature was added later)
+			// 2. Enrichment fetches individual vulnerability details from OSV API
+			logger.Info("Enriching %d cached vulnerabilities with workarounds and details...", len(vulnPtrs))
+			osv := gemfile.NewOSVClient()
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			osv.EnrichVulnerabilitiesWithDetails(ctx, vulnPtrs)
+
 			return CVELoadFromCacheMsg{
 				Vulnerabilities: vulnPtrs,
 				CacheAge:        cacheAge,
