@@ -7,7 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v1.2.0] - 2026-04-09
+
 ### Added
+- **Gem Size Analysis** (Issue #53)
+  - New "Sanity" tab displays total project gem directory sizes
+  - Automatically detects Ruby version manager (frum, rbenv, rvm, asdf, chruby, system)
+  - Shows individual gem sizes with human-readable formatting (KB, MB, GB)
+  - Gems organized by dependency type (direct vs transitive)
+  - Interactive `gem info` modal accessible with Enter/i keys
+  - Async background loading prevents UI blocking
+  - Integrates with existing size calculation infrastructure
 - **Insecure Gem Source Detection** (Issue #54)
   - Detects gems sourced from insecure protocols (http://, git://, git+http://)
   - Displays insecure sources in Project tab with source URL for each gem
