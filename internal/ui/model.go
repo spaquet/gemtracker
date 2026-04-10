@@ -277,10 +277,10 @@ type Model struct {
 	CVEInfoCachedWidth    int                      // Terminal width when modal was cached
 
 	// CVE comment modal state
-	CVEComments           *gemfile.CVEComments     // Loaded CVE comments from project
-	CVECommentInput       textinput.Model          // Text input for comment body
+	CVEComments           *gemfile.CVEComments       // Loaded CVE comments from project
+	CVECommentInput       textinput.Model            // Text input for comment body
 	CVECommentDecision    gemfile.CVECommentDecision // Current decision being edited (acknowledged/ignored)
-	CVECommentDecisionIdx int                      // 0=Acknowledged, 1=Ignored (for toggle)
+	CVECommentDecisionIdx int                        // 0=Acknowledged, 1=Ignored (for toggle)
 
 	// Sanity screen state
 	GemDirPath            string                 // Result of `gem env gemdir`

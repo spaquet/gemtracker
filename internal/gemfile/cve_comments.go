@@ -22,7 +22,7 @@ type CVEComment struct {
 	Decision   CVECommentDecision `json:"decision"`
 	Comment    string             `json:"comment"`
 	GemName    string             `json:"gem_name"`
-	GemVersion string             `json:"gem_version"`  // installed version at save time
+	GemVersion string             `json:"gem_version"` // installed version at save time
 	CreatedAt  time.Time          `json:"created_at"`
 	UpdatedAt  time.Time          `json:"updated_at"`
 }
