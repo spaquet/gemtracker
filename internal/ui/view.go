@@ -2390,32 +2390,25 @@ func (m *Model) renderCVEInfoModalBox() string {
 		availableHeight = 10
 	}
 
-	// If content fits within available height, no scrolling needed
-	if len(lines) <= availableHeight {
-		// Apply border and styling
-		boxStyle := lipgloss.NewStyle().
-			Border(lipgloss.RoundedBorder()).
-			BorderForeground(lipgloss.Color(ColorBorderActive)).
-			Background(lipgloss.Color(ColorSurface)).
-			Padding(1, 2)
-
-		return boxStyle.Width(modalWidth).Render(content)
+	// Clamp scroll position to valid range
+	maxScroll := len(lines) - availableHeight
+	if maxScroll < 0 {
+		maxScroll = 0
+	}
+	if m.CVEInfoScroll > maxScroll {
+		m.CVEInfoScroll = maxScroll
 	}
 
 	// Clip content to fit within available height
 	clippedLines := lines
-	if m.CVEInfoScroll > 0 {
-		if m.CVEInfoScroll >= len(lines) {
-			m.CVEInfoScroll = len(lines) - availableHeight
-			if m.CVEInfoScroll < 0 {
-				m.CVEInfoScroll = 0
-			}
+	if m.CVEInfoScroll > 0 && len(lines) > availableHeight {
+		endIdx := m.CVEInfoScroll + availableHeight
+		if endIdx > len(lines) {
+			endIdx = len(lines)
 		}
-		clippedLines = lines[m.CVEInfoScroll:]
-	}
-
-	if len(clippedLines) > availableHeight {
-		clippedLines = clippedLines[:availableHeight]
+		clippedLines = lines[m.CVEInfoScroll:endIdx]
+	} else if len(lines) > availableHeight {
+		clippedLines = lines[:availableHeight]
 	}
 
 	clippedContent := strings.Join(clippedLines, "\n")
