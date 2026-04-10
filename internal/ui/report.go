@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -241,9 +242,16 @@ func (rg *ReportGenerator) buildReportData(analysis *gemfile.AnalysisResult, gem
 	summary := fmt.Sprintf("Total gems: %d, Direct: %d, Transitive: %d, Outdated: %d, Vulnerable: %d",
 		len(allGems), firstLevelCount, transitiveDeps, len(outdatedGems), len(vulnerableGems))
 
+	// Extract project directory name from Gemfile path for display
+	absPath, err := filepath.Abs(gf.Path)
+	if err != nil {
+		absPath = gf.Path
+	}
+	projectDir := filepath.Base(filepath.Dir(absPath))
+
 	return &ReportData{
 		GeneratedAt:            time.Now().Format(time.RFC3339),
-		ProjectPath:            rg.projectPath,
+		ProjectPath:            projectDir,
 		TotalGems:              len(allGems),
 		FirstLevelGems:         firstLevelCount,
 		TransitiveDependencies: transitiveDeps,

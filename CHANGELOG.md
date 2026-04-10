@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v1.1.8] - 2026-04-09
+
+### Added
+- **Report Generation Progress Feedback** - Real-time progress indicators during report analysis
+  - Parse status with gem count displayed
+  - Live counter during outdated gem checks showing (N/total) progress
+  - Vulnerability scan cache hit/miss detection
+  - Final report destination confirmation
+  - All progress output goes to stderr to prevent polluting report content
+
+### Fixed
+- **Project Name Display in Reports** - Reports now show the actual project directory name instead of "."
+  - Extracts project directory name from absolute Gemfile.lock path
+  - Shows project name (e.g., "listopia") instead of full path or relative "."
+
 ## [v1.1.7] - 2026-04-09
 
 ### Added
