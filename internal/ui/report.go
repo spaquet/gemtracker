@@ -74,6 +74,8 @@ type GemReport struct {
 	HomepageURL string
 	// Description is the gem description from rubygems.org
 	Description string
+	// ReverseDeps lists the names of gems that depend on this gem
+	ReverseDeps []string
 }
 
 // NewReportGenerator creates a new ReportGenerator for the given project path.
@@ -193,6 +195,18 @@ func (rg *ReportGenerator) buildReportData(analysis *gemfile.AnalysisResult, gem
 		firstLevelMap[name] = true
 	}
 
+	// Build reverse dependency map: gem name → list of gems that depend on it
+	reverseDepMap := make(map[string][]string)
+	for _, gem := range gf.Gems {
+		for _, dep := range gem.Dependencies {
+			reverseDepMap[dep] = append(reverseDepMap[dep], gem.Name)
+		}
+	}
+	// Sort reverse deps for consistent output
+	for _, deps := range reverseDepMap {
+		sort.Strings(deps)
+	}
+
 	// Convert gem statuses to reports
 	allGems := make([]*GemReport, 0)
 	outdatedGems := make([]*GemReport, 0)
@@ -210,6 +224,7 @@ func (rg *ReportGenerator) buildReportData(analysis *gemfile.AnalysisResult, gem
 			VulnerabilityInfo: status.VulnerabilityInfo,
 			HomepageURL:       status.HomepageURL,
 			Description:       status.Description,
+			ReverseDeps:       reverseDepMap[status.Name],
 		}
 
 		allGems = append(allGems, report)
@@ -264,6 +279,110 @@ func (rg *ReportGenerator) buildReportData(analysis *gemfile.AnalysisResult, gem
 	}
 }
 
+// groupGemsByGroup partitions gems into a map keyed by their bundle groups.
+// Gems with no group are placed under "-".
+// A gem may appear in multiple groups if it belongs to more than one.
+func groupGemsByGroup(gems []*GemReport) map[string][]*GemReport {
+	result := make(map[string][]*GemReport)
+	for _, gem := range gems {
+		if len(gem.Groups) == 0 {
+			result["-"] = append(result["-"], gem)
+		} else {
+			for _, g := range gem.Groups {
+				result[g] = append(result[g], gem)
+			}
+		}
+	}
+	return result
+}
+
+// sortedGroupKeys returns the group keys in canonical order:
+// default, production, development, test, staging, then other groups alphabetically, then "-" last.
+func sortedGroupKeys(gemsByGroup map[string][]*GemReport) []string {
+	canonicalOrder := []string{"default", "production", "development", "test", "staging"}
+	result := []string{}
+
+	// First add canonical groups that have gems
+	for _, group := range canonicalOrder {
+		if len(gemsByGroup[group]) > 0 {
+			result = append(result, group)
+		}
+	}
+
+	// Then add other groups alphabetically (excluding "-")
+	otherGroups := []string{}
+	for group := range gemsByGroup {
+		found := false
+		for _, canonical := range canonicalOrder {
+			if group == canonical {
+				found = true
+				break
+			}
+		}
+		if !found && group != "-" {
+			otherGroups = append(otherGroups, group)
+		}
+	}
+	sort.Strings(otherGroups)
+	result = append(result, otherGroups...)
+
+	// Finally add "-" if it has gems
+	if len(gemsByGroup["-"]) > 0 {
+		result = append(result, "-")
+	}
+
+	return result
+}
+
+// writeGroupedGems writes gems grouped by bundle group, with direct/transitive markers and reverse dependencies.
+// mode: "outdated" shows version updates (old → new); "all" shows current version with status markers.
+func writeGroupedGems(output *strings.Builder, gems []*GemReport, mode string) {
+	byGroup := groupGemsByGroup(gems)
+
+	for _, group := range sortedGroupKeys(byGroup) {
+		output.WriteString(fmt.Sprintf("Group: %s\n", group))
+		groupGems := byGroup[group]
+
+		// Sort: direct first, then transitive; alphabetical within each
+		sort.Slice(groupGems, func(i, j int) bool {
+			if groupGems[i].IsFirstLevel != groupGems[j].IsFirstLevel {
+				return groupGems[i].IsFirstLevel
+			}
+			return groupGems[i].Name < groupGems[j].Name
+		})
+
+		for _, gem := range groupGems {
+			marker := "[transitive]"
+			if gem.IsFirstLevel {
+				marker = "[direct]    "
+			}
+
+			var versionStr string
+			if mode == "outdated" {
+				versionStr = fmt.Sprintf("(%s → %s)", gem.Version, gem.LatestVersion)
+			} else {
+				versionStr = fmt.Sprintf("@%s", gem.Version)
+				// Add status markers
+				if gem.IsVulnerable {
+					versionStr += " [VULNERABLE]"
+				} else if gem.IsOutdated {
+					versionStr += " [OUTDATED]"
+				}
+			}
+
+			line := fmt.Sprintf("  %s %s %s", marker, gem.Name, versionStr)
+
+			// Add reverse dependencies
+			if len(gem.ReverseDeps) > 0 {
+				line += fmt.Sprintf("  [used by: %s]", strings.Join(gem.ReverseDeps, ", "))
+			}
+
+			output.WriteString(line + "\n")
+		}
+		output.WriteString("\n")
+	}
+}
+
 // generateTextReport generates a human-readable text report
 func (rg *ReportGenerator) generateTextReport(data *ReportData, outputPath string) error {
 	var output strings.Builder
@@ -298,38 +417,13 @@ func (rg *ReportGenerator) generateTextReport(data *ReportData, outputPath strin
 	if data.OutdatedCount > 0 {
 		output.WriteString("OUTDATED GEMS (Updates Available)\n")
 		output.WriteString(strings.Repeat("-", 80) + "\n")
-		for _, gem := range data.OutdatedGems {
-			output.WriteString(fmt.Sprintf("  • %s (%s → %s)\n", gem.Name, gem.Version, gem.LatestVersion))
-			if gem.IsFirstLevel {
-				output.WriteString("    [Direct dependency]\n")
-			}
-		}
-		output.WriteString("\n")
+		writeGroupedGems(&output, data.OutdatedGems, "outdated")
 	}
 
 	// All gems section
 	output.WriteString("ALL GEMS\n")
 	output.WriteString(strings.Repeat("-", 80) + "\n")
-	for _, gem := range data.AllGems {
-		marker := ""
-		if gem.IsVulnerable {
-			marker = " [VULNERABLE]"
-		} else if gem.IsOutdated {
-			marker = " [OUTDATED]"
-		}
-
-		groups := ""
-		if len(gem.Groups) > 0 {
-			groups = fmt.Sprintf(" [%s]", strings.Join(gem.Groups, ", "))
-		}
-
-		depType := ""
-		if gem.IsFirstLevel {
-			depType = " *"
-		}
-
-		output.WriteString(fmt.Sprintf("  %s@%s%s%s%s\n", gem.Name, gem.Version, depType, groups, marker))
-	}
+	writeGroupedGems(&output, data.AllGems, "all")
 
 	// Write to file or stdout
 	return rg.writeOutput(output.String(), outputPath)

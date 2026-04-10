@@ -16,6 +16,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Vulnerability scan cache hit/miss detection
   - Final report destination confirmation
   - All progress output goes to stderr to prevent polluting report content
+- **Redesigned Text Report Layout** - Improved readability and structure for `--report text` output
+  - Gems grouped by bundle group (default, development, test, staging, production, etc.)
+  - Clear [direct] vs [transitive] dependency markers
+  - Shows reverse dependencies: "[used by: X, Y, Z]" indicating which gems depend on each gem
+  - Gem groups marked with "-" when not identified (typically transitive gems)
+  - Applied to both "OUTDATED GEMS" and "ALL GEMS" sections
 
 ### Fixed
 - **Project Name Display in Reports** - Reports now show the actual project directory name instead of "."
