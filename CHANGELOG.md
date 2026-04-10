@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Remediation Advice for CVEs** - Display recommended remediation and workarounds when available
+  - Shows both mitigations and workarounds from OSV vulnerability details
+  - Accessible in CVE info modal (press 'i' on a CVE to view details)
+  - Note: Users should follow the official CVE link to verify complete and current remediation guidance
+- **BubbleTea v2 Upgrade** - Updated TUI framework and components to latest version
+  - charm.land/bubbletea/v2 v2.0.2
+  - charm.land/bubbles/v2 v2.1.0
+  - charm.land/lipgloss/v2 v2.0.2
+  - Improved keyboard event handling and View API
+
 ## [v1.2.0] - 2026-04-09
 
 ### Added
