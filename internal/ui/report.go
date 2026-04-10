@@ -13,6 +13,7 @@ import (
 
 	"github.com/spaquet/gemtracker/internal/gemfile"
 	"github.com/spaquet/gemtracker/internal/logger"
+	"golang.org/x/term"
 )
 
 // ReportGenerator generates gem dependency reports in multiple formats (text, CSV, JSON)
@@ -91,6 +92,7 @@ func NewReportGenerator(projectPath string, noCache, verbose bool) *ReportGenera
 
 // resolveOutputPath checks if outputPath already exists and prompts the user for action.
 // Returns the final path to write to and whether to proceed (false = user cancelled).
+// In non-interactive environments (tests, CI), automatically replaces existing files.
 func resolveOutputPath(outputPath string) (string, bool, error) {
 	if outputPath == "" {
 		return "", true, nil // stdout — no conflict possible
@@ -98,6 +100,14 @@ func resolveOutputPath(outputPath string) (string, bool, error) {
 
 	if _, err := os.Stat(outputPath); os.IsNotExist(err) {
 		return outputPath, true, nil // file doesn't exist yet — proceed
+	}
+
+	// Check if stdin is a terminal (interactive mode)
+	isInteractive := term.IsTerminal(int(os.Stdin.Fd()))
+
+	// In non-interactive environments (tests, CI), auto-replace
+	if !isInteractive {
+		return outputPath, true, nil
 	}
 
 	ext := filepath.Ext(outputPath)

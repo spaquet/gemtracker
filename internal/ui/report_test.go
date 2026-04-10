@@ -316,11 +316,11 @@ func TestWriteOutputToFile(t *testing.T) {
 
 // TestGenerateWithInvalidFormat tests error handling for invalid format
 func TestGenerateWithInvalidFormat(t *testing.T) {
-	if _, err := os.Stat("testdata/projects/minimal-example/Gemfile.lock"); os.IsNotExist(err) {
-		t.Skip("testdata/projects/minimal-example/Gemfile.lock not found, skipping test")
+	if _, err := os.Stat("../../testdata/projects/minimal-example/Gemfile.lock"); os.IsNotExist(err) {
+		t.Fatalf("testdata/projects/minimal-example/Gemfile.lock not found (required for test)")
 	}
 
-	rg := NewReportGenerator("testdata", false, false)
+	rg := NewReportGenerator("../../testdata/projects/minimal-example", false, false)
 	err := rg.Generate("invalid", "")
 	if err == nil {
 		t.Errorf("expected error for invalid format, got nil")
@@ -362,11 +362,11 @@ func TestBoolToString(t *testing.T) {
 
 // TestGenerateWithRealGemfile tests report generation with actual test data
 func TestGenerateWithRealGemfile(t *testing.T) {
-	if _, err := os.Stat("testdata/projects/minimal-example/Gemfile.lock"); os.IsNotExist(err) {
-		t.Skip("testdata/projects/minimal-example/Gemfile.lock not found, skipping integration test")
+	if _, err := os.Stat("../../testdata/projects/minimal-example/Gemfile.lock"); os.IsNotExist(err) {
+		t.Fatalf("testdata/projects/minimal-example/Gemfile.lock not found (required for integration test)")
 	}
 
-	rg := NewReportGenerator("testdata", false, false)
+	rg := NewReportGenerator("../../testdata/projects/minimal-example", false, false)
 
 	// Test all three formats
 	formats := []string{"text", "csv", "json"}
@@ -404,6 +404,7 @@ func TestGenerateWithRealGemfile(t *testing.T) {
 			}
 		case "csv":
 			reader := csv.NewReader(strings.NewReader(string(content)))
+			reader.Comment = '#' // Skip comment lines at the top
 			_, err := reader.ReadAll()
 			if err != nil {
 				t.Errorf("invalid CSV output for format csv: %v", err)
