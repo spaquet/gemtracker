@@ -1663,6 +1663,18 @@ func (m *Model) renderGemInfoModalBox() string {
 	lines = append(lines, titleStyle.Render(title))
 	lines = append(lines, "")
 
+	// Show loading state if no output yet
+	if m.CurrentGemInfoOutput == "" {
+		lines = append(lines, "Loading gem info...")
+		content := strings.Join(lines, "\n")
+		boxStyle := lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(lipgloss.Color(ColorBorderActive)).
+			Background(lipgloss.Color(ColorSurface)).
+			Padding(1, 2)
+		return boxStyle.Width(60).Render(content)
+	}
+
 	// Parse gem info output
 	gemInfoLines := strings.Split(m.CurrentGemInfoOutput, "\n")
 

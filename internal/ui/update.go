@@ -1580,8 +1580,11 @@ func (m *Model) handleSanityData(msg SanityDataMsg) (tea.Model, tea.Cmd) {
 func (m *Model) handleGemInfo(msg GemInfoMsg) (tea.Model, tea.Cmd) {
 	if msg.Error != nil {
 		// Show error message in the output
-		m.CurrentGemInfoOutput = fmt.Sprintf("Error: %v\n\n%s", msg.Error, msg.Output)
+		m.CurrentGemInfoOutput = fmt.Sprintf("Error fetching gem info: %v\n\nOutput:\n%s", msg.Error, msg.Output)
 		logger.Warn("Failed to get gem info for %s: %v", msg.GemName, msg.Error)
+	} else if msg.Output == "" {
+		// Gem not found or no output
+		m.CurrentGemInfoOutput = fmt.Sprintf("No information found for gem '%s'.\n\nThe gem may not be installed.", msg.GemName)
 	} else {
 		m.CurrentGemInfoOutput = msg.Output
 	}

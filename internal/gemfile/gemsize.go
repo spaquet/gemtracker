@@ -2,11 +2,13 @@ package gemfile
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 // DetectRubyManager extracts the Ruby version manager name from gem env gemdir output.
@@ -103,13 +105,20 @@ func dirSize(path string) (int64, error) {
 }
 
 // GetGemInfo executes `gem info <gemName>` and returns the raw output.
+// Uses a timeout to prevent hanging if the gem command is slow or unresponsive.
 func GetGemInfo(gemName string) (string, error) {
-	cmd := exec.Command("gem", "info", gemName)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "gem", "info", gemName)
 	var out bytes.Buffer
 	cmd.Stdout = &out
 	cmd.Stderr = &out
 
 	err := cmd.Run()
+	if ctx.Err() == context.DeadlineExceeded {
+		return "", fmt.Errorf("gem info command timed out (5s)")
+	}
 	if err != nil {
 		// gem info returns non-zero if gem not found, but output is still useful
 		return out.String(), fmt.Errorf("gem info command failed: %w", err)
