@@ -642,7 +642,28 @@ func (m *Model) handleSanityKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
-	case "enter", "i":
+	case "enter":
+		// Navigate to gem detail view (same as other tabs)
+		if len(allGems) > 0 && m.SanityCursor < len(allGems) {
+			m.SelectedGem = allGems[m.SanityCursor]
+			m.CurrentView = ViewGemDetail
+			m.ActiveTab = ViewSanity
+			m.Loading = true
+			m.LoadingMessage = "Loading dependencies..."
+			m.DetailSection = 0
+			m.DetailTreeCursor = 0
+			m.DetailForwardOffset = 0
+			m.DetailReverseOffset = 0
+			return m, tea.Batch(
+				tea.Tick(time.Millisecond*100, func(time.Time) tea.Msg {
+					return SpinnerTickMsg{}
+				}),
+				performDependencyAnalysis(m.GemfileLockPath, m.SelectedGem.Name),
+			)
+		}
+		return m, nil
+
+	case "i":
 		// Open gem info modal with current gem data
 		if len(allGems) > 0 && m.SanityCursor < len(allGems) {
 			gem := allGems[m.SanityCursor]
