@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Insecure Gem Source Detection** (Issue #54)
+  - Detects gems sourced from insecure protocols (http://, git://, git+http://)
+  - Displays insecure sources in Project tab with source URL for each gem
+  - Includes insecure source information in all export formats (text, CSV, JSON)
+  - Text reports show dedicated "INSECURE GEM SOURCES" section with security guidance
+  - CSV and JSON exports include source and insecure flag for each gem
+  - Helps security teams identify gems from untrusted or unencrypted sources
+
 ## [v1.1.8] - 2026-04-09
 
 ### Added

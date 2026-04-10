@@ -920,6 +920,8 @@ func (m *Model) handleAnalysisComplete(msg AnalysisCompleteMsg) (tea.Model, tea.
 		framework, version := gemfile.DetectFramework(gf)
 		m.FrameworkDetected = framework
 		m.RailsVersion = version
+		// Also get insecure sources from the parsed Gemfile
+		m.InsecureSourceGems = gf.GetInsecureSourceGems()
 	}
 
 	// Calculate statistics

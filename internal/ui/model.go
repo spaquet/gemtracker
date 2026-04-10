@@ -250,14 +250,15 @@ type Model struct {
 	CVELastError          string                   // Last error message if scan failed
 
 	// Project Info screen state
-	RubyVersion       string
-	RailsVersion      string
-	BundleVersion     string
-	OtherFramework    string // For non-Rails projects
-	TotalGems         int
-	FirstLevelCount   int
-	TransitiveDeps    int
-	FrameworkDetected string // The name of the framework detected
+	RubyVersion        string
+	RailsVersion       string
+	BundleVersion      string
+	OtherFramework     string // For non-Rails projects
+	TotalGems          int
+	FirstLevelCount    int
+	TransitiveDeps     int
+	FrameworkDetected  string // The name of the framework detected
+	InsecureSourceGems []*gemfile.Gem // Gems sourced from insecure protocols (http://, git://)
 
 	// Path selection modal
 	PathInput textinput.Model

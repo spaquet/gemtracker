@@ -1543,6 +1543,21 @@ func (m *Model) renderProjectInfo(height int) string {
 		sections = append(sections, vulnStyle.Render(vulnLabel))
 	}
 
+	// Insecure sources summary
+	if len(m.InsecureSourceGems) > 0 {
+		sections = append(sections, "")
+		insecureLabel := fmt.Sprintf("🔓 Insecure Gem Sources (%d)", len(m.InsecureSourceGems))
+		insecureStyle := lipgloss.NewStyle().
+			Bold(true).
+			Foreground(lipgloss.Color(ColorWarning))
+		sections = append(sections, insecureStyle.Render(insecureLabel))
+		sections = append(sections, "")
+		for _, gem := range m.InsecureSourceGems {
+			sourceInfo := fmt.Sprintf("  • %s @ %s", gem.Name, gem.Source)
+			sections = append(sections, sourceInfo)
+		}
+	}
+
 	// Padding to fill height
 	lines := sections
 	for len(lines) < height {

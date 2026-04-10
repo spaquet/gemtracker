@@ -49,6 +49,8 @@ type AnalysisResult struct {
 	AllGems []*Gem
 	// GemStatuses is detailed status information for each gem (outdated, vulnerable, health, etc.)
 	GemStatuses []*GemStatus
+	// InsecureSourceGems is a list of gems sourced from insecure protocols (http://, git://)
+	InsecureSourceGems []*Gem
 	// Summary is a brief one-line summary of the analysis results
 	Summary string
 	// Details is a detailed report of all gems and their status
@@ -97,12 +99,13 @@ func Analyze(gemfile *Gemfile) *AnalysisResult {
 	}
 
 	result := &AnalysisResult{
-		TotalGems:      gemfile.GetGemCount(),
-		OutdatedGems:   outdatedList,
-		VulnerableGems: vulnerableList,
-		FirstLevelGems: firstLevelList,
-		AllGems:        allGems,
-		GemStatuses:    gemStatuses,
+		TotalGems:          gemfile.GetGemCount(),
+		OutdatedGems:       outdatedList,
+		VulnerableGems:     vulnerableList,
+		FirstLevelGems:     firstLevelList,
+		AllGems:            allGems,
+		GemStatuses:        gemStatuses,
+		InsecureSourceGems: gemfile.GetInsecureSourceGems(),
 	}
 
 	// Generate summary
