@@ -127,6 +127,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case SanityDataMsg:
 		return m.handleSanityData(msg)
+
+	case GemInfoMsg:
+		return m.handleGemInfo(msg)
 	}
 
 	return m, nil
@@ -640,18 +643,12 @@ func (m *Model) handleSanityKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case "enter", "i":
-		// Open gem info modal
+		// Fetch gem info asynchronously
 		if len(allGems) > 0 && m.SanityCursor < len(allGems) {
 			gem := allGems[m.SanityCursor]
-			gemInfo, err := gemfile.GetGemInfo(gem.Name)
-			if err != nil {
-				// Still show the output even if there's an error
-				m.CurrentGemInfoOutput = gemInfo
-			} else {
-				m.CurrentGemInfoOutput = gemInfo
-			}
 			m.ShowingGemInfo = true
 			m.GemInfoScroll = 0 // Reset scroll when opening
+			return m, fetchGemInfo(gem.Name)
 		}
 		return m, nil
 	}
@@ -1576,6 +1573,18 @@ func (m *Model) handleSanityData(msg SanityDataMsg) (tea.Model, tea.Cmd) {
 	m.RubyManager = msg.RubyManager
 	m.ProjectTotalSizeBytes = msg.ProjectTotalSize
 	m.GemSizes = msg.GemSizes
+
+	return m, nil
+}
+
+func (m *Model) handleGemInfo(msg GemInfoMsg) (tea.Model, tea.Cmd) {
+	if msg.Error != nil {
+		// Show error message in the output
+		m.CurrentGemInfoOutput = fmt.Sprintf("Error: %v\n\n%s", msg.Error, msg.Output)
+		logger.Warn("Failed to get gem info for %s: %v", msg.GemName, msg.Error)
+	} else {
+		m.CurrentGemInfoOutput = msg.Output
+	}
 
 	return m, nil
 }

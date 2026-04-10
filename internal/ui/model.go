@@ -183,6 +183,12 @@ type SanityDataMsg struct {
 	Error            error
 }
 
+type GemInfoMsg struct {
+	GemName string
+	Output  string
+	Error   error
+}
+
 // ============================================================================
 // Model
 // ============================================================================
@@ -1114,6 +1120,17 @@ func loadSanityData(gems []*gemfile.Gem) tea.Cmd {
 			ProjectTotalSize: totalSize,
 			GemSizes:         sizes,
 			Error:            nil,
+		}
+	}
+}
+
+func fetchGemInfo(gemName string) tea.Cmd {
+	return func() tea.Msg {
+		output, err := gemfile.GetGemInfo(gemName)
+		return GemInfoMsg{
+			GemName: gemName,
+			Output:  output,
+			Error:   err,
 		}
 	}
 }
