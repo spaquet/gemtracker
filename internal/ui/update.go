@@ -124,6 +124,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case CVELoadFromCacheMsg:
 		return m.handleCVELoadFromCache(msg)
+
+	case SanityDataMsg:
+		return m.handleSanityData(msg)
 	}
 
 	return m, nil
@@ -175,6 +178,12 @@ func (m *Model) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case ViewCVE:
 		return m.handleCVEKeys(msg)
+
+	case ViewSanity:
+		if m.ShowingGemInfo {
+			return m.handleGemInfoKeys(msg)
+		}
+		return m.handleSanityKeys(msg)
 
 	case ViewProjectInfo:
 		return m.handleProjectInfoKeys(msg)
@@ -602,6 +611,127 @@ func (m *Model) handleCVEInfoKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+func (m *Model) handleSanityKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	allGems := m.allGemsForSanity()
+
+	switch msg.String() {
+	case "tab":
+		m.CurrentView = ViewProjectInfo
+		m.ActiveTab = ViewProjectInfo
+		return m, nil
+
+	case "shift+tab":
+		m.CurrentView = ViewCVE
+		m.ActiveTab = ViewCVE
+		return m, nil
+
+	case "up":
+		if m.SanityCursor > 0 {
+			m.SanityCursor--
+			m.ensureSanityCursorVisible()
+		}
+		return m, nil
+
+	case "down":
+		if m.SanityCursor < len(allGems)-1 {
+			m.SanityCursor++
+			m.ensureSanityCursorVisible()
+		}
+		return m, nil
+
+	case "enter", "i":
+		// Open gem info modal
+		if len(allGems) > 0 && m.SanityCursor < len(allGems) {
+			gem := allGems[m.SanityCursor]
+			gemInfo, err := gemfile.GetGemInfo(gem.Name)
+			if err != nil {
+				// Still show the output even if there's an error
+				m.CurrentGemInfoOutput = gemInfo
+			} else {
+				m.CurrentGemInfoOutput = gemInfo
+			}
+			m.ShowingGemInfo = true
+			m.GemInfoScroll = 0 // Reset scroll when opening
+		}
+		return m, nil
+	}
+
+	return m, nil
+}
+
+func (m *Model) handleGemInfoKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "esc":
+		m.ShowingGemInfo = false
+		m.GemInfoScroll = 0
+		return m, nil
+
+	case "up":
+		if m.GemInfoScroll > 0 {
+			m.GemInfoScroll--
+		}
+		return m, nil
+
+	case "down":
+		if m.GemInfoScroll < m.getGemInfoMaxScroll() {
+			m.GemInfoScroll++
+		}
+		return m, nil
+
+	case "home":
+		m.GemInfoScroll = 0
+		return m, nil
+
+	case "end":
+		m.GemInfoScroll = m.getGemInfoMaxScroll()
+		return m, nil
+
+	case "q":
+		m.ShowingGemInfo = false
+		m.GemInfoScroll = 0
+		return m, nil
+	}
+
+	return m, nil
+}
+
+// ensureSanityCursorVisible adjusts the offset so the cursor stays visible
+func (m *Model) ensureSanityCursorVisible() {
+	statusbarLines := m.statusBarTotalHeight()
+	contentHeight := m.Height - 2 - statusbarLines
+
+	// Account for header and section headers
+	visibleRows := contentHeight - 6 // Rough estimate, conservative
+
+	if visibleRows < 1 {
+		visibleRows = 1
+	}
+
+	// Scroll to keep cursor visible
+	if m.SanityCursor < m.SanityOffset {
+		m.SanityOffset = m.SanityCursor
+	} else if m.SanityCursor >= m.SanityOffset+visibleRows {
+		m.SanityOffset = m.SanityCursor - visibleRows + 1
+	}
+}
+
+// getGemInfoMaxScroll calculates the maximum scroll position for the gem info modal
+func (m *Model) getGemInfoMaxScroll() int {
+	gemInfoLines := strings.Split(m.CurrentGemInfoOutput, "\n")
+	availableHeight := m.Height - 10 // Reserve space for border, title, etc.
+
+	if availableHeight < 1 {
+		availableHeight = 1
+	}
+
+	maxScroll := len(gemInfoLines) - availableHeight
+	if maxScroll < 0 {
+		maxScroll = 0
+	}
+
+	return maxScroll
+}
+
 // getCVEInfoMaxScroll calculates the maximum scroll position for the CVE info modal
 func (m *Model) getCVEInfoMaxScroll() int {
 	if len(m.CVEVulnerabilities) == 0 || m.CVECursor >= len(m.CVEVulnerabilities) {
@@ -1004,10 +1134,14 @@ func (m *Model) handleAnalysisComplete(msg AnalysisCompleteMsg) (tea.Model, tea.
 		m.LastGemsSignature = gemfile.ComputeGemsSignature(msg.Result.AllGems)
 	}
 
-	// Batch outdated checking and CVE scanning
+	// Start Sanity data loading (gem sizes)
+	m.SanityLoading = true
+
+	// Batch outdated checking, CVE scanning, and Sanity data loading
 	return m, tea.Batch(
 		fetchNextOutdatedItem(m.OutdatedPending, m.OutdatedChecker),
 		performCVEScan(msg.Result.AllGems),
+		loadSanityData(msg.Result.AllGems),
 	)
 }
 
@@ -1425,6 +1559,23 @@ func (m *Model) handleCVELoadFromCache(msg CVELoadFromCacheMsg) (tea.Model, tea.
 
 	// Rebuild vulnerable gems list (only gems with vulnerabilities)
 	m.rebuildVulnerableGemsList()
+
+	return m, nil
+}
+
+func (m *Model) handleSanityData(msg SanityDataMsg) (tea.Model, tea.Cmd) {
+	m.SanityLoading = false
+
+	if msg.Error != nil {
+		logger.Warn("Failed to load Sanity data: %v", msg.Error)
+		// Don't fail, just show error state in UI
+		return m, nil
+	}
+
+	m.GemDirPath = msg.GemDirPath
+	m.RubyManager = msg.RubyManager
+	m.ProjectTotalSizeBytes = msg.ProjectTotalSize
+	m.GemSizes = msg.GemSizes
 
 	return m, nil
 }

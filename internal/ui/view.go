@@ -112,6 +112,8 @@ func (m *Model) View() string {
 		return m.viewUpgradeable()
 	case ViewCVE:
 		return m.viewCVE()
+	case ViewSanity:
+		return m.viewSanity()
 	case ViewProjectInfo:
 		return m.viewProjectInfo()
 	case ViewFilterMenu:
@@ -139,6 +141,7 @@ var viewHints = map[ViewMode][]string{
 	ViewSearch:        {"type search", "↑↓ navigate", "enter select", "esc clear"},
 	ViewUpgradeable:   {"↑↓ navigate", "enter select", "tab next", "q quit"},
 	ViewCVE:           {"↑↓ navigate", "enter select", "f filter", "i info", "tab next", "q quit"},
+	ViewSanity:        {"↑↓ navigate", "enter select", "i info", "tab next", "q quit"},
 	ViewProjectInfo:   {"tab next", "shift+tab prev", "q quit"},
 	ViewFilterMenu:    {"↑↓ navigate", "space toggle", "enter back", "q quit"},
 	ViewCVEFilterMenu: {"↑↓ navigate", "space toggle", "enter back", "q quit"},
@@ -261,8 +264,8 @@ func (m *Model) renderAppHeader() string {
 }
 
 func (m *Model) renderTabBar() string {
-	tabLabels := []string{"Gems", "Search", "Updates", "CVE", "Project"}
-	tabModes := []ViewMode{ViewGemList, ViewSearch, ViewUpgradeable, ViewCVE, ViewProjectInfo}
+	tabLabels := []string{"Gems", "Search", "Updates", "CVE", "Sanity", "Project"}
+	tabModes := []ViewMode{ViewGemList, ViewSearch, ViewUpgradeable, ViewCVE, ViewSanity, ViewProjectInfo}
 
 	var tabs []string
 	for i, label := range tabLabels {
@@ -1477,6 +1480,295 @@ func formatDuration(d time.Duration) string {
 		return fmt.Sprintf("%dh", int(d.Hours()))
 	}
 	return fmt.Sprintf("%dd", int(d.Hours()/24))
+}
+
+// ============================================================================
+// View: Sanity (Gem Sizes)
+// ============================================================================
+
+func (m *Model) viewSanity() string {
+	if m.ShowingGemInfo {
+		return m.viewGemInfoModal()
+	}
+
+	statusbarLines := m.statusBarTotalHeight()
+	contentHeight := m.Height - 2 - statusbarLines
+	if contentHeight < 1 {
+		contentHeight = 1
+	}
+	sanityContent := m.renderSanityTable(contentHeight)
+
+	return m.assembleViewWithChrome(sanityContent)
+}
+
+func (m *Model) renderSanityTable(height int) string {
+	if height < 1 {
+		height = 1
+	}
+
+	// Show loading state
+	if m.SanityLoading {
+		msg := "Checking gem sizes..."
+		return lipgloss.NewStyle().
+			Foreground(lipgloss.Color(ColorTextMuted)).
+			Padding(2, 2).
+			Render(msg)
+	}
+
+	// Show error if gem dir not found
+	if m.GemDirPath == "" {
+		msg := "Unable to detect gem directory. Make sure Ruby is properly installed."
+		return lipgloss.NewStyle().
+			Foreground(lipgloss.Color(ColorDanger)).
+			Padding(2, 2).
+			Render(msg)
+	}
+
+	var lines []string
+
+	// Add header with Ruby manager and total size
+	lines = append(lines, "")
+	headerLine := fmt.Sprintf("Ruby Manager: %s  |  Total Size: %s",
+		m.RubyManager,
+		gemfile.FormatBytes(m.ProjectTotalSizeBytes))
+	headerStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color(ColorPrimary)).
+		Bold(true)
+	lines = append(lines, headerStyle.Render(headerLine))
+	lines = append(lines, "")
+
+	// Build list of all gems with their sizes
+	allGems := m.allGemsForSanity()
+	if len(allGems) == 0 {
+		lines = append(lines, "No gems found.")
+		return lipgloss.JoinVertical(lipgloss.Left, lines...)
+	}
+
+	// Track section for breaks
+	var lastSection string
+
+	// Render gems starting from SanityOffset
+	gemIndex := 0
+	displayIndex := 1
+
+	for gemIdx := m.SanityOffset; gemIdx < len(allGems); gemIdx++ {
+		if len(lines) >= height {
+			break
+		}
+
+		// Determine section (direct vs transitive)
+		gem := allGems[gemIdx]
+		var currentSection string
+		if m.isDirectDependency(gem.Name) {
+			currentSection = "DIRECT DEPENDENCIES"
+		} else {
+			currentSection = "TRANSITIVE DEPENDENCIES"
+		}
+
+		// Add section header when entering a new section
+		if currentSection != lastSection {
+			if lastSection != "" && len(lines) < height {
+				lines = append(lines, "")
+			}
+
+			if len(lines) < height {
+				lines = append(lines, lipgloss.NewStyle().
+					Bold(true).
+					Foreground(lipgloss.Color(ColorPrimary)).
+					Render(currentSection))
+			}
+
+			if len(lines) < height {
+				headerRow := fmt.Sprintf("  %-3s %-24s %-11s %s",
+					"ID", "Gem Name", "Installed", "Size")
+				header := TableHeaderStyle.Render(headerRow)
+				lines = append(lines, header)
+			}
+
+			lastSection = currentSection
+		}
+
+		if len(lines) >= height {
+			break
+		}
+
+		size := m.GemSizes[gem.Name]
+		sizeStr := gemfile.FormatBytes(size)
+
+		isSelected := gemIdx == m.SanityCursor
+		row := fmt.Sprintf("  %-3d %-24s %-11s %s",
+			displayIndex,
+			truncateStr(gem.Name, 24),
+			gem.Version,
+			sizeStr,
+		)
+		if isSelected {
+			row = RowSelectedStyle.Render(row)
+		} else {
+			row = RowNormalStyle.Render(row)
+		}
+		lines = append(lines, row)
+
+		displayIndex++
+		gemIndex++
+	}
+
+	return lipgloss.JoinVertical(lipgloss.Left, lines...)
+}
+
+func (m *Model) viewGemInfoModal() string {
+	// Render Sanity list as background
+	background := m.viewSanity()
+	m.ShowingGemInfo = false // Prevent recursion
+
+	// Create info modal
+	modal := m.renderGemInfoModalBox()
+	m.ShowingGemInfo = true
+
+	// Calculate centered position
+	modalLines := strings.Split(modal, "\n")
+	modalH := len(modalLines)
+	modalW := lipgloss.Width(modal)
+
+	startRow := (m.Height - modalH) / 2
+	startCol := (m.Width - modalW) / 2
+
+	if startRow < 2 {
+		startRow = 2 // Don't cover header
+	}
+	if startCol < 0 {
+		startCol = 0
+	}
+
+	// Overlay modal on background
+	return placeOverlay(startRow, startCol, modal, background)
+}
+
+func (m *Model) renderGemInfoModalBox() string {
+	allGems := m.allGemsForSanity()
+	if m.SanityCursor >= len(allGems) {
+		return ""
+	}
+
+	gem := allGems[m.SanityCursor]
+
+	// Build content lines
+	lines := []string{}
+
+	// Title
+	title := fmt.Sprintf("Gem Info: %s", gem.Name)
+	titleStyle := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color(ColorPrimary))
+	lines = append(lines, titleStyle.Render(title))
+	lines = append(lines, "")
+
+	// Parse gem info output
+	gemInfoLines := strings.Split(m.CurrentGemInfoOutput, "\n")
+
+	// Calculate available height for scrolling
+	availableHeight := m.Height - 10 // Reserve space for border, title, etc.
+
+	if availableHeight < 1 {
+		availableHeight = 1
+	}
+
+	// Clip content to fit within available height
+	clippedLines := gemInfoLines
+	if m.GemInfoScroll > 0 {
+		if m.GemInfoScroll >= len(gemInfoLines) {
+			m.GemInfoScroll = len(gemInfoLines) - availableHeight
+			if m.GemInfoScroll < 0 {
+				m.GemInfoScroll = 0
+			}
+		}
+		clippedLines = gemInfoLines[m.GemInfoScroll:]
+	}
+
+	if len(clippedLines) > availableHeight {
+		clippedLines = clippedLines[:availableHeight]
+	}
+
+	// Add scroll indicator if needed
+	scrollHint := ""
+	if m.GemInfoScroll > 0 || (m.GemInfoScroll+availableHeight < len(gemInfoLines)) {
+		scrollPercent := (m.GemInfoScroll * 100) / len(gemInfoLines)
+		scrollHint = fmt.Sprintf(" [%d%%]", scrollPercent)
+	}
+
+	// Add content lines
+	for _, line := range clippedLines {
+		if strings.TrimSpace(line) != "" {
+			lines = append(lines, line)
+		}
+	}
+
+	// Add scroll indicator hint
+	if scrollHint != "" {
+		lines = append(lines, "")
+		hintStyle := lipgloss.NewStyle().
+			Foreground(lipgloss.Color(ColorTextMuted)).
+			Italic(true)
+		lines = append(lines, hintStyle.Render("Scroll: "+scrollHint))
+	}
+
+	// Create the modal box with border
+	content := strings.Join(lines, "\n")
+
+	// Calculate width - limit to reasonable size
+	modalWidth := 80
+	if modalWidth > m.Width-4 {
+		modalWidth = m.Width - 4
+	}
+	if modalWidth < 40 {
+		modalWidth = 40
+	}
+
+	// Apply border and styling
+	boxStyle := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color(ColorBorderActive)).
+		Background(lipgloss.Color(ColorSurface)).
+		Padding(1, 2)
+
+	return boxStyle.Width(modalWidth).Render(content)
+}
+
+// Helper function to get all gems for Sanity tab display
+func (m *Model) allGemsForSanity() []*gemfile.GemStatus {
+	// Combine direct and transitive gems
+	allGems := make([]*gemfile.GemStatus, 0)
+
+	// Add direct dependencies first
+	if m.FirstLevelGems != nil {
+		allGems = append(allGems, m.FirstLevelGems...)
+	}
+
+	// Add transitive dependencies (gems in GemStatuses but not in FirstLevelGems)
+	if m.AnalysisResult != nil && m.AnalysisResult.GemStatuses != nil {
+		directMap := make(map[string]bool)
+		for _, gem := range m.FirstLevelGems {
+			directMap[gem.Name] = true
+		}
+
+		for _, gem := range m.AnalysisResult.GemStatuses {
+			if !directMap[gem.Name] {
+				allGems = append(allGems, gem)
+			}
+		}
+	}
+
+	return allGems
+}
+
+// Helper function to check if a gem is a direct dependency
+func (m *Model) isDirectDependency(gemName string) bool {
+	for _, gem := range m.FirstLevelGems {
+		if gem.Name == gemName {
+			return true
+		}
+	}
+	return false
 }
 
 // ============================================================================
