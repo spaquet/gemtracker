@@ -576,7 +576,7 @@ func (m *Model) handleCVEInfoKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "esc":
 		m.CurrentView = ViewCVE
-		m.CVEInfoScroll = 0 // Reset scroll when closing
+		m.CVEInfoScroll = 0       // Reset scroll when closing
 		m.CVEInfoCachedCVEID = "" // Invalidate cache when closing
 		return m, nil
 
