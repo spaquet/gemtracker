@@ -424,7 +424,18 @@ func (c *OSVClient) enrichVulnerabilitiesWithDetails(ctx context.Context, vulns 
 		if detailVuln.Details != "" && vulns[i].Workarounds == "" {
 			vulns[i].Workarounds = extractWorkarounds(detailVuln.Details)
 			if vulns[i].Workarounds != "" {
-				logger.Info("✓ Extracted workarounds for %s", vulns[i].OSVId)
+				// Count lines in workarounds
+				workaroundLineCount := len(strings.Split(vulns[i].Workarounds, "\n"))
+				logger.Info("✓ Extracted workarounds for %s (%d lines)", vulns[i].OSVId, workaroundLineCount)
+			} else {
+				logger.Info("✗ No workarounds found in Details for %s (Details length: %d)", vulns[i].OSVId, len(detailVuln.Details))
+			}
+		} else {
+			if detailVuln.Details == "" {
+				logger.Info("✗ Details field empty for %s", vulns[i].OSVId)
+			}
+			if vulns[i].Workarounds != "" {
+				logger.Info("✓ Workarounds already populated for %s", vulns[i].OSVId)
 			}
 		}
 	}
