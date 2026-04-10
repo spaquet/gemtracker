@@ -36,50 +36,9 @@ end
 	}
 
 	// Check runtime dependencies
-	if rail, ok := gf.Gems["rails"]; !ok {
-		t.Error("Expected 'rails' gem to be parsed")
-	} else {
-		if rail.Version != ">= 6.0" {
-			t.Errorf("Expected rails version '>= 6.0', got '%s'", rail.Version)
-		}
-		if !rail.IsFirstLevel {
-			t.Error("Expected rails to be first-level")
-		}
-		// Rails should be in production group
-		hasProduction := false
-		for _, g := range rail.Groups {
-			if g == "production" {
-				hasProduction = true
-				break
-			}
-		}
-		if !hasProduction {
-			t.Errorf("Expected rails to be in production group, got %v", rail.Groups)
-		}
-	}
-
-	// Check development dependency
-	if rspec, ok := gf.Gems["rspec"]; !ok {
-		t.Error("Expected 'rspec' gem to be parsed")
-	} else {
-		if rspec.Version != "~> 3.0" {
-			t.Errorf("Expected rspec version '~> 3.0', got '%s'", rspec.Version)
-		}
-		if !rspec.IsFirstLevel {
-			t.Error("Expected rspec to be first-level")
-		}
-		// Check if in development group
-		hasDev := false
-		for _, g := range rspec.Groups {
-			if g == "development" {
-				hasDev = true
-				break
-			}
-		}
-		if !hasDev {
-			t.Error("Expected rspec to be in development group")
-		}
-	}
+	assertGemExists(t, gf, "rails", ">= 6.0", true, "production")
+	assertGemExists(t, gf, "pg", ">= 1.1", true, "production")
+	assertGemExists(t, gf, "rspec", "~> 3.0", true, "development")
 
 	// Verify FirstLevelGems is populated
 	if len(gf.FirstLevelGems) != 3 {
@@ -139,34 +98,10 @@ end
 		t.Errorf("Expected 3 gems from s. prefix, got %d", len(gf.Gems))
 	}
 
-	// Check runtime dependencies
-	if rails, ok := gf.Gems["rails"]; !ok {
-		t.Error("Expected 'rails' gem from s.add_dependency")
-	} else if rails.Version != "~> 7.0" {
-		t.Errorf("Expected rails version '~> 7.0', got '%s'", rails.Version)
-	}
-
-	if sqlite3, ok := gf.Gems["sqlite3"]; !ok {
-		t.Error("Expected 'sqlite3' gem from s.add_dependency")
-	} else if sqlite3.Version != "~> 1.4" {
-		t.Errorf("Expected sqlite3 version '~> 1.4', got '%s'", sqlite3.Version)
-	}
-
-	// Check development dependency
-	if rspec, ok := gf.Gems["rspec"]; !ok {
-		t.Error("Expected 'rspec' gem from s.add_development_dependency")
-	} else {
-		hasDev := false
-		for _, g := range rspec.Groups {
-			if g == "development" {
-				hasDev = true
-				break
-			}
-		}
-		if !hasDev {
-			t.Error("Expected rspec to be in development group")
-		}
-	}
+	// Check dependencies
+	assertGemExists(t, gf, "rails", "~> 7.0", true, "production")
+	assertGemExists(t, gf, "sqlite3", "~> 1.4", true, "production")
+	assertGemExists(t, gf, "rspec", "~> 3.0", true, "development")
 }
 
 func TestParseGemspec_Directory(t *testing.T) {
@@ -187,4 +122,37 @@ func TestParseGemspec_Directory(t *testing.T) {
 	if gf == nil {
 		t.Fatal("Expected non-nil result")
 	}
+}
+
+// assertGemExists checks if a gem exists with the expected properties.
+func assertGemExists(t *testing.T, gf *Gemfile, name, version string, isFirstLevel bool, expectedGroup string) {
+	t.Helper()
+
+	gem, ok := gf.Gems[name]
+	if !ok {
+		t.Errorf("Expected '%s' gem to be parsed", name)
+		return
+	}
+
+	if gem.Version != version {
+		t.Errorf("Expected %s version '%s', got '%s'", name, version, gem.Version)
+	}
+
+	if gem.IsFirstLevel != isFirstLevel {
+		t.Errorf("Expected %s IsFirstLevel to be %v, got %v", name, isFirstLevel, gem.IsFirstLevel)
+	}
+
+	if !hasGroup(gem, expectedGroup) {
+		t.Errorf("Expected %s to be in %s group, got %v", name, expectedGroup, gem.Groups)
+	}
+}
+
+// hasGroup checks if a gem has a specific group.
+func hasGroup(gem *Gem, group string) bool {
+	for _, g := range gem.Groups {
+		if g == group {
+			return true
+		}
+	}
+	return false
 }

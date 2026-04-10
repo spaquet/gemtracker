@@ -25,15 +25,22 @@ var (
 	date = "unknown"
 )
 
-func main() {
-	// Initialize Sentry error tracking (optional, only if SENTRY_DSN is set)
-	if err := telemetry.InitSentry(); err != nil {
-		// Log error but continue - Sentry is optional
-		fmt.Fprintf(os.Stderr, "Warning: Failed to initialize error tracking: %v\n", err)
-	}
-	defer telemetry.Close()
+// Args contains the parsed command-line arguments.
+type Args struct {
+	ShowVersion  bool
+	ProjectPath  string
+	ReportFormat string
+	OutputPath   string
+	NoCache      bool
+	Verbose      bool
+}
 
-	// Parse command-line flags
+// parseArgs parses command-line arguments and returns the parsed values.
+// It handles custom flag parsing to support flags in any position.
+func parseArgs() Args {
+	args := Args{}
+
+	// Define usage help
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "gemtracker %s\n", version)
 		fmt.Fprintf(os.Stderr, "https://github.com/spaquet/gemtracker\n\n")
@@ -57,76 +64,90 @@ func main() {
 		fmt.Fprintf(os.Stderr, "  gemtracker --report csv --output report.csv\n")
 	}
 
-	showVersion := flag.Bool("v", false, "Show version")
-	flag.BoolVar(showVersion, "version", false, "Show version")
-	reportFormat := flag.String("report", "", "Generate report in non-interactive mode (text, csv, json)")
-	outputPath := flag.String("output", "", "Save report to file (default: stdout)")
-	noCache := flag.Bool("no-cache", false, "Skip cache and force fresh analysis")
-	verbose := flag.Bool("verbose", false, "Write logs to ~/.cache/gemtracker/gemtracker.log")
-
-	// Manually parse arguments to support flags in any position
-	var projectPath string
+	// Parse manual arguments to support flags in any position
 	for i := 1; i < len(os.Args); i++ {
 		arg := os.Args[i]
-
-		// Handle flags
-		if arg == "-v" || arg == "--version" {
-			*showVersion = true
-		} else if arg == "--no-cache" {
-			*noCache = true
-		} else if arg == "--verbose" {
-			*verbose = true
-		} else if arg == "--report" {
-			if i+1 < len(os.Args) && os.Args[i+1][0:1] != "-" {
-				*reportFormat = os.Args[i+1]
-				i++
-			}
-		} else if arg == "--output" {
-			if i+1 < len(os.Args) && os.Args[i+1][0:1] != "-" {
-				*outputPath = os.Args[i+1]
-				i++
-			}
-		} else if arg == "-h" || arg == "--help" {
-			flag.Usage()
-			os.Exit(0)
-		} else if arg[0:1] == "-" {
-			// Unknown flag
-			fmt.Fprintf(os.Stderr, "Unknown flag: %s\n", arg)
-			flag.Usage()
-			os.Exit(1)
-		} else {
-			// First non-flag argument is the path
-			if projectPath == "" {
-				projectPath = arg
-			}
+		i = parseArg(arg, i, &args)
+		if args.ShowVersion || args.ReportFormat != "" || args.ProjectPath != "" {
+			// Quick exits
 		}
 	}
 
-	if *showVersion {
+	return args
+}
+
+// parseArg parses a single argument and returns the updated index.
+// It updates the args struct based on the argument type.
+func parseArg(arg string, index int, args *Args) int {
+	switch arg {
+	case "-v", "--version":
+		args.ShowVersion = true
+	case "--no-cache":
+		args.NoCache = true
+	case "--verbose":
+		args.Verbose = true
+	case "--report":
+		if index+1 < len(os.Args) && os.Args[index+1][0:1] != "-" {
+			args.ReportFormat = os.Args[index+1]
+			return index + 1
+		}
+	case "--output":
+		if index+1 < len(os.Args) && os.Args[index+1][0:1] != "-" {
+			args.OutputPath = os.Args[index+1]
+			return index + 1
+		}
+	case "-h", "--help":
+		flag.Usage()
+		os.Exit(0)
+	default:
+		if len(arg) > 0 && arg[0:1] == "-" {
+			fmt.Fprintf(os.Stderr, "Unknown flag: %s\n", arg)
+			flag.Usage()
+			os.Exit(1)
+		} else if args.ProjectPath == "" {
+			// First non-flag argument is the path
+			args.ProjectPath = arg
+		}
+	}
+	return index
+}
+
+func main() {
+	// Initialize Sentry error tracking (optional, only if SENTRY_DSN is set)
+	if err := telemetry.InitSentry(); err != nil {
+		// Log error but continue - Sentry is optional
+		fmt.Fprintf(os.Stderr, "Warning: Failed to initialize error tracking: %v\n", err)
+	}
+	defer telemetry.Close()
+
+	// Parse command-line arguments
+	args := parseArgs()
+
+	if args.ShowVersion {
 		printVersion()
 		os.Exit(0)
 	}
 
 	// Initialize logger (before TUI starts)
-	if err := logger.Init(*verbose); err != nil {
+	if err := logger.Init(args.Verbose); err != nil {
 		// Log error but continue - logger is optional
 		fmt.Fprintf(os.Stderr, "Warning: Failed to initialize logger: %v\n", err)
 	}
 	defer logger.Close()
 
 	// Default to current directory if no path provided
-	if projectPath == "" {
-		projectPath = "."
+	if args.ProjectPath == "" {
+		args.ProjectPath = "."
 	}
 
 	// Check if we're in report mode
-	if *reportFormat != "" {
-		generateReport(projectPath, *reportFormat, *outputPath, *noCache, *verbose)
+	if args.ReportFormat != "" {
+		generateReport(args.ProjectPath, args.ReportFormat, args.OutputPath, args.NoCache, args.Verbose)
 		os.Exit(0)
 	}
 
 	// Start the interactive TUI
-	model := ui.NewModel(version, commit, date, projectPath, *noCache, *verbose)
+	model := ui.NewModel(version, commit, date, args.ProjectPath, args.NoCache, args.Verbose)
 	p := tea.NewProgram(model)
 
 	if _, err := p.Run(); err != nil {

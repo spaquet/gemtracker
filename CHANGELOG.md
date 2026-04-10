@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v1.2.1] - 2026-04-10
+
+### Improved
+- **Code Quality & Maintainability** - Cyclomatic complexity optimization
+  - Refactored 12 high-complexity functions to improve readability and maintainability
+  - Reduced main.go main() from complexity 22 → 7
+  - Simplified parser.Parse() from complexity 20 → 6
+  - Optimized ParseGemspec() from complexity 22 → 5
+  - Decomposed handleAnalysisComplete() and other UI handlers for better separation of concerns
+  - All changes are structural only - no behavioral changes or API modifications
+  - GoReport Card maintains A+ rating with optimized complexity scores
+
 ## [v1.2.0] - 2026-04-09
 
 ### Added

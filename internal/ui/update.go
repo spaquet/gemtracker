@@ -17,6 +17,31 @@ import (
 	"github.com/spaquet/gemtracker/internal/telemetry"
 )
 
+func (m *Model) handleVersionCheck(msg VersionCheckMsg) (tea.Model, tea.Cmd) {
+	if msg.HasUpdate {
+		m.NewVersionAvailable = msg.LatestVersion
+	}
+	return m, nil
+}
+
+func (m *Model) handleProgress(msg ProgressMsg) (tea.Model, tea.Cmd) {
+	m.AnalysisStage = msg.Stage
+	m.AnalysisPercentage = msg.Percentage
+	m.LoadingMessage = msg.Message
+	return m, nil
+}
+
+func (m *Model) handleHealthRateLimited(msg HealthRateLimitedMsg) (tea.Model, tea.Cmd) {
+	logger.Warn("Health check rate limited at gem: %s", msg.StoppedAt)
+	m.HealthRateLimited = true
+	m.HealthLoading = false
+
+	// Report rate limiting to Sentry
+	err := fmt.Errorf("health check rate limited at gem: %s", msg.StoppedAt)
+	telemetry.CaptureException(err, sentry.LevelWarning)
+	return m, nil
+}
+
 func (m *Model) handleSpinnerTick() (tea.Model, tea.Cmd) {
 	if m.Loading {
 		m.AnimationFrame = (m.AnimationFrame + 1) % len(spinnerFrames)
@@ -78,17 +103,10 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.handleDependencyComplete(msg)
 
 	case VersionCheckMsg:
-		if msg.HasUpdate {
-			m.NewVersionAvailable = msg.LatestVersion
-		}
-		return m, nil
+		return m.handleVersionCheck(msg)
 
 	case ProgressMsg:
-		// Update progress state
-		m.AnalysisStage = msg.Stage
-		m.AnalysisPercentage = msg.Percentage
-		m.LoadingMessage = msg.Message
-		return m, nil
+		return m.handleProgress(msg)
 
 	case HealthItemMsg:
 		return m.handleHealthItem(msg)
@@ -100,13 +118,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.handleGitHubBatchComplete(msg)
 
 	case HealthRateLimitedMsg:
-		logger.Warn("Health check rate limited at gem: %s", msg.StoppedAt)
-		m.HealthRateLimited = true
-		m.HealthLoading = false
-		// Report rate limiting to Sentry
-		err := fmt.Errorf("health check rate limited at gem: %s", msg.StoppedAt)
-		telemetry.CaptureException(err, sentry.LevelWarning)
-		return m, nil
+		return m.handleHealthRateLimited(msg)
 
 	case OutdatedItemMsg:
 		return m.handleOutdatedItem(msg)
@@ -154,22 +166,103 @@ func (m *Model) handleErrorViewKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+// moveCursorUp moves the cursor up within bounds.
+func (m *Model) moveCursorUp(cursor *int, maxItems int) {
+	if *cursor > 0 {
+		*cursor--
+	}
+}
+
+// moveCursorDown moves the cursor down within bounds.
+func (m *Model) moveCursorDown(cursor *int, maxItems int) {
+	if *cursor < maxItems-1 {
+		*cursor++
+	}
+}
+
+// switchViewTo switches the current view and active tab.
+func (m *Model) switchViewTo(view ViewMode) {
+	m.CurrentView = view
+	m.ActiveTab = view
+}
+
+// selectGemFromList handles selecting a gem from the list.
+func (m *Model) selectGemFromList() (tea.Model, tea.Cmd) {
+	if len(m.FirstLevelGems) == 0 || m.GemListCursor >= len(m.FirstLevelGems) {
+		return nil, nil
+	}
+
+	m.SelectedGem = m.FirstLevelGems[m.GemListCursor]
+	m.CurrentView = ViewGemDetail
+	m.Loading = true
+	m.LoadingMessage = "Loading dependencies..."
+
+	// Reset navigation state for new detail view
+	m.DetailSection = 0
+	m.DetailTreeCursor = 0
+	m.DetailForwardOffset = 0
+	m.DetailReverseOffset = 0
+
+	return m, tea.Batch(
+		tea.Tick(time.Millisecond*100, func(time.Time) tea.Msg {
+			return SpinnerTickMsg{}
+		}),
+		performDependencyAnalysis(m.GemfileLockPath, m.SelectedGem.Name),
+	)
+}
+
+// performRefresh handles a full refresh of all data.
+func (m *Model) performRefresh() (tea.Model, tea.Cmd) {
+	if m.isLoadingOtherData() {
+		return m, nil
+	}
+
+	logger.Info("User requested full refresh (r key)")
+	m.Loading = true
+	m.LoadingMessage = "Refreshing all data..."
+
+	// Clear all caches to force fresh data
+	cache.Clear(m.GemfileLockPath)
+	cache.ClearHealth(m.GemfileLockPath)
+	gemfile.ClearVulnerabilityCache()
+
+	return m, performAnalysis(m.GemfileLockPath, true)
+}
+
+// isLoadingOtherData checks if any other loading operations are in progress.
+func (m *Model) isLoadingOtherData() bool {
+	return m.HealthLoading || m.OutdatedLoading || m.CVERefreshInProgress
+}
+
 func (m *Model) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
-	// Global keys
-	if msg.String() == "ctrl+c" || msg.String() == "q" {
+	// Handle global keys
+	if isQuitKey(msg) {
 		m.Quitting = true
 		return m, tea.Quit
 	}
 
-	// / key jumps to search
-	if msg.String() == "/" && m.CurrentView != ViewLoading {
-		m.CurrentView = ViewSearch
-		m.ActiveTab = ViewSearch
+	if isSearchKey(msg) && m.CurrentView != ViewLoading {
+		m.switchViewTo(ViewSearch)
 		m.SearchInput.Focus()
 		return m, nil
 	}
 
-	// View-specific handling
+	// Dispatch to view-specific handler
+	return m.handleViewKeys(msg)
+}
+
+// isQuitKey returns true if the key is a quit command.
+func isQuitKey(msg tea.KeyPressMsg) bool {
+	return msg.String() == "ctrl+c" || msg.String() == "q"
+}
+
+// isSearchKey returns true if the key is a search command.
+func isSearchKey(msg tea.KeyPressMsg) bool {
+	return msg.String() == "/"
+}
+
+// handleViewKeys dispatches key handling to view-specific handlers.
+func (m *Model) handleViewKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch m.CurrentView {
 	case ViewLoading:
 		return m, nil
@@ -190,10 +283,7 @@ func (m *Model) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m.handleCVEKeys(msg)
 
 	case ViewSanity:
-		if m.ShowingGemInfo {
-			return m.handleGemInfoKeys(msg)
-		}
-		return m.handleSanityKeys(msg)
+		return m.handleSanityViewKeys(msg)
 
 	case ViewProjectInfo:
 		return m.handleProjectInfoKeys(msg)
@@ -220,51 +310,39 @@ func (m *Model) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+// handleSanityViewKeys handles keys in the sanity view.
+func (m *Model) handleSanityViewKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	if m.ShowingGemInfo {
+		return m.handleGemInfoKeys(msg)
+	}
+	return m.handleSanityKeys(msg)
+}
+
 func (m *Model) handleGemListKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "up":
-		if m.GemListCursor > 0 {
-			m.GemListCursor--
-			m.ensureGemListCursorVisible()
-		}
+		m.moveCursorUp(&m.GemListCursor, len(m.FirstLevelGems))
+		m.ensureGemListCursorVisible()
 		return m, nil
 
 	case "down":
-		if m.GemListCursor < len(m.FirstLevelGems)-1 {
-			m.GemListCursor++
-			m.ensureGemListCursorVisible()
-		}
+		m.moveCursorDown(&m.GemListCursor, len(m.FirstLevelGems))
+		m.ensureGemListCursorVisible()
 		return m, nil
 
 	case "enter":
-		if len(m.FirstLevelGems) > 0 && m.GemListCursor < len(m.FirstLevelGems) {
-			m.SelectedGem = m.FirstLevelGems[m.GemListCursor]
-			m.CurrentView = ViewGemDetail
-			m.Loading = true
-			m.LoadingMessage = "Loading dependencies..."
-			// Reset navigation state for new detail view
-			m.DetailSection = 0
-			m.DetailTreeCursor = 0
-			m.DetailForwardOffset = 0
-			m.DetailReverseOffset = 0
-			return m, tea.Batch(
-				tea.Tick(time.Millisecond*100, func(time.Time) tea.Msg {
-					return SpinnerTickMsg{}
-				}),
-				performDependencyAnalysis(m.GemfileLockPath, m.SelectedGem.Name),
-			)
+		if model, cmd := m.selectGemFromList(); cmd != nil {
+			return model, cmd
 		}
 		return m, nil
 
 	case "tab":
-		m.CurrentView = ViewSearch
-		m.ActiveTab = ViewSearch
+		m.switchViewTo(ViewSearch)
 		m.SearchInput.Focus()
 		return m, nil
 
 	case "shift+tab":
-		m.CurrentView = ViewProjectInfo
-		m.ActiveTab = ViewProjectInfo
+		m.switchViewTo(ViewProjectInfo)
 		return m, nil
 
 	case "u":
@@ -280,23 +358,7 @@ func (m *Model) handleGemListKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case "r":
-		// Full refresh: gem list, upgrades, and vulnerabilities
-		if m.HealthLoading || m.OutdatedLoading || m.CVERefreshInProgress {
-			// Don't start another refresh while already loading
-			return m, nil
-		}
-
-		logger.Info("User requested full refresh (r key)")
-		m.Loading = true
-		m.LoadingMessage = "Refreshing all data..."
-
-		// Clear all caches to force fresh data
-		cache.Clear(m.GemfileLockPath)       // Clear analysis cache
-		cache.ClearHealth(m.GemfileLockPath) // Clear health cache
-		gemfile.ClearVulnerabilityCache()    // Clear CVE cache
-
-		// Restart full analysis from scratch
-		return m, performAnalysis(m.GemfileLockPath, true) // true = ignore cache
+		return m.performRefresh()
 	}
 
 	return m, nil
@@ -517,101 +579,102 @@ func (m *Model) handleUpgradeableKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) 
 func (m *Model) handleCVEKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "tab":
-		m.CurrentView = ViewSanity
-		m.ActiveTab = ViewSanity
+		m.switchViewTo(ViewSanity)
 		return m, nil
 
 	case "shift+tab":
-		m.CurrentView = ViewUpgradeable
-		m.ActiveTab = ViewUpgradeable
+		m.switchViewTo(ViewUpgradeable)
 		return m, nil
 
 	case "up":
-		if m.CVECursor > 0 {
-			m.CVECursor--
-			m.ensureCVECursorVisible()
-		}
+		m.moveCursorUp(&m.CVECursor, len(m.CVEVulnerabilities))
+		m.ensureCVECursorVisible()
 		return m, nil
 
 	case "down":
-		if m.CVECursor < len(m.CVEVulnerabilities)-1 {
-			m.CVECursor++
-			m.ensureCVECursorVisible()
-		}
+		m.moveCursorDown(&m.CVECursor, len(m.CVEVulnerabilities))
+		m.ensureCVECursorVisible()
 		return m, nil
 
 	case "enter":
-		if len(m.CVEVulnerabilities) > 0 && m.CVECursor < len(m.CVEVulnerabilities) {
-			vuln := m.CVEVulnerabilities[m.CVECursor]
-			// Find the gem with this vulnerability to display details
-			if m.AnalysisResult != nil {
-				for _, gemStatus := range m.AnalysisResult.GemStatuses {
-					if gemStatus.Name == vuln.GemName {
-						m.SelectedGem = gemStatus
-						m.CurrentView = ViewGemDetail
-						m.ActiveTab = ViewCVE
-						m.Loading = true
-						m.LoadingMessage = "Loading dependencies..."
-						return m, tea.Batch(
-							tea.Tick(time.Millisecond*100, func(time.Time) tea.Msg {
-								return SpinnerTickMsg{}
-							}),
-							performDependencyAnalysis(m.GemfileLockPath, m.SelectedGem.Name),
-						)
-					}
-				}
-			}
+		if model, cmd := m.selectVulnerableGem(); cmd != nil {
+			return model, cmd
 		}
 		return m, nil
 
 	case "f":
-		// Open CVE filter modal
 		m.CurrentView = ViewCVEFilterMenu
 		m.CVEFilterMenuCursor = 0
 		return m, nil
 
 	case "i":
-		// Open CVE info modal for current CVE
-		if len(m.CVEVulnerabilities) > 0 && m.CVECursor < len(m.CVEVulnerabilities) {
-			m.CurrentView = ViewCVEInfo
-			m.CVEInfoScroll = 0 // Reset scroll when opening
-		}
+		m.openCVEInfoModal()
 		return m, nil
 
 	case "c":
-		// Open CVE comment modal for current CVE
-		if len(m.CVEVulnerabilities) > 0 && m.CVECursor < len(m.CVEVulnerabilities) {
-			m.CurrentView = ViewCVEComment
-			m.openCVECommentModal()
-		}
+		m.openCVECommentModal()
 		return m, nil
 	}
 
 	return m, nil
 }
 
+// selectVulnerableGem selects the vulnerable gem and shows its details.
+func (m *Model) selectVulnerableGem() (tea.Model, tea.Cmd) {
+	if !m.hasValidCVECursor() {
+		return nil, nil
+	}
+
+	vuln := m.CVEVulnerabilities[m.CVECursor]
+	if m.AnalysisResult == nil {
+		return nil, nil
+	}
+
+	// Find the gem with this vulnerability
+	for _, gemStatus := range m.AnalysisResult.GemStatuses {
+		if gemStatus.Name == vuln.GemName {
+			m.SelectedGem = gemStatus
+			m.CurrentView = ViewGemDetail
+			m.ActiveTab = ViewCVE
+			m.Loading = true
+			m.LoadingMessage = "Loading dependencies..."
+
+			return m, tea.Batch(
+				tea.Tick(time.Millisecond*100, func(time.Time) tea.Msg {
+					return SpinnerTickMsg{}
+				}),
+				performDependencyAnalysis(m.GemfileLockPath, m.SelectedGem.Name),
+			)
+		}
+	}
+	return nil, nil
+}
+
+// openCVEInfoModal opens the CVE info modal.
+func (m *Model) openCVEInfoModal() {
+	if m.hasValidCVECursor() {
+		m.CurrentView = ViewCVEInfo
+		m.CVEInfoScroll = 0 // Reset scroll when opening
+	}
+}
+
+// hasValidCVECursor checks if the CVE cursor is valid.
+func (m *Model) hasValidCVECursor() bool {
+	return len(m.CVEVulnerabilities) > 0 && m.CVECursor < len(m.CVEVulnerabilities)
+}
+
 func (m *Model) handleCVEInfoKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "esc":
-		m.CurrentView = ViewCVE
-		m.CVEInfoScroll = 0       // Reset scroll when closing
-		m.CVEInfoCachedCVEID = "" // Invalidate cache when closing
+		m.closeCVEInfoModal()
 		return m, nil
 
 	case "up":
-		if len(m.CVEVulnerabilities) > 0 && m.CVECursor < len(m.CVEVulnerabilities) {
-			if m.CVEInfoScroll > 0 {
-				m.CVEInfoScroll--
-			}
-		}
+		m.scrollCVEInfoUp()
 		return m, nil
 
 	case "down":
-		if len(m.CVEVulnerabilities) > 0 && m.CVECursor < len(m.CVEVulnerabilities) {
-			if m.CVEInfoScroll < m.getCVEInfoMaxScroll() {
-				m.CVEInfoScroll++
-			}
-		}
+		m.scrollCVEInfoDown()
 		return m, nil
 
 	case "home":
@@ -623,18 +686,49 @@ func (m *Model) handleCVEInfoKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case "o":
-		// Open CVE link in browser
-		if len(m.CVEVulnerabilities) > 0 && m.CVECursor < len(m.CVEVulnerabilities) {
-			vuln := m.CVEVulnerabilities[m.CVECursor]
-			if vuln.OSVId != "" {
-				url := fmt.Sprintf("https://osv.dev/vulnerability/%s", vuln.OSVId)
-				return m, openBrowserCmd(url)
-			}
+		if cmd := m.openCVELinkInBrowser(); cmd != nil {
+			return m, cmd
 		}
 		return m, nil
 	}
 
 	return m, nil
+}
+
+// closeCVEInfoModal closes the CVE info modal.
+func (m *Model) closeCVEInfoModal() {
+	m.CurrentView = ViewCVE
+	m.CVEInfoScroll = 0
+	m.CVEInfoCachedCVEID = ""
+}
+
+// scrollCVEInfoUp scrolls the CVE info up.
+func (m *Model) scrollCVEInfoUp() {
+	if m.hasValidCVECursor() && m.CVEInfoScroll > 0 {
+		m.CVEInfoScroll--
+	}
+}
+
+// scrollCVEInfoDown scrolls the CVE info down.
+func (m *Model) scrollCVEInfoDown() {
+	if m.hasValidCVECursor() && m.CVEInfoScroll < m.getCVEInfoMaxScroll() {
+		m.CVEInfoScroll++
+	}
+}
+
+// openCVELinkInBrowser opens the CVE link in the browser.
+func (m *Model) openCVELinkInBrowser() tea.Cmd {
+	if !m.hasValidCVECursor() {
+		return nil
+	}
+
+	vuln := m.CVEVulnerabilities[m.CVECursor]
+	if vuln.OSVId == "" {
+		return nil
+	}
+
+	url := fmt.Sprintf("https://osv.dev/vulnerability/%s", vuln.OSVId)
+	return openBrowserCmd(url)
 }
 
 func (m *Model) openCVECommentModal() {
@@ -858,123 +952,94 @@ func (m *Model) ensureSanityCursorVisible() {
 
 // getCVEInfoMaxScroll calculates the maximum scroll position for the CVE info modal
 func (m *Model) getCVEInfoMaxScroll() int {
-	if len(m.CVEVulnerabilities) == 0 || m.CVECursor >= len(m.CVEVulnerabilities) {
+	if !m.hasValidCVECursor() {
 		return 0
 	}
 
 	vuln := m.CVEVulnerabilities[m.CVECursor]
-	gemType, group := m.getCVEGemInfo(vuln.GemName)
+	lineCount := m.buildCVEInfoLineCount(vuln)
 
-	// Reconstruct the lines to count total content
-	lines := []string{}
-
-	// Title
-	lines = append(lines, "CVE Details")
-	lines = append(lines, "")
-
-	// CVE ID
-	lines = append(lines, fmt.Sprintf("ID:       %s", vuln.CVE))
-
-	// Gem name and type
-	gemLine := vuln.GemName
-	if m.isFrameworkGem(vuln.GemName) {
-		gemLine += " [fw]"
-	}
-	gemLine += fmt.Sprintf(" — %s", gemType)
-	lines = append(lines, fmt.Sprintf("Gem:      %s", gemLine))
-
-	// Severity
-	severityLine := fmt.Sprintf("Severity: %s", vuln.Severity)
-	if vuln.CVSS > 0 {
-		severityLine += fmt.Sprintf(" (CVSS: %.1f)", vuln.CVSS)
-	}
-	lines = append(lines, severityLine)
-
-	// Published date
-	if !vuln.PublishedDate.IsZero() {
-		lines = append(lines, fmt.Sprintf("Published: %s", vuln.PublishedDate.Format("2006-01-02")))
-	}
-
-	// Group
-	lines = append(lines, fmt.Sprintf("Group:    %s", group))
-	lines = append(lines, "")
-
-	// Remediation section
-	if vuln.FixedVersion != "" {
-		lines = append(lines, "Remediation:")
-		lines = append(lines, fmt.Sprintf("  Upgrade %s to version %s or later", vuln.GemName, vuln.FixedVersion))
-		lines = append(lines, "")
-	}
-
-	// Workarounds section (account for glamour rendering which may expand lines)
-	if vuln.Workarounds != "" {
-		// Estimate width for glamour rendering
-		estimatedWidth := 60
-		if m.Width > 80 {
-			estimatedWidth = m.Width - 20
-		}
-
-		// Try to render with glamour to get accurate line count
-		renderer := NewMarkdownRenderer(estimatedWidth)
-		renderedWorkarounds, err := renderer.Render(vuln.Workarounds)
-		if err == nil {
-			// Use rendered markdown lines for accurate count
-			renderedLines := strings.Split(strings.TrimSpace(renderedWorkarounds), "\n")
-			lines = append(lines, renderedLines...)
-		} else {
-			// Fallback: estimate with plain lines
-			lines = append(lines, "Workarounds:")
-			workaroundLines := strings.Split(vuln.Workarounds, "\n")
-			for _, wLine := range workaroundLines {
-				trimmed := strings.TrimSpace(wLine)
-				if trimmed != "" {
-					lines = append(lines, fmt.Sprintf("  %s", trimmed))
-				}
-			}
-		}
-		lines = append(lines, "")
-	}
-
-	// OSV link
-	if vuln.OSVId != "" {
-		osvLink := fmt.Sprintf("https://osv.dev/vulnerability/%s", vuln.OSVId)
-		lines = append(lines, fmt.Sprintf("Link:      %s", osvLink))
-		lines = append(lines, "")
-	}
-
-	// Affected versions
-	if len(vuln.AffectedVersions) > 0 {
-		lines = append(lines, "Affected versions:")
-		for _, version := range vuln.AffectedVersions {
-			lines = append(lines, fmt.Sprintf("  • %s", version))
-		}
-		lines = append(lines, "")
-	}
-
-	// For transitive gems, show pulling-in parents
-	if gemType == "Transitive" {
-		parentGems := m.findParentGems(vuln.GemName)
-		if len(parentGems) > 0 {
-			lines = append(lines, "Pulled in by:")
-			for _, parent := range parentGems {
-				lines = append(lines, fmt.Sprintf("  › %s", parent))
-			}
-			lines = append(lines, "")
-		}
-	}
-
-	// Calculate available height
 	availableHeight := m.Height - 8
 	if availableHeight < 10 {
 		availableHeight = 10
 	}
 
-	// Return max scroll position
-	maxScroll := len(lines) - availableHeight
+	maxScroll := lineCount - availableHeight
 	if maxScroll < 0 {
 		maxScroll = 0
 	}
 	return maxScroll
+}
+
+// buildCVEInfoLineCount calculates the number of lines needed to display CVE info.
+func (m *Model) buildCVEInfoLineCount(vuln *gemfile.Vulnerability) int {
+	count := 0
+
+	// Header
+	count += 2 // Title + blank line
+
+	// Basic info
+	count += 1 // CVE ID
+	count += 1 // Gem
+	count += 1 // Severity
+	count += 1 // Published (if present)
+	count += 1 // Group
+	count += 1 // blank line
+
+	// Remediation
+	if vuln.FixedVersion != "" {
+		count += 3 // Remediation header + details + blank
+	}
+
+	// Workarounds
+	if vuln.Workarounds != "" {
+		count += m.countWorkaroundLines(vuln)
+	}
+
+	// OSV link
+	if vuln.OSVId != "" {
+		count += 2 // Link + blank
+	}
+
+	// Affected versions
+	if len(vuln.AffectedVersions) > 0 {
+		count += 1 + len(vuln.AffectedVersions) + 1 // Header + versions + blank
+	}
+
+	// Parent gems (transitive)
+	gemType, _ := m.getCVEGemInfo(vuln.GemName)
+	if gemType == "Transitive" {
+		parentGems := m.findParentGems(vuln.GemName)
+		if len(parentGems) > 0 {
+			count += 1 + len(parentGems) + 1 // Header + parents + blank
+		}
+	}
+
+	return count
+}
+
+// countWorkaroundLines counts the rendered workaround lines.
+func (m *Model) countWorkaroundLines(vuln *gemfile.Vulnerability) int {
+	estimatedWidth := 60
+	if m.Width > 80 {
+		estimatedWidth = m.Width - 20
+	}
+
+	renderer := NewMarkdownRenderer(estimatedWidth)
+	renderedWorkarounds, err := renderer.Render(vuln.Workarounds)
+	if err == nil {
+		renderedLines := strings.Split(strings.TrimSpace(renderedWorkarounds), "\n")
+		return len(renderedLines) + 1 // rendered lines + blank
+	}
+
+	// Fallback: estimate plain lines
+	count := 1 // Workarounds header
+	for _, wLine := range strings.Split(vuln.Workarounds, "\n") {
+		if strings.TrimSpace(wLine) != "" {
+			count++
+		}
+	}
+	return count + 1 // lines + blank
 }
 
 func (m *Model) handleProjectInfoKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
@@ -1148,29 +1213,60 @@ func (m *Model) handlePathInputKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 func (m *Model) handleAnalysisComplete(msg AnalysisCompleteMsg) (tea.Model, tea.Cmd) {
 	m.Loading = false
 
+	if err := m.validateAnalysisResult(msg); err != nil {
+		return m, nil
+	}
+
+	m.AnalysisResult = msg.Result
+	m.processAnalysisGems(msg.Result)
+	m.populateProjectInfo(msg.Result)
+	m.updateAnalysisState(msg)
+	m.setupOutdatedChecking(msg.Result)
+	m.setupHealthChecking()
+
+	// Compute gems signature for later refresh detection
+	if len(msg.Result.AllGems) > 0 {
+		m.LastGemsSignature = gemfile.ComputeGemsSignature(msg.Result.AllGems)
+	}
+
+	m.SanityLoading = true
+
+	// Batch outdated checking, CVE scanning, Sanity data loading, and load CVE comments
+	return m, tea.Batch(
+		fetchNextOutdatedItem(m.OutdatedPending, m.OutdatedChecker),
+		performCVEScan(msg.Result.AllGems),
+		loadSanityData(msg.Result.AllGems),
+		m.loadCVECommentsCmd(),
+	)
+}
+
+// validateAnalysisResult checks if the analysis result is valid.
+func (m *Model) validateAnalysisResult(msg AnalysisCompleteMsg) error {
 	if msg.Error != nil {
 		logger.Error("Gemfile.lock analysis failed: %v", msg.Error)
 		m.ErrorMessage = fmt.Sprintf("Error analyzing Gemfile.lock: %v", msg.Error)
 		m.CurrentView = ViewError
-		return m, nil
+		return msg.Error
 	}
 
 	if msg.Result == nil {
 		m.ErrorMessage = "No analysis result returned"
 		m.CurrentView = ViewError
-		return m, nil
+		return fmt.Errorf("no result")
 	}
 
-	m.AnalysisResult = msg.Result
+	return nil
+}
 
-	// Extract first-level gems
+// processAnalysisGems extracts and sorts first-level gems from the analysis result.
+func (m *Model) processAnalysisGems(result *gemfile.AnalysisResult) {
 	m.FirstLevelGems = make([]*gemfile.GemStatus, 0)
 	firstLevelSet := make(map[string]bool)
-	for _, name := range msg.Result.FirstLevelGems {
+	for _, name := range result.FirstLevelGems {
 		firstLevelSet[name] = true
 	}
 
-	for _, gs := range msg.Result.GemStatuses {
+	for _, gs := range result.GemStatuses {
 		if firstLevelSet[gs.Name] {
 			m.FirstLevelGems = append(m.FirstLevelGems, gs)
 		}
@@ -1185,13 +1281,11 @@ func (m *Model) handleAnalysisComplete(msg AnalysisCompleteMsg) (tea.Model, tea.
 	m.UnfilteredGems = make([]*gemfile.GemStatus, len(m.FirstLevelGems))
 	copy(m.UnfilteredGems, m.FirstLevelGems)
 	m.AvailableGroups = m.extractAvailableGroups(m.FirstLevelGems)
-
-	// Note: m.VulnerableGems is no longer populated from static checker
-	// Instead, we use m.CVEVulnerabilities which is populated from OSV.dev
-	// This will be built in rebuildVulnerableGemsList() after CVE scan completes
 	m.VulnerableGems = make([]*gemfile.GemStatus, 0)
+}
 
-	// Populate project info fields
+// populateProjectInfo gathers project information and caches the analysis result.
+func (m *Model) populateProjectInfo(result *gemfile.AnalysisResult) {
 	m.RubyVersion = gemfile.ExtractRubyVersion(m.GemfileLockPath)
 	m.BundleVersion = gemfile.ExtractBundleVersion(m.GemfileLockPath)
 
@@ -1201,28 +1295,29 @@ func (m *Model) handleAnalysisComplete(msg AnalysisCompleteMsg) (tea.Model, tea.
 		framework, version := gemfile.DetectFramework(gf)
 		m.FrameworkDetected = framework
 		m.RailsVersion = version
-		// Also get insecure sources from the parsed Gemfile
 		m.InsecureSourceGems = gf.GetInsecureSourceGems()
 	}
 
 	// Calculate statistics
-	m.TotalGems = len(msg.Result.GemStatuses)
+	m.TotalGems = len(result.GemStatuses)
 	m.FirstLevelCount = len(m.FirstLevelGems)
 	m.TransitiveDeps = m.TotalGems - m.FirstLevelCount
 
 	// Save to cache for faster subsequent loads
 	cacheEntry := &cache.CacheEntry{
-		Result:            msg.Result,
+		Result:            result,
 		RubyVersion:       m.RubyVersion,
 		BundleVersion:     m.BundleVersion,
 		FrameworkDetected: m.FrameworkDetected,
 		RailsVersion:      m.RailsVersion,
 	}
 	if err := cache.Write(m.GemfileLockPath, cacheEntry); err != nil {
-		// Log but don't fail - caching is optional
 		logger.Warn("Failed to cache analysis: %v", err)
 	}
+}
 
+// updateAnalysisState updates the UI state after analysis completes.
+func (m *Model) updateAnalysisState(msg AnalysisCompleteMsg) {
 	m.GemListCursor = 0
 	m.GemListOffset = 0
 	m.AnalysisPercentage = 100
@@ -1230,71 +1325,61 @@ func (m *Model) handleAnalysisComplete(msg AnalysisCompleteMsg) (tea.Model, tea.
 	m.LoadingMessage = "Analysis complete"
 	m.CurrentView = m.ActiveTab
 
-	// Store the outdated checker for health data extraction
 	if msg.OutdatedChecker != nil {
 		m.OutdatedChecker = msg.OutdatedChecker
 	}
+}
 
-	// Start outdated checking for all gems (not just first-level)
+// setupOutdatedChecking initializes the outdated gem checking queue.
+func (m *Model) setupOutdatedChecking(result *gemfile.AnalysisResult) {
 	m.OutdatedLoading = true
-	m.OutdatedPending = make([]*gemfile.GemStatus, len(msg.Result.GemStatuses))
-	copy(m.OutdatedPending, msg.Result.GemStatuses)
+	m.OutdatedPending = make([]*gemfile.GemStatus, len(result.GemStatuses))
+	copy(m.OutdatedPending, result.GemStatuses)
+}
 
-	// Initialize health data loading queue (but don't start fetching yet)
-	// Health checks will start after outdated checking completes to avoid race conditions
+// setupHealthChecking initializes health data loading from cache or pending queue.
+func (m *Model) setupHealthChecking() {
 	m.HealthLoading = true
-	m.HealthTotalCount = len(msg.Result.GemStatuses)
+	m.HealthTotalCount = len(m.AnalysisResult.GemStatuses)
 	m.HealthLoadedCount = 0
-	m.HealthPending = make([]*gemfile.GemStatus, len(msg.Result.GemStatuses))
-	copy(m.HealthPending, msg.Result.GemStatuses)
+	m.HealthPending = make([]*gemfile.GemStatus, len(m.AnalysisResult.GemStatuses))
+	copy(m.HealthPending, m.AnalysisResult.GemStatuses)
 
-	// Try to load health data from cache first (fixes issue #29 - dots disappearing on tab switch)
+	// Try to load health data from cache first
 	if healthCache, err := cache.ReadHealth(m.GemfileLockPath); err == nil {
-		remaining := m.HealthPending[:0]
-		for _, gem := range m.HealthPending {
-			if cached, ok := healthCache.Gems[gem.Name]; ok && cached != nil {
-				gem.Health = cached
-				m.HealthLoadedCount++
-			} else {
-				remaining = append(remaining, gem)
-			}
-		}
-		m.HealthPending = remaining
+		m.applyHealthCache(healthCache)
+	}
+}
 
-		// Also set on UnfilteredGems and FirstLevelGems for consistency
-		for _, gem := range m.UnfilteredGems {
-			if cached, ok := healthCache.Gems[gem.Name]; ok && cached != nil && gem.Health == nil {
-				gem.Health = cached
-			}
+// applyHealthCache applies cached health data to gems.
+func (m *Model) applyHealthCache(healthCache *cache.HealthCacheEntry) {
+	remaining := m.HealthPending[:0]
+	for _, gem := range m.HealthPending {
+		if cached, ok := healthCache.Gems[gem.Name]; ok && cached != nil {
+			gem.Health = cached
+			m.HealthLoadedCount++
+		} else {
+			remaining = append(remaining, gem)
 		}
-		for _, gem := range m.FirstLevelGems {
-			if cached, ok := healthCache.Gems[gem.Name]; ok && cached != nil && gem.Health == nil {
-				gem.Health = cached
-			}
-		}
+	}
+	m.HealthPending = remaining
 
-		// If all gems loaded from cache, stop health loading now
-		if m.HealthLoadedCount == m.HealthTotalCount {
-			m.HealthLoading = false
+	// Also set on UnfilteredGems and FirstLevelGems for consistency
+	for _, gem := range m.UnfilteredGems {
+		if cached, ok := healthCache.Gems[gem.Name]; ok && cached != nil && gem.Health == nil {
+			gem.Health = cached
+		}
+	}
+	for _, gem := range m.FirstLevelGems {
+		if cached, ok := healthCache.Gems[gem.Name]; ok && cached != nil && gem.Health == nil {
+			gem.Health = cached
 		}
 	}
 
-	// Start CVE scanning in background
-	// Compute gems signature for later refresh detection
-	if len(msg.Result.AllGems) > 0 {
-		m.LastGemsSignature = gemfile.ComputeGemsSignature(msg.Result.AllGems)
+	// If all gems loaded from cache, stop health loading now
+	if m.HealthLoadedCount == m.HealthTotalCount {
+		m.HealthLoading = false
 	}
-
-	// Start Sanity data loading (gem sizes)
-	m.SanityLoading = true
-
-	// Batch outdated checking, CVE scanning, Sanity data loading, and load CVE comments
-	return m, tea.Batch(
-		fetchNextOutdatedItem(m.OutdatedPending, m.OutdatedChecker),
-		performCVEScan(msg.Result.AllGems),
-		loadSanityData(msg.Result.AllGems),
-		m.loadCVECommentsCmd(),
-	)
 }
 
 func (m *Model) handleDependencyComplete(msg DependencyCompleteMsg) (tea.Model, tea.Cmd) {

@@ -825,41 +825,9 @@ func (m *Model) applyCVEFilters() {
 	m.CVEVulnerabilities = make([]*gemfile.Vulnerability, 0)
 
 	for _, vuln := range m.UnfilteredCVEs {
-		// Check severity filter
-		if !m.CVESelectedSeverities[vuln.Severity] {
-			continue
+		if m.shouldIncludeVulnerability(vuln) {
+			m.CVEVulnerabilities = append(m.CVEVulnerabilities, vuln)
 		}
-
-		// Check direct-only filter
-		if m.CVEShowOnlyDirect {
-			// Check if gem is in first-level gems (direct dependency)
-			isDirectDep := false
-			for _, gem := range m.FirstLevelGems {
-				if gem.Name == vuln.GemName {
-					isDirectDep = true
-					break
-				}
-			}
-			if !isDirectDep {
-				continue
-			}
-		}
-
-		// Check acknowledgment filter
-		if m.CVEAcknowledgmentFilter != "" {
-			key := gemfile.GetCVECommentKey(vuln)
-			comment, exists := m.CVEComments.Entries[key]
-			isAcknowledged := exists && comment.Decision == gemfile.DecisionAcknowledged
-
-			if m.CVEAcknowledgmentFilter == "acknowledged" && !isAcknowledged {
-				continue
-			}
-			if m.CVEAcknowledgmentFilter == "unacknowledged" && isAcknowledged {
-				continue
-			}
-		}
-
-		m.CVEVulnerabilities = append(m.CVEVulnerabilities, vuln)
 	}
 
 	// Reset cursor if out of bounds
@@ -867,6 +835,51 @@ func (m *Model) applyCVEFilters() {
 		m.CVECursor = 0
 	}
 	m.CVEOffset = 0
+}
+
+// shouldIncludeVulnerability checks if a vulnerability should be included after applying filters.
+func (m *Model) shouldIncludeVulnerability(vuln *gemfile.Vulnerability) bool {
+	// Check severity filter
+	if !m.CVESelectedSeverities[vuln.Severity] {
+		return false
+	}
+
+	// Check direct-only filter
+	if m.CVEShowOnlyDirect && !m.isDirectDependency(vuln.GemName) {
+		return false
+	}
+
+	// Check acknowledgment filter
+	if m.CVEAcknowledgmentFilter != "" && !m.matchesAcknowledgmentFilter(vuln) {
+		return false
+	}
+
+	return true
+}
+
+// isDirectDependency checks if a gem is a direct (first-level) dependency.
+func (m *Model) isDirectDependency(gemName string) bool {
+	for _, gem := range m.FirstLevelGems {
+		if gem.Name == gemName {
+			return true
+		}
+	}
+	return false
+}
+
+// matchesAcknowledgmentFilter checks if a vulnerability matches the acknowledgment filter.
+func (m *Model) matchesAcknowledgmentFilter(vuln *gemfile.Vulnerability) bool {
+	key := gemfile.GetCVECommentKey(vuln)
+	comment, exists := m.CVEComments.Entries[key]
+	isAcknowledged := exists && comment.Decision == gemfile.DecisionAcknowledged
+
+	if m.CVEAcknowledgmentFilter == "acknowledged" {
+		return isAcknowledged
+	}
+	if m.CVEAcknowledgmentFilter == "unacknowledged" {
+		return !isAcknowledged
+	}
+	return true
 }
 
 // initializeCVEFilters sets up the CVE filter state when vulnerabilities are loaded
