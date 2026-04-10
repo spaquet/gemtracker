@@ -88,17 +88,20 @@ func NewReportGenerator(projectPath string, noCache, verbose bool) *ReportGenera
 // If outputPath is empty, writes to stdout. Returns an error if analysis or report writing fails.
 func (rg *ReportGenerator) Generate(format, outputPath string) error {
 	// Parse the Gemfile
-	logger.Info("Parsing Gemfile...")
+	printProgress("Parsing Gemfile.lock...")
 	gf, err := gemfile.Parse(rg.projectPath)
 	if err != nil {
 		return fmt.Errorf("failed to parse gemfile: %w", err)
 	}
+	logger.Info("Parsing Gemfile...")
+	printProgressDone("✓ Parsed %d gems", len(gf.GetGemsAsList()))
 
 	// Analyze gems
 	logger.Info("Analyzing gems...")
 	analysis := gemfile.Analyze(gf)
 
 	// Check for outdated gems
+	printProgress("Checking for outdated gems... ")
 	logger.Info("Checking for outdated gems...")
 	outdatedChecker := gemfile.NewOutdatedChecker()
 
@@ -109,11 +112,16 @@ func (rg *ReportGenerator) Generate(format, outputPath string) error {
 	}
 
 	// Check each gem for updates
-	for _, gem := range gf.GetGemsAsList() {
+	gems := gf.GetGemsAsList()
+	total := len(gems)
+	outdatedCount := 0
+	for i, gem := range gems {
 		status, ok := gemStatusMap[gem.Name]
 		if !ok {
 			continue
 		}
+
+		printProgress("Checking for outdated gems... (%d/%d) %s", i+1, total, gem.Name)
 
 		isOutdated, latestVersion, err := outdatedChecker.IsOutdated(gem.Name, gem.Version)
 		if err != nil {
@@ -127,34 +135,53 @@ func (rg *ReportGenerator) Generate(format, outputPath string) error {
 			status.LatestVersion = latestVersion
 			status.HomepageURL = outdatedChecker.GetHomepage(gem.Name)
 			status.Description = outdatedChecker.GetDescription(gem.Name)
+			outdatedCount++
 		}
 	}
+	printProgressDone("✓ Checked %d gems for updates (%d outdated)", total, outdatedCount)
 
 	// Check for vulnerabilities using OSV.dev
+	printProgress("Scanning for vulnerabilities...")
 	logger.Info("Scanning for vulnerabilities...")
 	vulns, err := rg.scanVulnerabilities(analysis.AllGems)
 	if err != nil {
 		logger.Warn("Failed to scan vulnerabilities: %v", err)
+		printProgressDone("⚠ Vulnerability scan failed, continuing without CVE data")
 		// Continue with report generation, just without CVE data
 	} else {
 		// Merge vulnerability data into gem statuses
 		rg.mergeVulnerabilitiesIntoGems(analysis.GemStatuses, vulns)
+		printProgressDone("✓ Found %d vulnerabilities", len(vulns))
 	}
 
 	// Build report data
+	printProgress("Building %s report...", strings.ToUpper(format))
 	reportData := rg.buildReportData(analysis, gemStatusMap, gf)
+	printProgressDone("✓ Report generated")
 
 	// Generate report based on format
+	var reportErr error
 	switch strings.ToLower(format) {
 	case "text":
-		return rg.generateTextReport(reportData, outputPath)
+		reportErr = rg.generateTextReport(reportData, outputPath)
 	case "csv":
-		return rg.generateCSVReport(reportData, outputPath)
+		reportErr = rg.generateCSVReport(reportData, outputPath)
 	case "json":
-		return rg.generateJSONReport(reportData, outputPath)
+		reportErr = rg.generateJSONReport(reportData, outputPath)
 	default:
 		return fmt.Errorf("unknown format: %s (supported: text, csv, json)", format)
 	}
+
+	if reportErr != nil {
+		return reportErr
+	}
+
+	// Show final status
+	if outputPath != "" {
+		printProgressDone("✓ Report written to: %s", outputPath)
+	}
+
+	return nil
 }
 
 // buildReportData builds structured report data from analysis results
@@ -399,7 +426,6 @@ func (rg *ReportGenerator) writeOutput(content string, outputPath string) error 
 		return fmt.Errorf("failed to write output file: %w", err)
 	}
 
-	fmt.Fprintf(os.Stderr, "Report written to: %s\n", outputPath)
 	return nil
 }
 
@@ -409,6 +435,18 @@ func boolToString(b bool) string {
 		return "yes"
 	}
 	return "no"
+}
+
+// printProgress writes a carriage-return-overwritten progress line to stderr.
+// Always uses \r to overwrite the same line, so the terminal stays clean.
+func printProgress(format string, args ...interface{}) {
+	fmt.Fprintf(os.Stderr, "\r"+format, args...)
+}
+
+// printProgressDone clears the progress line and prints a final status to stderr.
+func printProgressDone(format string, args ...interface{}) {
+	fmt.Fprintf(os.Stderr, "\r%-80s\r", "") // clear line
+	fmt.Fprintf(os.Stderr, format+"\n", args...)
 }
 
 // scanVulnerabilities queries OSV.dev for vulnerabilities in the given gems
@@ -426,6 +464,7 @@ func (rg *ReportGenerator) scanVulnerabilities(gems []*gemfile.Gem) ([]*gemfile.
 	if err == nil && cacheEntry != nil && gemfile.IsCacheValid(cacheEntry) {
 		// Cache hit! Return cached data
 		logger.Info("CVE cache hit: using cached vulnerabilities")
+		printProgress("Using cached vulnerability data...")
 		vulnPtrs := make([]*gemfile.Vulnerability, len(cacheEntry.Vulnerabilities))
 		for i := range cacheEntry.Vulnerabilities {
 			vulnPtrs[i] = &cacheEntry.Vulnerabilities[i]
@@ -435,6 +474,7 @@ func (rg *ReportGenerator) scanVulnerabilities(gems []*gemfile.Gem) ([]*gemfile.
 
 	// Cache miss, fetch from OSV.dev
 	logger.Info("CVE cache miss, fetching from OSV.dev...")
+	printProgress("Scanning for vulnerabilities... (querying OSV.dev)")
 	osv := gemfile.NewOSVClient()
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
