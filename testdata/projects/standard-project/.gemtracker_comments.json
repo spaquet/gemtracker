@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "entries": {
+    "GHSA-8xww-x3g3-6jcv": {
+      "decision": "ignored",
+      "comment": "We are waiting for the next minor to update. Current firewall is taking care of this issue.",
+      "gem_name": "actionpack",
+      "gem_version": "7.0.4",
+      "created_at": "2026-04-10T15:35:42.847146-07:00",
+      "updated_at": "2026-04-10T15:35:42.847146-07:00"
+    }
+  }
+}
