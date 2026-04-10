@@ -490,24 +490,25 @@ func (c *OSVClient) queryVulnerabilityDetails(ctx context.Context, vulnID string
 	return &vuln, nil
 }
 
-// extractWorkarounds extracts the "Workarounds" or "Mitigation" section from OSV details text
+// extractWorkarounds extracts remediation guidance sections from OSV details text
+// Looks for sections like: Workarounds, Mitigation, Mitigation/Remediation, etc.
 // Preserves markdown formatting for rendering with glamour
 func extractWorkarounds(details string) string {
 	lines := strings.Split(details, "\n")
 
-	// Find the start of the Workarounds or Mitigation section
-	var workaroundLines []string
+	// Find the start of any remediation section (Workarounds, Mitigation, etc.)
+	var remediationLines []string
 	inSection := false
 	sectionHeaderIdx := -1
 
 	for i, line := range lines {
 		trimmed := strings.TrimSpace(line)
 
-		// Start of workarounds/mitigation section (handles "### Workarounds", "## Mitigation", etc.)
-		if !inSection && (isWorkaroundsHeader(trimmed) || isMitigationHeader(trimmed)) {
+		// Start of remediation section - check if header contains remediation keywords
+		if !inSection && isRemediationHeader(trimmed) {
 			inSection = true
 			sectionHeaderIdx = i
-			workaroundLines = append(workaroundLines, line)
+			remediationLines = append(remediationLines, line)
 			continue
 		}
 
@@ -517,28 +518,47 @@ func extractWorkarounds(details string) string {
 		}
 
 		if inSection {
-			workaroundLines = append(workaroundLines, line)
+			remediationLines = append(remediationLines, line)
 		}
 	}
 
-	result := strings.TrimSpace(strings.Join(workaroundLines, "\n"))
+	result := strings.TrimSpace(strings.Join(remediationLines, "\n"))
 	return result
 }
 
-// isWorkaroundsHeader checks if a line is a Markdown header for the Workarounds section
-func isWorkaroundsHeader(line string) bool {
+// isRemediationHeader checks if a line is a Markdown header for a remediation section
+// Matches various keywords: Workarounds, Mitigation, Remediation, Solutions, etc.
+func isRemediationHeader(line string) bool {
 	// Remove Markdown header markers (###, ##, #)
 	cleanLine := strings.TrimLeft(line, "#")
 	cleanLine = strings.TrimSpace(cleanLine)
-	return strings.EqualFold(cleanLine, "Workarounds")
-}
+	lowerLine := strings.ToLower(cleanLine)
 
-// isMitigationHeader checks if a line is a Markdown header for the Mitigation section
-func isMitigationHeader(line string) bool {
-	// Remove Markdown header markers (###, ##, #)
-	cleanLine := strings.TrimLeft(line, "#")
-	cleanLine = strings.TrimSpace(cleanLine)
-	return strings.EqualFold(cleanLine, "Mitigation")
+	// Check for common remediation keywords (case-insensitive)
+	remediationKeywords := []string{
+		"workaround",
+		"workarounds",
+		"mitigation",
+		"remediation",
+		"recommendation",
+		"recommendations",
+		"solution",
+		"solutions",
+		"fix",
+		"fixes",
+		"patch",
+		"patches",
+		"upgrade",
+		"mitigation/remediation", // Combined keyword some CVEs use
+	}
+
+	for _, keyword := range remediationKeywords {
+		if strings.Contains(lowerLine, keyword) {
+			return true
+		}
+	}
+
+	return false
 }
 
 // isSectionHeader checks if a line is a Markdown section header
