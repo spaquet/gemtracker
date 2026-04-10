@@ -504,8 +504,8 @@ func (m *Model) handleUpgradeableKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 func (m *Model) handleCVEKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "tab":
-		m.CurrentView = ViewProjectInfo
-		m.ActiveTab = ViewProjectInfo
+		m.CurrentView = ViewSanity
+		m.ActiveTab = ViewSanity
 		return m, nil
 
 	case "shift+tab":
@@ -845,9 +845,9 @@ func (m *Model) handleProjectInfoKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case "shift+tab":
-		m.CurrentView = ViewCVE
-		m.ActiveTab = ViewCVE
-		return m.ensureCVEScanStarted()
+		m.CurrentView = ViewSanity
+		m.ActiveTab = ViewSanity
+		return m, nil
 	}
 
 	return m, nil
