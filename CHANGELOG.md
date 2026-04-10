@@ -22,6 +22,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Shows reverse dependencies: "[used by: X, Y, Z]" indicating which gems depend on each gem
   - Gem groups marked with "-" when not identified (typically transitive gems)
   - Applied to both "OUTDATED GEMS" and "ALL GEMS" sections
+- **Output File Overwrite Protection** - Interactive prompt when report output file already exists
+  - Options to Replace, Cancel, or specify a new filename
+  - Automatically preserves file extension when entering new filename
+  - Prevents accidental loss of existing report files
 
 ### Fixed
 - **Project Name Display in Reports** - Reports now show the actual project directory name instead of "."

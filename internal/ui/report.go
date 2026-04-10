@@ -87,9 +87,73 @@ func NewReportGenerator(projectPath string, noCache, verbose bool) *ReportGenera
 	}
 }
 
+// resolveOutputPath checks if outputPath already exists and prompts the user for action.
+// Returns the final path to write to and whether to proceed (false = user cancelled).
+func resolveOutputPath(outputPath string) (string, bool, error) {
+	if outputPath == "" {
+		return "", true, nil // stdout — no conflict possible
+	}
+
+	if _, err := os.Stat(outputPath); os.IsNotExist(err) {
+		return outputPath, true, nil // file doesn't exist yet — proceed
+	}
+
+	ext := filepath.Ext(outputPath)
+
+	for {
+		fmt.Fprintf(os.Stderr, "\n⚠ Output file already exists: %s\n", outputPath)
+		fmt.Fprintf(os.Stderr, "  [R] Replace existing file\n")
+		fmt.Fprintf(os.Stderr, "  [C] Cancel\n")
+		fmt.Fprintf(os.Stderr, "  [N] Enter a new filename\n")
+		fmt.Fprintf(os.Stderr, "Your choice [R/C/N]: ")
+
+		var choice string
+		fmt.Fscan(os.Stdin, &choice)
+
+		switch strings.ToUpper(strings.TrimSpace(choice)) {
+		case "R":
+			return outputPath, true, nil
+		case "C":
+			return "", false, nil
+		case "N":
+			fmt.Fprintf(os.Stderr, "New filename (without extension to keep %s): ", ext)
+			var newName string
+			fmt.Fscan(os.Stdin, &newName)
+			newName = strings.TrimSpace(newName)
+			if newName == "" {
+				continue
+			}
+			// Add original extension if user didn't provide one
+			if filepath.Ext(newName) == "" {
+				newName += ext
+			}
+			outputPath = newName
+			// Re-check if new name also exists
+			if _, err := os.Stat(outputPath); os.IsNotExist(err) {
+				fmt.Fprintf(os.Stderr, "✓ Output will be written to: %s\n\n", outputPath)
+				return outputPath, true, nil
+			}
+			// Loop again — new file also exists
+			continue
+		default:
+			fmt.Fprintf(os.Stderr, "Please enter R, C, or N.\n")
+		}
+	}
+}
+
 // Generate analyzes the project and generates a report in the specified format (text, csv, or json).
 // If outputPath is empty, writes to stdout. Returns an error if analysis or report writing fails.
 func (rg *ReportGenerator) Generate(format, outputPath string) error {
+	// Resolve output path — prompt user if file already exists
+	resolvedPath, proceed, err := resolveOutputPath(outputPath)
+	if err != nil {
+		return err
+	}
+	if !proceed {
+		fmt.Fprintf(os.Stderr, "Report generation cancelled.\n")
+		return nil
+	}
+	outputPath = resolvedPath // use the resolved (possibly new) path
 	// Parse the Gemfile
 	printProgress("Parsing Gemfile.lock...")
 	gf, err := gemfile.Parse(rg.projectPath)
