@@ -2311,20 +2311,34 @@ func (m *Model) renderCVEInfoModalBox() string {
 		lines = append(lines, "")
 	}
 
-	// Workarounds section (if no direct upgrade available or as additional guidance)
+	// Workarounds section rendered with glamour for markdown formatting
 	if vuln.Workarounds != "" {
-		lines = append(lines, "Workarounds:")
-		// Split workaround text into lines and indent them
-		workaroundLines := strings.Split(vuln.Workarounds, "\n")
-		for _, wLine := range workaroundLines {
-			trimmed := strings.TrimSpace(wLine)
-			if trimmed != "" {
-				// Wrap long lines for better display
-				wrapped := wrapText(trimmed, 60)
-				for _, wrappedLine := range wrapped {
-					lines = append(lines, fmt.Sprintf("  %s", wrappedLine))
+		// Estimate modal width for glamour rendering
+		estimatedWidth := 60
+		if m.Width > 80 {
+			estimatedWidth = m.Width - 20
+		}
+
+		// Render workarounds markdown with glamour
+		renderer := NewMarkdownRenderer(estimatedWidth)
+		renderedWorkarounds, err := renderer.Render(vuln.Workarounds)
+		if err != nil {
+			// Fallback to plain text if rendering fails
+			lines = append(lines, "Workarounds:")
+			workaroundLines := strings.Split(vuln.Workarounds, "\n")
+			for _, wLine := range workaroundLines {
+				trimmed := strings.TrimSpace(wLine)
+				if trimmed != "" {
+					wrapped := wrapText(trimmed, 60)
+					for _, wrappedLine := range wrapped {
+						lines = append(lines, fmt.Sprintf("  %s", wrappedLine))
+					}
 				}
 			}
+		} else {
+			// Add rendered markdown (trim trailing newlines)
+			renderedLines := strings.Split(strings.TrimSpace(renderedWorkarounds), "\n")
+			lines = append(lines, renderedLines...)
 		}
 		lines = append(lines, "")
 	}

@@ -465,30 +465,29 @@ func (c *OSVClient) queryVulnerabilityDetails(ctx context.Context, vulnID string
 }
 
 // extractWorkarounds extracts the "Workarounds" section from OSV details text
+// Preserves markdown formatting for rendering with glamour
 func extractWorkarounds(details string) string {
 	lines := strings.Split(details, "\n")
 
 	// Find the start of the Workarounds section
 	var workaroundLines []string
 	inWorkarounds := false
+	workaroundsHeaderIdx := -1
 
-	for _, line := range lines {
-		// Start of workarounds section
-		if strings.EqualFold(strings.TrimSpace(line), "Workarounds") {
+	for i, line := range lines {
+		trimmed := strings.TrimSpace(line)
+
+		// Start of workarounds section (handles "### Workarounds", "## Workarounds", etc.)
+		if !inWorkarounds && isWorkaroundsHeader(trimmed) {
 			inWorkarounds = true
+			workaroundsHeaderIdx = i
+			workaroundLines = append(workaroundLines, line)
 			continue
 		}
 
-		// Stop if we hit another major section (indicated by a line with just capital letters followed by newline)
-		if inWorkarounds && strings.TrimSpace(line) != "" {
-			trimmed := strings.TrimSpace(line)
-			// Check if it looks like a new section header (all caps, 3-15 characters)
-			if len(trimmed) > 3 && len(trimmed) < 15 && strings.ToUpper(trimmed) == trimmed {
-				// But continue if it looks like part of content (has punctuation, numbers, or mixed case)
-				if !strings.ContainsAny(trimmed, ".,:-()0123456789") && !strings.ContainsAny(trimmed, "abcdefghijklmnopqrstuvwxyz") {
-					break
-				}
-			}
+		// Stop if we hit another major section header (### or ##)
+		if inWorkarounds && workaroundsHeaderIdx >= 0 && i > workaroundsHeaderIdx && isSectionHeader(trimmed) {
+			break
 		}
 
 		if inWorkarounds {
@@ -498,4 +497,21 @@ func extractWorkarounds(details string) string {
 
 	result := strings.TrimSpace(strings.Join(workaroundLines, "\n"))
 	return result
+}
+
+// isWorkaroundsHeader checks if a line is a Markdown header for the Workarounds section
+func isWorkaroundsHeader(line string) bool {
+	// Remove Markdown header markers (###, ##, #)
+	cleanLine := strings.TrimLeft(line, "#")
+	cleanLine = strings.TrimSpace(cleanLine)
+	return strings.EqualFold(cleanLine, "Workarounds")
+}
+
+// isSectionHeader checks if a line is a Markdown section header
+func isSectionHeader(line string) bool {
+	if !strings.HasPrefix(line, "#") {
+		return false
+	}
+	// Only major headers (##, ###, ####) mark section boundaries
+	return strings.HasPrefix(line, "##")
 }

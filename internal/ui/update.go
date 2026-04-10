@@ -773,14 +773,30 @@ func (m *Model) getCVEInfoMaxScroll() int {
 		lines = append(lines, "")
 	}
 
-	// Workarounds section
+	// Workarounds section (account for glamour rendering which may expand lines)
 	if vuln.Workarounds != "" {
-		lines = append(lines, "Workarounds:")
-		workaroundLines := strings.Split(vuln.Workarounds, "\n")
-		for _, wLine := range workaroundLines {
-			trimmed := strings.TrimSpace(wLine)
-			if trimmed != "" {
-				lines = append(lines, fmt.Sprintf("  %s", trimmed))
+		// Estimate width for glamour rendering
+		estimatedWidth := 60
+		if m.Width > 80 {
+			estimatedWidth = m.Width - 20
+		}
+
+		// Try to render with glamour to get accurate line count
+		renderer := NewMarkdownRenderer(estimatedWidth)
+		renderedWorkarounds, err := renderer.Render(vuln.Workarounds)
+		if err == nil {
+			// Use rendered markdown lines for accurate count
+			renderedLines := strings.Split(strings.TrimSpace(renderedWorkarounds), "\n")
+			lines = append(lines, renderedLines...)
+		} else {
+			// Fallback: estimate with plain lines
+			lines = append(lines, "Workarounds:")
+			workaroundLines := strings.Split(vuln.Workarounds, "\n")
+			for _, wLine := range workaroundLines {
+				trimmed := strings.TrimSpace(wLine)
+				if trimmed != "" {
+					lines = append(lines, fmt.Sprintf("  %s", trimmed))
+				}
 			}
 		}
 		lines = append(lines, "")

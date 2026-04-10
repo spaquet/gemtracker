@@ -1,6 +1,9 @@
 package ui
 
-import "github.com/charmbracelet/lipgloss"
+import (
+	"charm.land/glamour/v2"
+	"github.com/charmbracelet/lipgloss"
+)
 
 // This file defines all terminal UI styling constants for gemtracker.
 // It uses a dark slate/blue ANSI 256-color palette suitable for long terminal sessions,
@@ -222,3 +225,15 @@ var UpdateBarStyle = lipgloss.NewStyle().
 	Background(lipgloss.Color(ColorSurface)).
 	Foreground(lipgloss.Color(ColorWarning)).
 	Padding(0, 2)
+
+// ============================================================================
+// Markdown Rendering (Glamour)
+// ============================================================================
+
+// NewMarkdownRenderer creates a glamour renderer with our dark color scheme
+func NewMarkdownRenderer(width int) *glamour.TermRenderer {
+	renderer, _ := glamour.NewTermRenderer(
+		glamour.WithWordWrap(width),
+	)
+	return renderer
+}
