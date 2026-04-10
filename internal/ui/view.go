@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"os"
 	"runtime"
 	"sort"
 	"strings"
@@ -72,8 +73,22 @@ func (m *Model) statusBarTotalHeight() int {
 // It uses ANSI-aware truncation to preserve the background view left of the overlay while placing
 // the overlay content in the center and allowing the terminal default background to appear on the right.
 func placeOverlay(startRow, startCol int, fg, bg string) string {
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Fprintf(os.Stderr, "PANIC in placeOverlay: %v\n", r)
+		}
+	}()
+
+	if startRow < 0 || startCol < 0 {
+		return bg // Invalid positioning, return background
+	}
+
 	fgLines := strings.Split(fg, "\n")
 	bgLines := strings.Split(bg, "\n")
+
+	if len(bgLines) == 0 {
+		return fg // No background, return foreground
+	}
 
 	for i, fgLine := range fgLines {
 		row := startRow + i
@@ -95,6 +110,12 @@ func placeOverlay(startRow, startCol int, fg, bg string) string {
 // ============================================================================
 
 func (m *Model) View() string {
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Fprintf(os.Stderr, "PANIC in View(): %v\n", r)
+		}
+	}()
+
 	if m.Quitting {
 		return ""
 	}
@@ -112,6 +133,8 @@ func (m *Model) View() string {
 		return m.viewUpgradeable()
 	case ViewCVE:
 		return m.viewCVE()
+	case ViewSanity:
+		return m.viewSanity()
 	case ViewProjectInfo:
 		return m.viewProjectInfo()
 	case ViewFilterMenu:
@@ -139,6 +162,7 @@ var viewHints = map[ViewMode][]string{
 	ViewSearch:        {"type search", "↑↓ navigate", "enter select", "esc clear"},
 	ViewUpgradeable:   {"↑↓ navigate", "enter select", "tab next", "q quit"},
 	ViewCVE:           {"↑↓ navigate", "enter select", "f filter", "i info", "tab next", "q quit"},
+	ViewSanity:        {"↑↓ navigate", "enter select", "i info", "tab next", "q quit"},
 	ViewProjectInfo:   {"tab next", "shift+tab prev", "q quit"},
 	ViewFilterMenu:    {"↑↓ navigate", "space toggle", "enter back", "q quit"},
 	ViewCVEFilterMenu: {"↑↓ navigate", "space toggle", "enter back", "q quit"},
@@ -261,8 +285,8 @@ func (m *Model) renderAppHeader() string {
 }
 
 func (m *Model) renderTabBar() string {
-	tabLabels := []string{"Gems", "Search", "Updates", "CVE", "Project"}
-	tabModes := []ViewMode{ViewGemList, ViewSearch, ViewUpgradeable, ViewCVE, ViewProjectInfo}
+	tabLabels := []string{"Gems", "Search", "Updates", "CVE", "Sanity", "Project"}
+	tabModes := []ViewMode{ViewGemList, ViewSearch, ViewUpgradeable, ViewCVE, ViewSanity, ViewProjectInfo}
 
 	var tabs []string
 	for i, label := range tabLabels {
@@ -1253,7 +1277,7 @@ func (m *Model) renderCVEHeader(maxHeight int) string {
 			critCount++
 		case "HIGH":
 			highCount++
-		case "MEDIUM":
+		case "MODERATE":
 			mediumCount++
 		case "LOW":
 			lowCount++
@@ -1262,7 +1286,7 @@ func (m *Model) renderCVEHeader(maxHeight int) string {
 
 	// Severity summary line with colors
 	severityLine := fmt.Sprintf(
-		"  Severity: %s CRITICAL (%d)  %s HIGH (%d)  %s MEDIUM (%d)  %s LOW (%d)",
+		"  Severity: %s CRITICAL (%d)  %s HIGH (%d)  %s MODERATE (%d)  %s LOW (%d)",
 		BadgeCriticalDotStyle.Render("●"), critCount,
 		BadgeHighDotStyle.Render("●"), highCount,
 		BadgeWarningDotStyle.Render("●"), mediumCount,
@@ -1431,7 +1455,7 @@ func (m *Model) formatCVERow(vuln *gemfile.Vulnerability, selected bool, rowNum 
 		severityBadge = BadgeCriticalDotStyle.Render("●")
 	case "HIGH":
 		severityBadge = BadgeHighDotStyle.Render("●")
-	case "MEDIUM":
+	case "MODERATE":
 		severityBadge = BadgeWarningDotStyle.Render("●")
 	default:
 		severityBadge = BadgeHealthyDotStyle.Render("●")
@@ -1477,6 +1501,365 @@ func formatDuration(d time.Duration) string {
 		return fmt.Sprintf("%dh", int(d.Hours()))
 	}
 	return fmt.Sprintf("%dd", int(d.Hours()/24))
+}
+
+// ============================================================================
+// View: Sanity (Gem Sizes)
+// ============================================================================
+
+func (m *Model) viewSanity() string {
+	if m.ShowingGemInfo {
+		return m.viewGemInfoModal()
+	}
+
+	statusbarLines := m.statusBarTotalHeight()
+	contentHeight := m.Height - 2 - statusbarLines
+	if contentHeight < 1 {
+		contentHeight = 1
+	}
+	sanityContent := m.renderSanityTable(contentHeight)
+
+	return m.assembleViewWithChrome(sanityContent)
+}
+
+func (m *Model) renderSanityTable(height int) string {
+	if height < 1 {
+		height = 1
+	}
+
+	// Show loading state
+	if m.SanityLoading {
+		msg := "Checking gem sizes..."
+		return lipgloss.NewStyle().
+			Foreground(lipgloss.Color(ColorTextMuted)).
+			Padding(2, 2).
+			Render(msg)
+	}
+
+	// Show error if gem dir not found
+	if m.GemDirPath == "" {
+		msg := "Unable to detect gem directory. Make sure Ruby is properly installed."
+		return lipgloss.NewStyle().
+			Foreground(lipgloss.Color(ColorDanger)).
+			Padding(2, 2).
+			Render(msg)
+	}
+
+	allGems := m.allGemsForSanity()
+	if len(allGems) == 0 {
+		msg := "No gems found."
+		return lipgloss.NewStyle().
+			Foreground(lipgloss.Color(ColorTextMuted)).
+			Padding(2, 2).
+			Render(msg)
+	}
+
+	var lines []string
+
+	// Add header with Ruby manager and total size
+	lines = append(lines, "")
+	headerLine := fmt.Sprintf("Ruby Manager: %s  |  Total Size: %s",
+		m.RubyManager,
+		gemfile.FormatBytes(m.ProjectTotalSizeBytes))
+	headerStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color(ColorPrimary)).
+		Bold(true)
+	lines = append(lines, headerStyle.Render(headerLine))
+	lines = append(lines, "")
+
+	// Pre-calculate section counts for index-based determination
+	directCount := len(m.FirstLevelGems)
+
+	// Track which section we're currently rendering
+	var lastSection string
+
+	// Render gems starting from SanityOffset
+	for gemIdx := m.SanityOffset; gemIdx < len(allGems); gemIdx++ {
+		if len(lines) >= height {
+			break
+		}
+
+		// Determine which section this gem belongs to based on index
+		var currentSection string
+		if gemIdx < directCount {
+			currentSection = "DIRECT DEPENDENCIES"
+		} else {
+			currentSection = "TRANSITIVE DEPENDENCIES"
+		}
+
+		// Add section header when entering a new section
+		if currentSection != lastSection {
+			// Add blank line before section (except for the very first section)
+			if lastSection != "" && len(lines) < height {
+				lines = append(lines, "")
+			}
+
+			if len(lines) < height {
+				lines = append(lines, lipgloss.NewStyle().
+					Bold(true).
+					Foreground(lipgloss.Color(ColorPrimary)).
+					Render(currentSection))
+			}
+
+			if len(lines) < height {
+				headerRow := fmt.Sprintf("  %-3s %-24s %-11s %s",
+					"ID", "Gem Name", "Installed", "Size")
+				header := TableHeaderStyle.Render(headerRow)
+				lines = append(lines, header)
+			}
+
+			lastSection = currentSection
+		}
+
+		if len(lines) >= height {
+			break
+		}
+
+		gem := allGems[gemIdx]
+		size := m.GemSizes[gem.Name]
+		sizeStr := gemfile.FormatBytes(size)
+
+		isSelected := gemIdx == m.SanityCursor
+		row := fmt.Sprintf("  %-3d %-24s %-11s %s",
+			gemIdx+1, // Display ID: 1-based index
+			truncateStr(gem.Name, 24),
+			gem.Version,
+			sizeStr,
+		)
+		if isSelected {
+			row = RowSelectedStyle.Render(row)
+		} else {
+			row = RowNormalStyle.Render(row)
+		}
+		lines = append(lines, row)
+	}
+
+	return lipgloss.JoinVertical(lipgloss.Left, lines...)
+}
+
+func (m *Model) viewGemInfoModal() string {
+	// Render Sanity list as background (directly call renderSanityTable to avoid recursion)
+	statusbarLines := m.statusBarTotalHeight()
+	contentHeight := m.Height - 2 - statusbarLines
+	if contentHeight < 1 {
+		contentHeight = 1
+	}
+	sanityContent := m.renderSanityTable(contentHeight)
+	background := m.assembleViewWithChrome(sanityContent)
+
+	// Create info modal
+	modal := m.renderGemInfoModalBox()
+
+	// Safety checks for invalid terminal size
+	if m.Height <= 0 || m.Width <= 0 {
+		return background // Can't render modal if terminal is invalid
+	}
+
+	// Calculate centered position
+	modalLines := strings.Split(modal, "\n")
+	modalH := len(modalLines)
+
+	// Calculate width safely, with fallback to reasonable default
+	modalW := lipgloss.Width(modal)
+	if modalW <= 0 {
+		modalW = 80 // Fallback to default width
+	}
+
+	// Limit modal height to prevent exceeding screen bounds
+	maxModalH := m.Height - 4
+	if maxModalH < 10 {
+		maxModalH = 10
+	}
+	if modalH > maxModalH {
+		modalH = maxModalH
+	}
+
+	// Safety check to prevent division issues
+	if modalH <= 0 || modalW <= 0 {
+		return background
+	}
+
+	startRow := (m.Height - modalH) / 2
+	startCol := (m.Width - modalW) / 2
+
+	if startRow < 2 {
+		startRow = 2 // Don't cover header
+	}
+	if startCol < 0 {
+		startCol = 0
+	}
+
+	// Overlay modal on background
+	return placeOverlay(startRow, startCol, modal, background)
+}
+
+func (m *Model) renderGemInfoModalBox() string {
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Fprintf(os.Stderr, "PANIC in renderGemInfoModalBox: %v\n", r)
+		}
+	}()
+
+	allGems := m.allGemsForSanity()
+	if len(allGems) == 0 || m.SanityCursor < 0 || m.SanityCursor >= len(allGems) {
+		return ""
+	}
+
+	gem := allGems[m.SanityCursor]
+	if gem == nil {
+		return ""
+	}
+
+	// Build content lines
+	lines := []string{}
+
+	// Title
+	title := fmt.Sprintf("Gem Info: %s", gem.Name)
+	titleStyle := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color(ColorPrimary))
+	lines = append(lines, titleStyle.Render(title))
+	lines = append(lines, "")
+
+	// Gem details
+	lines = append(lines, fmt.Sprintf("Name: %s", gem.Name))
+	lines = append(lines, fmt.Sprintf("Version: %s", gem.Version))
+
+	size := m.GemSizes[gem.Name]
+	lines = append(lines, fmt.Sprintf("Size: %s", gemfile.FormatBytes(size)))
+	lines = append(lines, "")
+
+	// Show gem type
+	isDirect := false
+	for _, direct := range m.FirstLevelGems {
+		if direct.Name == gem.Name {
+			isDirect = true
+			break
+		}
+	}
+
+	if isDirect {
+		lines = append(lines, "Type: Direct Dependency")
+	} else {
+		lines = append(lines, "Type: Transitive Dependency")
+	}
+
+	// Show description if available
+	if gem.Description != "" {
+		lines = append(lines, "")
+		lines = append(lines, "Description:")
+		// Wrap description text
+		descLines := wrapText(gem.Description, 60)
+		for _, line := range descLines {
+			lines = append(lines, fmt.Sprintf("  %s", line))
+		}
+	}
+
+	// Show installed versions and paths
+	lines = append(lines, "")
+	lines = append(lines, "Installed Versions:")
+
+	if m.GemInfoLoading {
+		// Show loading indicator while fetching
+		loadingFrame := spinnerFrames[m.AnimationFrame%len(spinnerFrames)]
+		lines = append(lines, fmt.Sprintf("  %s Fetching version info...", loadingFrame))
+	} else if m.ParsedGemInfo != nil && len(m.ParsedGemInfo.Versions) > 0 {
+		// Display parsed versions and paths
+		for _, ver := range m.ParsedGemInfo.Versions {
+			versionLine := fmt.Sprintf("  %-8s  %s", ver.Version, ver.Path)
+			// Truncate long paths if needed to fit in modal
+			if len(versionLine) > 76 {
+				versionLine = versionLine[:73] + "..."
+			}
+			lines = append(lines, versionLine)
+		}
+	} else if m.CurrentGemInfoOutput != "" {
+		// Fallback: show that fetch completed but no versions were found
+		lines = append(lines, "  (no versions found)")
+	} else {
+		// No data yet
+		lines = append(lines, "  —")
+	}
+
+	// Apply scrolling if content exceeds available modal height
+	// Calculate available height for content (modal height minus borders/padding)
+	maxModalHeight := m.Height - 6 // Leave room for header, footer, and padding
+	if maxModalHeight < 5 {
+		maxModalHeight = 5
+	}
+
+	// Ensure scroll offset doesn't exceed content
+	if m.GemInfoScrollOffset >= len(lines) {
+		m.GemInfoScrollOffset = len(lines) - 1
+	}
+	if m.GemInfoScrollOffset < 0 {
+		m.GemInfoScrollOffset = 0
+	}
+
+	// Slice lines based on scroll offset
+	visibleLines := lines
+	if len(lines) > maxModalHeight {
+		endIdx := m.GemInfoScrollOffset + maxModalHeight
+		if endIdx > len(lines) {
+			endIdx = len(lines)
+		}
+		visibleLines = lines[m.GemInfoScrollOffset:endIdx]
+
+		// Add scroll indicator at the bottom if there's more content
+		if endIdx < len(lines) {
+			visibleLines = append(visibleLines, "")
+			visibleLines = append(visibleLines, "  ↓ scroll for more")
+		}
+	}
+
+	// Create the modal box with border
+	content := strings.Join(visibleLines, "\n")
+
+	// Calculate width - limit to reasonable size
+	modalWidth := 80
+	if modalWidth > m.Width-4 {
+		modalWidth = m.Width - 4
+	}
+	if modalWidth < 40 {
+		modalWidth = 40
+	}
+
+	// Apply border and styling
+	boxStyle := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color(ColorBorderActive)).
+		Background(lipgloss.Color(ColorSurface)).
+		Padding(1, 2)
+
+	return boxStyle.Width(modalWidth).Render(content)
+}
+
+// Helper function to get all gems for Sanity tab display
+func (m *Model) allGemsForSanity() []*gemfile.GemStatus {
+	// Combine direct and transitive gems
+	allGems := make([]*gemfile.GemStatus, 0)
+
+	// Add direct dependencies first
+	if m.FirstLevelGems != nil {
+		allGems = append(allGems, m.FirstLevelGems...)
+	}
+
+	// Add transitive dependencies (gems in GemStatuses but not in FirstLevelGems)
+	if m.AnalysisResult != nil && m.AnalysisResult.GemStatuses != nil {
+		// Build directMap from the gems we already added (safe approach)
+		directMap := make(map[string]bool)
+		for _, gem := range allGems {
+			directMap[gem.Name] = true
+		}
+
+		for _, gem := range m.AnalysisResult.GemStatuses {
+			if !directMap[gem.Name] {
+				allGems = append(allGems, gem)
+			}
+		}
+	}
+
+	return allGems
 }
 
 // ============================================================================
@@ -1533,14 +1916,19 @@ func (m *Model) renderProjectInfo(height int) string {
 	sections = append(sections, m.formatInfoLine("Direct Dependencies", fmt.Sprintf("%d", m.FirstLevelCount)))
 	sections = append(sections, m.formatInfoLine("Transitive Dependencies", fmt.Sprintf("%d", m.TransitiveDeps)))
 
-	// Vulnerabilities summary
-	if len(m.VulnerableGems) > 0 {
+	// Insecure sources summary
+	if len(m.InsecureSourceGems) > 0 {
 		sections = append(sections, "")
-		vulnLabel := fmt.Sprintf("⚠ Vulnerabilities Found (%d)", len(m.VulnerableGems))
-		vulnStyle := lipgloss.NewStyle().
+		insecureLabel := fmt.Sprintf("🔓 Insecure Gem Sources (%d)", len(m.InsecureSourceGems))
+		insecureStyle := lipgloss.NewStyle().
 			Bold(true).
-			Foreground(lipgloss.Color(ColorDanger))
-		sections = append(sections, vulnStyle.Render(vulnLabel))
+			Foreground(lipgloss.Color(ColorWarning))
+		sections = append(sections, insecureStyle.Render(insecureLabel))
+		sections = append(sections, "")
+		for _, gem := range m.InsecureSourceGems {
+			sourceInfo := fmt.Sprintf("  • %s @ %s", gem.Name, gem.Source)
+			sections = append(sections, sourceInfo)
+		}
 	}
 
 	// Padding to fill height
@@ -1783,7 +2171,7 @@ func (m *Model) renderCVEFilterModalBox() string {
 	lines = append(lines, "")
 
 	// Severity filter options
-	severities := []string{"CRITICAL", "HIGH", "MEDIUM", "LOW"}
+	severities := []string{"CRITICAL", "HIGH", "MODERATE", "LOW"}
 	for i, severity := range severities {
 		severityLine := checkbox(m.CVESelectedSeverities[severity]) + " " + severity + " only"
 		if m.CVEFilterMenuCursor == i {
@@ -1895,7 +2283,7 @@ func (m *Model) renderCVEInfoModalBox() string {
 		severityBadge = BadgeCriticalDotStyle.Render("●")
 	case "HIGH":
 		severityBadge = BadgeHighDotStyle.Render("●")
-	case "MEDIUM":
+	case "MODERATE":
 		severityBadge = BadgeWarningDotStyle.Render("●")
 	default:
 		severityBadge = BadgeHealthyDotStyle.Render("●")

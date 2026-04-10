@@ -259,11 +259,11 @@ func (c *OSVClient) parseOSVResponse(resp OSVBatchResponse, gems []*Gem) []Vulne
 // normalizeSeverity ensures severity is in expected format
 func normalizeSeverity(severity string) string {
 	switch severity {
-	case "CRITICAL", "HIGH", "MEDIUM", "LOW":
+	case "CRITICAL", "HIGH", "MODERATE", "LOW":
 		return severity
 	default:
 		if severity == "" {
-			return "MEDIUM" // Default if not specified
+			return "MODERATE" // Default if not specified
 		}
 		return severity
 	}
@@ -310,7 +310,7 @@ func extractFixedVersion(osVVuln *OSVVulnerability) string {
 }
 
 // determineSeverityFromCVSS maps CVSS score to severity level
-// According to CVSS v3.1: None (0.0), Low (0.1-3.9), Medium (4.0-6.9), High (7.0-8.9), Critical (9.0-10.0)
+// According to CVSS v3.1: None (0.0), Low (0.1-3.9), Moderate (4.0-6.9), High (7.0-8.9), Critical (9.0-10.0)
 func determineSeverityFromCVSS(cvssScore float64) string {
 	switch {
 	case cvssScore >= 9.0:
@@ -318,7 +318,7 @@ func determineSeverityFromCVSS(cvssScore float64) string {
 	case cvssScore >= 7.0:
 		return "HIGH"
 	case cvssScore >= 4.0:
-		return "MEDIUM"
+		return "MODERATE"
 	case cvssScore > 0:
 		return "LOW"
 	}

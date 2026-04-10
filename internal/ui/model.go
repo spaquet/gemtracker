@@ -76,6 +76,8 @@ const (
 	ViewUpgradeable
 	// ViewCVE displays vulnerable gems with CVE information
 	ViewCVE
+	// ViewSanity displays gem sizes and project health metrics
+	ViewSanity
 	// ViewProjectInfo displays project metadata (Ruby version, framework, gem counts, etc.)
 	ViewProjectInfo
 	// ViewFilterMenu displays options to filter gems by group or upgradability
@@ -173,6 +175,21 @@ type CVELoadFromCacheMsg struct {
 	CacheTTL        time.Duration
 }
 
+type SanityDataMsg struct {
+	GemDirPath       string
+	RubyManager      string
+	ProjectTotalSize int64
+	GemSizes         map[string]int64
+	Error            error
+}
+
+type GemInfoMsg struct {
+	GemName string
+	Output  string
+	Error   error
+	Parsed  *gemfile.ParsedGemInfo
+}
+
 // ============================================================================
 // Model
 // ============================================================================
@@ -239,7 +256,7 @@ type Model struct {
 	CVEInfoScroll         int                      // Scroll offset for CVE info modal content
 	CVEVulnerabilities    []*gemfile.Vulnerability // Actual vulnerability data from OSV.dev
 	UnfilteredCVEs        []*gemfile.Vulnerability // All CVEs before filtering
-	CVESelectedSeverities map[string]bool          // "CRITICAL","HIGH","MEDIUM","LOW" → true/false
+	CVESelectedSeverities map[string]bool          // "CRITICAL","HIGH","MODERATE","LOW" → true/false
 	CVEShowOnlyDirect     bool                     // Filter to show only direct dependency CVEs
 	CVEFilterMenuCursor   int                      // Position in the CVE filter menu
 	LastGemsSignature     string                   // SHA256 of last scanned gems
@@ -249,15 +266,30 @@ type Model struct {
 	CVECacheTTL           time.Duration            // Default: 1 hour
 	CVELastError          string                   // Last error message if scan failed
 
+	// Sanity screen state
+	GemDirPath            string                 // Result of `gem env gemdir`
+	RubyManager           string                 // Detected Ruby version manager
+	ProjectTotalSizeBytes int64                  // Total size of all project gems
+	GemSizes              map[string]int64       // Gem name → size in bytes
+	SanityCursor          int                    // Selection position in gem list
+	SanityOffset          int                    // Scroll offset for pagination
+	ShowingGemInfo        bool                   // Toggle for modal visibility
+	CurrentGemInfoOutput  string                 // Output from `gem info` command
+	SanityLoading         bool                   // Is size calculation in progress?
+	GemInfoLoading        bool                   // Is gem info fetch in progress?
+	ParsedGemInfo         *gemfile.ParsedGemInfo // Parsed installed versions and paths
+	GemInfoScrollOffset   int                    // Scroll offset for gem info modal
+
 	// Project Info screen state
-	RubyVersion       string
-	RailsVersion      string
-	BundleVersion     string
-	OtherFramework    string // For non-Rails projects
-	TotalGems         int
-	FirstLevelCount   int
-	TransitiveDeps    int
-	FrameworkDetected string // The name of the framework detected
+	RubyVersion        string
+	RailsVersion       string
+	BundleVersion      string
+	OtherFramework     string // For non-Rails projects
+	TotalGems          int
+	FirstLevelCount    int
+	TransitiveDeps     int
+	FrameworkDetected  string         // The name of the framework detected
+	InsecureSourceGems []*gemfile.Gem // Gems sourced from insecure protocols (http://, git://)
 
 	// Path selection modal
 	PathInput textinput.Model
@@ -328,6 +360,7 @@ func NewModel(version, commit, date, projectPath string, noCache, verbose bool) 
 		HealthPending:      make([]*gemfile.GemStatus, 0),
 		CVECacheTTL:        1 * time.Hour,
 		CVEVulnerabilities: make([]*gemfile.Vulnerability, 0),
+		GemSizes:           make(map[string]int64),
 	}
 
 	// Configure search input
@@ -809,7 +842,7 @@ func (m *Model) initializeCVEFilters(vulns []*gemfile.Vulnerability) {
 	m.CVESelectedSeverities = map[string]bool{
 		"CRITICAL": true,
 		"HIGH":     true,
-		"MEDIUM":   true,
+		"MODERATE": true,
 		"LOW":      true,
 	}
 	m.CVEShowOnlyDirect = false
@@ -1063,5 +1096,75 @@ func performCVEScan(gems []*gemfile.Gem) tea.Cmd {
 		}
 
 		return CVECompleteMsg{Vulnerabilities: vulnPtrs, Error: nil}
+	}
+}
+
+func loadSanityData(gems []*gemfile.Gem) tea.Cmd {
+	return func() tea.Msg {
+		// Get gem directory path
+		gemDirPath, err := gemfile.GetGemDirPath()
+		if err != nil {
+			return SanityDataMsg{Error: err}
+		}
+
+		// Detect Ruby manager from path
+		rubyManager := gemfile.DetectRubyManager(gemDirPath)
+
+		// Calculate project size
+		totalSize, sizes, err := gemfile.CalculateProjectSize(gems, gemDirPath)
+		if err != nil {
+			// Don't fail on error, but log it
+			logger.Warn("Failed to calculate gem sizes: %v", err)
+		}
+
+		return SanityDataMsg{
+			GemDirPath:       gemDirPath,
+			RubyManager:      rubyManager,
+			ProjectTotalSize: totalSize,
+			GemSizes:         sizes,
+			Error:            nil,
+		}
+	}
+}
+
+func fetchGemInfo(gemName string) tea.Cmd {
+	return func() tea.Msg {
+		defer func() {
+			if r := recover(); r != nil {
+				logger.Error("Panic in fetchGemInfo for %s: %v", gemName, r)
+			}
+		}()
+
+		// Safely get gem info with error handling
+		var output string
+		var err error
+
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					logger.Error("Panic in GetGemInfo: %v", r)
+					err = fmt.Errorf("GetGemInfo panicked: %v", r)
+				}
+			}()
+			output, err = gemfile.GetGemInfo(gemName)
+		}()
+
+		// Make sure output is valid before creating message
+		if output == "" && err != nil {
+			output = "(no output available)"
+		}
+
+		// Parse the gem info output to extract installed versions
+		var parsed *gemfile.ParsedGemInfo
+		if output != "" && output != "(no output available)" {
+			parsed = gemfile.ParseGemInfo(output)
+		}
+
+		return GemInfoMsg{
+			GemName: gemName,
+			Output:  output,
+			Error:   err,
+			Parsed:  parsed,
+		}
 	}
 }

@@ -31,6 +31,10 @@ type Gem struct {
 	Groups []string
 	// IsFirstLevel is true if this gem is in the DEPENDENCIES section (directly required)
 	IsFirstLevel bool
+	// Source indicates where the gem is sourced from (e.g., "rubygems.org", a git URL)
+	Source string
+	// InsecureSource is true if the gem is sourced from an insecure protocol (http://, git://)
+	InsecureSource bool
 }
 
 // Gemfile represents the parsed contents of a Gemfile.lock file.
@@ -89,17 +93,33 @@ func detectSection(line string) (string, bool) {
 	return "", false
 }
 
+// isInsecureSource checks if a source URL uses an insecure protocol.
+// Returns true for http://, git://, git+http:// protocols.
+func isInsecureSource(source string) bool {
+	source = strings.TrimSpace(source)
+	return strings.HasPrefix(source, "http://") ||
+		strings.HasPrefix(source, "git://") ||
+		strings.HasPrefix(source, "git+http://")
+}
+
 // shouldSkipLine determines if a line should be skipped during Gemfile.lock parsing.
 // It skips blank lines and metadata lines (remote, specs, revision, branch, tag).
+// Note: remote lines in GIT sections are NOT skipped so we can extract source information.
 func shouldSkipLine(line string, inSection string) bool {
 	trimmed := strings.TrimSpace(line)
 	if trimmed == "" {
 		return true
 	}
-	// Skip metadata lines
-	if strings.HasPrefix(line, "  remote:") || strings.HasPrefix(line, "  specs:") ||
-		strings.HasPrefix(line, "  revision:") || strings.HasPrefix(line, "  branch:") ||
+	// Skip specs, revision, branch, tag lines
+	if strings.HasPrefix(line, "  specs:") ||
+		strings.HasPrefix(line, "  revision:") ||
+		strings.HasPrefix(line, "  branch:") ||
 		strings.HasPrefix(line, "  tag:") {
+		return true
+	}
+	// In GIT section, don't skip remote line (we need it)
+	// In GEM section, skip remote line (it's always rubygems.org)
+	if strings.HasPrefix(line, "  remote:") && inSection != "GIT" {
 		return true
 	}
 	// Skip PLATFORMS section content
@@ -202,10 +222,12 @@ func Parse(path string) (*Gemfile, error) {
 
 	scanner := bufio.NewScanner(file)
 	inSection := ""
+	currentSource := "https://rubygems.org/" // Default source
 
 	gemLineRegex := regexp.MustCompile(`(?i)^\s{4}([a-z0-9_-]+)\s+\(([^)]+)\)`)
 	dependencyRegex := regexp.MustCompile(`(?i)^\s{6}([a-z0-9_-]+)`)
 	dependencyItemRegex := regexp.MustCompile(`(?i)^\s{2}([a-z0-9_-]+)`)
+	remoteRegex := regexp.MustCompile(`^\s{2}remote:\s+(.+)$`)
 
 	var currentGem *Gem
 
@@ -218,6 +240,10 @@ func Parse(path string) (*Gemfile, error) {
 				break
 			}
 			inSection = newSection
+			// Reset source to default when entering new section
+			if newSection == "GEM" {
+				currentSource = "https://rubygems.org/"
+			}
 			continue
 		}
 
@@ -225,9 +251,23 @@ func Parse(path string) (*Gemfile, error) {
 			continue
 		}
 
+		// Parse remote lines in GIT section
+		if inSection == "GIT" {
+			remoteMatches := remoteRegex.FindStringSubmatch(line)
+			if len(remoteMatches) > 0 {
+				currentSource = strings.TrimSpace(remoteMatches[1])
+				continue
+			}
+		}
+
 		// Parse GIT and GEM sections
 		if inSection == "GIT" || inSection == "GEM" {
 			currentGem = parseGemOrGitLine(line, gf, currentGem, gemLineRegex, dependencyRegex)
+			// Set source on newly created gem
+			if currentGem != nil && currentGem.Source == "" {
+				currentGem.Source = currentSource
+				currentGem.InsecureSource = isInsecureSource(currentSource)
+			}
 		}
 
 		// Parse DEPENDENCIES section
@@ -437,4 +477,15 @@ func DetectFramework(gf *Gemfile) (framework string, version string) {
 	}
 
 	return "", ""
+}
+
+// GetInsecureSourceGems returns all gems that are sourced from insecure protocols (http://, git://)
+func (g *Gemfile) GetInsecureSourceGems() []*Gem {
+	var insecureGems []*Gem
+	for _, gem := range g.Gems {
+		if gem.InsecureSource {
+			insecureGems = append(insecureGems, gem)
+		}
+	}
+	return insecureGems
 }

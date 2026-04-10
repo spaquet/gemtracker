@@ -43,6 +43,8 @@ type ReportData struct {
 	OutdatedGems []*GemReport
 	// VulnerableGems lists gems with known CVEs
 	VulnerableGems []*GemReport
+	// InsecureSourceGems lists gems sourced from insecure protocols
+	InsecureSourceGems []*GemReport
 	// AllGems lists all gems in the project
 	AllGems []*GemReport
 	// Summary is a brief text summary of findings
@@ -51,6 +53,8 @@ type ReportData struct {
 	OutdatedCount int
 	// VulnerableCount is the count of gems with known vulnerabilities
 	VulnerableCount int
+	// InsecureSourceCount is the count of gems from insecure sources
+	InsecureSourceCount int
 }
 
 // GemReport represents a gem's details in the generated report, including status and metadata.
@@ -79,6 +83,10 @@ type GemReport struct {
 	Description string
 	// ReverseDeps lists the names of gems that depend on this gem
 	ReverseDeps []string
+	// Source is the gem source (e.g., "https://rubygems.org/", or a git URL)
+	Source string
+	// IsInsecureSource indicates whether the gem comes from an insecure protocol
+	IsInsecureSource bool
 }
 
 // NewReportGenerator creates a new ReportGenerator for the given project path.
@@ -288,7 +296,22 @@ func (rg *ReportGenerator) buildReportData(analysis *gemfile.AnalysisResult, gem
 	outdatedGems := make([]*GemReport, 0)
 	vulnerableGems := make([]*GemReport, 0)
 
+	// Build insecure source map for quick lookup
+	insecureSourceMap := make(map[string]bool)
+	insecureSourceGemsSlice := make([]*GemReport, 0)
+	for _, gem := range analysis.InsecureSourceGems {
+		insecureSourceMap[gem.Name] = true
+	}
+
 	for _, status := range analysis.GemStatuses {
+		// Get source info from Gemfile
+		var source string
+		var isInsecureSource bool
+		if gem, ok := gf.Gems[status.Name]; ok {
+			source = gem.Source
+			isInsecureSource = gem.InsecureSource
+		}
+
 		report := &GemReport{
 			Name:              status.Name,
 			Version:           status.Version,
@@ -302,6 +325,8 @@ func (rg *ReportGenerator) buildReportData(analysis *gemfile.AnalysisResult, gem
 			HomepageURL:       status.HomepageURL,
 			Description:       status.Description,
 			ReverseDeps:       reverseDepMap[status.Name],
+			Source:            source,
+			IsInsecureSource:  isInsecureSource,
 		}
 
 		allGems = append(allGems, report)
@@ -311,6 +336,9 @@ func (rg *ReportGenerator) buildReportData(analysis *gemfile.AnalysisResult, gem
 		}
 		if status.IsVulnerable {
 			vulnerableGems = append(vulnerableGems, report)
+		}
+		if isInsecureSource {
+			insecureSourceGemsSlice = append(insecureSourceGemsSlice, report)
 		}
 	}
 
@@ -330,9 +358,12 @@ func (rg *ReportGenerator) buildReportData(analysis *gemfile.AnalysisResult, gem
 	// Calculate transitive dependencies
 	transitiveDeps := len(allGems) - firstLevelCount
 
+	// Sort insecure source gems by name
+	sort.Slice(insecureSourceGemsSlice, func(i, j int) bool { return insecureSourceGemsSlice[i].Name < insecureSourceGemsSlice[j].Name })
+
 	// Build summary
-	summary := fmt.Sprintf("Total gems: %d, Direct: %d, Transitive: %d, Outdated: %d, Vulnerable: %d",
-		len(allGems), firstLevelCount, transitiveDeps, len(outdatedGems), len(vulnerableGems))
+	summary := fmt.Sprintf("Total gems: %d, Direct: %d, Transitive: %d, Outdated: %d, Vulnerable: %d, Insecure sources: %d",
+		len(allGems), firstLevelCount, transitiveDeps, len(outdatedGems), len(vulnerableGems), len(insecureSourceGemsSlice))
 
 	// Extract project directory name from Gemfile path for display
 	absPath, err := filepath.Abs(gf.Path)
@@ -350,9 +381,11 @@ func (rg *ReportGenerator) buildReportData(analysis *gemfile.AnalysisResult, gem
 		AllGems:                allGems,
 		OutdatedGems:           outdatedGems,
 		VulnerableGems:         vulnerableGems,
+		InsecureSourceGems:     insecureSourceGemsSlice,
 		Summary:                summary,
 		OutdatedCount:          len(outdatedGems),
 		VulnerableCount:        len(vulnerableGems),
+		InsecureSourceCount:    len(insecureSourceGemsSlice),
 	}
 }
 
@@ -514,6 +547,19 @@ func (rg *ReportGenerator) generateTextReport(data *ReportData, outputPath strin
 		}
 	}
 
+	// Insecure sources section
+	if data.InsecureSourceCount > 0 {
+		output.WriteString("INSECURE GEM SOURCES\n")
+		output.WriteString(strings.Repeat("-", 80) + "\n")
+		output.WriteString("The following gems are sourced from insecure protocols (http://, git://).\n")
+		output.WriteString("Consider switching to secure HTTPS sources when possible.\n\n")
+		for _, gem := range data.InsecureSourceGems {
+			output.WriteString(fmt.Sprintf("  • %s (%s)\n", gem.Name, gem.Version))
+			output.WriteString(fmt.Sprintf("    Source: %s\n", gem.Source))
+			output.WriteString("\n")
+		}
+	}
+
 	// Outdated gems section
 	if data.OutdatedCount > 0 {
 		output.WriteString("OUTDATED GEMS (Updates Available)\n")
@@ -555,6 +601,8 @@ func (rg *ReportGenerator) generateCSVReport(data *ReportData, outputPath string
 		"Latest Version",
 		"Vulnerable",
 		"Vulnerability Info",
+		"Source",
+		"Insecure Source",
 	}
 	if err := writer.Write(headers); err != nil {
 		return fmt.Errorf("failed to write CSV header: %w", err)
@@ -571,6 +619,8 @@ func (rg *ReportGenerator) generateCSVReport(data *ReportData, outputPath string
 			gem.LatestVersion,
 			boolToString(gem.IsVulnerable),
 			gem.VulnerabilityInfo,
+			gem.Source,
+			boolToString(gem.IsInsecureSource),
 		}
 		if err := writer.Write(record); err != nil {
 			return fmt.Errorf("failed to write CSV row: %w", err)

@@ -551,3 +551,85 @@ func TestFindGemfile_OnlyGemsRb(t *testing.T) {
 		t.Errorf("expected FindGemfile to return gems.rb, got %s", result)
 	}
 }
+
+func TestParse_InsecureGitSources(t *testing.T) {
+	dir := t.TempDir()
+
+	// Create a Gemfile.lock with insecure git sources
+	lockContent := `GIT
+  remote: http://insecure.example.com/repo.git
+  revision: abc123
+  branch: master
+  specs:
+    insecure-gem (1.0.0)
+
+GIT
+  remote: git://another-insecure.example.com/repo.git
+  revision: def456
+  branch: main
+  specs:
+    git-gem (2.0.0)
+
+GEM
+  remote: https://rubygems.org/
+  specs:
+    rails (7.0.0)
+
+DEPENDENCIES
+  insecure-gem
+  git-gem
+  rails
+`
+
+	lockFile := filepath.Join(dir, "Gemfile.lock")
+	if err := os.WriteFile(lockFile, []byte(lockContent), 0644); err != nil {
+		t.Fatalf("failed to create Gemfile.lock: %v", err)
+	}
+
+	gf, err := Parse(lockFile)
+	if err != nil {
+		t.Fatalf("Parse failed: %v", err)
+	}
+
+	// Test insecure-gem (http://)
+	insecureGem := gf.Gems["insecure-gem"]
+	if insecureGem == nil {
+		t.Fatal("insecure-gem not found")
+	}
+	if !insecureGem.InsecureSource {
+		t.Errorf("expected insecure-gem to have InsecureSource=true, got false")
+	}
+	if insecureGem.Source != "http://insecure.example.com/repo.git" {
+		t.Errorf("expected source 'http://insecure.example.com/repo.git', got %s", insecureGem.Source)
+	}
+
+	// Test git-gem (git://)
+	gitGem := gf.Gems["git-gem"]
+	if gitGem == nil {
+		t.Fatal("git-gem not found")
+	}
+	if !gitGem.InsecureSource {
+		t.Errorf("expected git-gem to have InsecureSource=true, got false")
+	}
+	if gitGem.Source != "git://another-insecure.example.com/repo.git" {
+		t.Errorf("expected source 'git://another-insecure.example.com/repo.git', got %s", gitGem.Source)
+	}
+
+	// Test rails (https://) - should NOT be insecure
+	rails := gf.Gems["rails"]
+	if rails == nil {
+		t.Fatal("rails not found")
+	}
+	if rails.InsecureSource {
+		t.Errorf("expected rails to have InsecureSource=false, got true")
+	}
+	if rails.Source != "https://rubygems.org/" {
+		t.Errorf("expected source 'https://rubygems.org/', got %s", rails.Source)
+	}
+
+	// Test GetInsecureSourceGems
+	insecureGems := gf.GetInsecureSourceGems()
+	if len(insecureGems) != 2 {
+		t.Errorf("expected 2 insecure gems, got %d", len(insecureGems))
+	}
+}

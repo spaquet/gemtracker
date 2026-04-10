@@ -14,7 +14,7 @@ type Vulnerability struct {
 	Description string
 	// CVE is the CVE identifier (e.g., "CVE-2021-22942")
 	CVE string
-	// Severity is the vulnerability severity level (CRITICAL, HIGH, MEDIUM, LOW)
+	// Severity is the vulnerability severity level (CRITICAL, HIGH, MODERATE, LOW)
 	Severity string
 	// CVSS is the CVSS score (0-10)
 	CVSS float64

@@ -124,6 +124,12 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case CVELoadFromCacheMsg:
 		return m.handleCVELoadFromCache(msg)
+
+	case SanityDataMsg:
+		return m.handleSanityData(msg)
+
+	case GemInfoMsg:
+		return m.handleGemInfo(msg)
 	}
 
 	return m, nil
@@ -175,6 +181,12 @@ func (m *Model) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case ViewCVE:
 		return m.handleCVEKeys(msg)
+
+	case ViewSanity:
+		if m.ShowingGemInfo {
+			return m.handleGemInfoKeys(msg)
+		}
+		return m.handleSanityKeys(msg)
 
 	case ViewProjectInfo:
 		return m.handleProjectInfoKeys(msg)
@@ -495,8 +507,8 @@ func (m *Model) handleUpgradeableKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 func (m *Model) handleCVEKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "tab":
-		m.CurrentView = ViewProjectInfo
-		m.ActiveTab = ViewProjectInfo
+		m.CurrentView = ViewSanity
+		m.ActiveTab = ViewSanity
 		return m, nil
 
 	case "shift+tab":
@@ -600,6 +612,115 @@ func (m *Model) handleCVEInfoKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 
 	return m, nil
+}
+
+func (m *Model) handleSanityKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	allGems := m.allGemsForSanity()
+
+	switch msg.String() {
+	case "tab":
+		m.CurrentView = ViewProjectInfo
+		m.ActiveTab = ViewProjectInfo
+		return m, nil
+
+	case "shift+tab":
+		m.CurrentView = ViewCVE
+		m.ActiveTab = ViewCVE
+		return m, nil
+
+	case "up":
+		if m.SanityCursor > 0 {
+			m.SanityCursor--
+			m.ensureSanityCursorVisible()
+		}
+		return m, nil
+
+	case "down":
+		if m.SanityCursor < len(allGems)-1 {
+			m.SanityCursor++
+			m.ensureSanityCursorVisible()
+		}
+		return m, nil
+
+	case "enter":
+		// Navigate to gem detail view (same as other tabs)
+		if len(allGems) > 0 && m.SanityCursor < len(allGems) {
+			m.SelectedGem = allGems[m.SanityCursor]
+			m.CurrentView = ViewGemDetail
+			m.ActiveTab = ViewSanity
+			m.Loading = true
+			m.LoadingMessage = "Loading dependencies..."
+			m.DetailSection = 0
+			m.DetailTreeCursor = 0
+			m.DetailForwardOffset = 0
+			m.DetailReverseOffset = 0
+			return m, tea.Batch(
+				tea.Tick(time.Millisecond*100, func(time.Time) tea.Msg {
+					return SpinnerTickMsg{}
+				}),
+				performDependencyAnalysis(m.GemfileLockPath, m.SelectedGem.Name),
+			)
+		}
+		return m, nil
+
+	case "i":
+		// Open gem info modal with current gem data
+		if len(allGems) > 0 && m.SanityCursor < len(allGems) {
+			gem := allGems[m.SanityCursor]
+			m.ShowingGemInfo = true
+			m.GemInfoLoading = true
+			m.CurrentGemInfoOutput = ""
+			m.ParsedGemInfo = nil
+			m.GemInfoScrollOffset = 0 // Reset scroll position
+			// Fetch gem info asynchronously
+			return m, fetchGemInfo(gem.Name)
+		}
+		return m, nil
+	}
+
+	return m, nil
+}
+
+func (m *Model) handleGemInfoKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "esc", "q":
+		m.ShowingGemInfo = false
+		m.GemInfoScrollOffset = 0 // Reset scroll position when closing
+		return m, nil
+
+	case "up":
+		if m.GemInfoScrollOffset > 0 {
+			m.GemInfoScrollOffset--
+		}
+		return m, nil
+
+	case "down":
+		// Allow scrolling down (actual max will be checked in rendering)
+		m.GemInfoScrollOffset++
+		return m, nil
+	}
+
+	return m, nil
+}
+
+// ensureSanityCursorVisible adjusts the offset so the cursor stays visible
+func (m *Model) ensureSanityCursorVisible() {
+	statusbarLines := m.statusBarTotalHeight()
+	contentHeight := m.Height - 2 - statusbarLines
+
+	// Account for header and section headers
+	visibleRows := contentHeight - 6 // Rough estimate, conservative
+
+	if visibleRows < 1 {
+		visibleRows = 1
+	}
+
+	// Scroll to keep cursor visible
+	if m.SanityCursor < m.SanityOffset {
+		m.SanityOffset = m.SanityCursor
+	} else if m.SanityCursor >= m.SanityOffset+visibleRows {
+		m.SanityOffset = m.SanityCursor - visibleRows + 1
+	}
 }
 
 // getCVEInfoMaxScroll calculates the maximum scroll position for the CVE info modal
@@ -715,9 +836,9 @@ func (m *Model) handleProjectInfoKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case "shift+tab":
-		m.CurrentView = ViewCVE
-		m.ActiveTab = ViewCVE
-		return m.ensureCVEScanStarted()
+		m.CurrentView = ViewSanity
+		m.ActiveTab = ViewSanity
+		return m, nil
 	}
 
 	return m, nil
@@ -806,8 +927,8 @@ func (m *Model) handleCVEFilterMenuKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.CVESelectedSeverities["CRITICAL"] = !m.CVESelectedSeverities["CRITICAL"]
 		case 1: // HIGH
 			m.CVESelectedSeverities["HIGH"] = !m.CVESelectedSeverities["HIGH"]
-		case 2: // MEDIUM
-			m.CVESelectedSeverities["MEDIUM"] = !m.CVESelectedSeverities["MEDIUM"]
+		case 2: // MODERATE
+			m.CVESelectedSeverities["MODERATE"] = !m.CVESelectedSeverities["MODERATE"]
 		case 3: // LOW
 			m.CVESelectedSeverities["LOW"] = !m.CVESelectedSeverities["LOW"]
 		case 4: // Direct only
@@ -920,6 +1041,8 @@ func (m *Model) handleAnalysisComplete(msg AnalysisCompleteMsg) (tea.Model, tea.
 		framework, version := gemfile.DetectFramework(gf)
 		m.FrameworkDetected = framework
 		m.RailsVersion = version
+		// Also get insecure sources from the parsed Gemfile
+		m.InsecureSourceGems = gf.GetInsecureSourceGems()
 	}
 
 	// Calculate statistics
@@ -1002,10 +1125,14 @@ func (m *Model) handleAnalysisComplete(msg AnalysisCompleteMsg) (tea.Model, tea.
 		m.LastGemsSignature = gemfile.ComputeGemsSignature(msg.Result.AllGems)
 	}
 
-	// Batch outdated checking and CVE scanning
+	// Start Sanity data loading (gem sizes)
+	m.SanityLoading = true
+
+	// Batch outdated checking, CVE scanning, and Sanity data loading
 	return m, tea.Batch(
 		fetchNextOutdatedItem(m.OutdatedPending, m.OutdatedChecker),
 		performCVEScan(msg.Result.AllGems),
+		loadSanityData(msg.Result.AllGems),
 	)
 }
 
@@ -1423,6 +1550,40 @@ func (m *Model) handleCVELoadFromCache(msg CVELoadFromCacheMsg) (tea.Model, tea.
 
 	// Rebuild vulnerable gems list (only gems with vulnerabilities)
 	m.rebuildVulnerableGemsList()
+
+	return m, nil
+}
+
+func (m *Model) handleSanityData(msg SanityDataMsg) (tea.Model, tea.Cmd) {
+	m.SanityLoading = false
+
+	if msg.Error != nil {
+		logger.Warn("Failed to load Sanity data: %v", msg.Error)
+		// Don't fail, just show error state in UI
+		return m, nil
+	}
+
+	m.GemDirPath = msg.GemDirPath
+	m.RubyManager = msg.RubyManager
+	m.ProjectTotalSizeBytes = msg.ProjectTotalSize
+	m.GemSizes = msg.GemSizes
+
+	return m, nil
+}
+
+func (m *Model) handleGemInfo(msg GemInfoMsg) (tea.Model, tea.Cmd) {
+	m.GemInfoLoading = false
+
+	if msg.Error != nil {
+		logger.Warn("Failed to get gem info for %s: %v", msg.GemName, msg.Error)
+		// Still show output even if error occurred
+		m.CurrentGemInfoOutput = msg.Output
+	} else {
+		m.CurrentGemInfoOutput = msg.Output
+	}
+
+	// Store parsed gem info data (versions and paths)
+	m.ParsedGemInfo = msg.Parsed
 
 	return m, nil
 }
