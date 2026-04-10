@@ -63,12 +63,19 @@ func NewOutdatedChecker() *OutdatedChecker {
 // IsOutdated checks if a gem has a newer version available. It handles platform suffixes
 // and pre-release versions correctly (e.g., "1.6.3-x86_64-linux" is compared as "1.6.3").
 // Returns (isOutdated, latestVersion, error).
+// If a gem is not found on rubygems.org (404), returns (false, "", nil) - not an error.
 func (oc *OutdatedChecker) IsOutdated(gemName, currentVersion string) (bool, string, error) {
 	// Get latest version from cache or API
 	latestVersion, err := oc.getLatestVersion(gemName)
 	if err != nil {
 		// Return error instead of silently failing
 		return false, "", err
+	}
+
+	// If gem not found on rubygems.org (latestVersion is empty), it's not outdated
+	// This is normal for local gems, git sources, or removed gems
+	if latestVersion == "" {
+		return false, "", nil
 	}
 
 	// Normalize both versions by stripping platform suffixes before comparison
@@ -104,6 +111,13 @@ func (oc *OutdatedChecker) getLatestVersion(gemName string) (string, error) {
 	if resp.StatusCode == 429 {
 		return "", fmt.Errorf("rate limited (429) by rubygems.org")
 	}
+
+	// Handle 404 gracefully - gem not found on rubygems.org
+	// This is normal for local gems, git source gems, or removed gems
+	if resp.StatusCode == http.StatusNotFound {
+		return "", nil // Return empty string, not an error
+	}
+
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("gem not found on rubygems.org (status %d)", resp.StatusCode)
 	}
