@@ -26,6 +26,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Options to Replace, Cancel, or specify a new filename
   - Automatically preserves file extension when entering new filename
   - Prevents accidental loss of existing report files
+- **Redesigned Vulnerable Gems Section** - Enhanced clarity for vulnerability information in text reports
+  - Full OSV advisory URL (https://osv.dev/vulnerability/GHSA-...) displayed for each vulnerability
+  - Shows bundle group membership (default, development, test, etc.)
+  - Clear [direct] vs [transitive] markers to indicate gem scope
+  - For transitive vulnerabilities: lists which gems depend on the vulnerable gem
+  - Removed trailing colon after severity level for cleaner formatting
 
 ### Fixed
 - **Project Name Display in Reports** - Reports now show the actual project directory name instead of "."

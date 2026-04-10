@@ -70,6 +70,8 @@ type GemReport struct {
 	IsVulnerable bool
 	// VulnerabilityInfo contains CVE ID and description (if IsVulnerable is true)
 	VulnerabilityInfo string
+	// VulnerabilityURL is the canonical OSV advisory URL (if IsVulnerable is true)
+	VulnerabilityURL string
 	// HomepageURL is the gem's homepage or source code URL
 	HomepageURL string
 	// Description is the gem description from rubygems.org
@@ -286,6 +288,7 @@ func (rg *ReportGenerator) buildReportData(analysis *gemfile.AnalysisResult, gem
 			LatestVersion:     status.LatestVersion,
 			IsVulnerable:      status.IsVulnerable,
 			VulnerabilityInfo: status.VulnerabilityInfo,
+			VulnerabilityURL:  status.VulnerabilityURL,
 			HomepageURL:       status.HomepageURL,
 			Description:       status.Description,
 			ReverseDeps:       reverseDepMap[status.Name],
@@ -471,10 +474,34 @@ func (rg *ReportGenerator) generateTextReport(data *ReportData, outputPath strin
 		output.WriteString("VULNERABLE GEMS\n")
 		output.WriteString(strings.Repeat("-", 80) + "\n")
 		for _, gem := range data.VulnerableGems {
-			output.WriteString(fmt.Sprintf("  • %s (%s)\n", gem.Name, gem.Version))
-			output.WriteString(fmt.Sprintf("    Issue: %s\n", gem.VulnerabilityInfo))
+			// Determine direct/transitive marker
+			depType := "[transitive]"
+			if gem.IsFirstLevel {
+				depType = "[direct]"
+			}
+
+			// Format groups
+			groups := ""
+			if len(gem.Groups) > 0 {
+				groups = " [" + strings.Join(gem.Groups, ", ") + "]"
+			}
+
+			// Header line: bullet, name+version, direct/transitive, groups, reverse deps
+			header := fmt.Sprintf("  • %s (%s) %s%s", gem.Name, gem.Version, depType, groups)
+			if len(gem.ReverseDeps) > 0 {
+				header += fmt.Sprintf("  [used by: %s]", strings.Join(gem.ReverseDeps, ", "))
+			}
+			output.WriteString(header + "\n")
+
+			// CVE detail line
+			output.WriteString(fmt.Sprintf("    %s\n", gem.VulnerabilityInfo))
+
+			// URL line if available
+			if gem.VulnerabilityURL != "" {
+				output.WriteString(fmt.Sprintf("    %s\n", gem.VulnerabilityURL))
+			}
+			output.WriteString("\n")
 		}
-		output.WriteString("\n")
 	}
 
 	// Outdated gems section
@@ -689,16 +716,19 @@ func (rg *ReportGenerator) mergeVulnerabilitiesIntoGems(gemStatuses []*gemfile.G
 			gemStatus.IsVulnerable = true
 			// Use the first vulnerability for the summary info
 			vuln := vulns[0]
-			// Include severity in the vulnerability info, matching UI display
-			info := fmt.Sprintf("%s [%s]: %s", vuln.CVE, vuln.Severity, vuln.Description)
+			// Include severity in the vulnerability info, matching UI display (no trailing colon)
+			info := fmt.Sprintf("%s [%s] %s", vuln.CVE, vuln.Severity, vuln.Description)
 			// Append CVSS score if available
 			if vuln.CVSS > 0 {
 				info += fmt.Sprintf(" (CVSS: %.1f)", vuln.CVSS)
 			}
 			gemStatus.VulnerabilityInfo = info
+			// Construct canonical OSV advisory URL
+			gemStatus.VulnerabilityURL = "https://osv.dev/vulnerability/" + vuln.OSVId
 		} else {
 			gemStatus.IsVulnerable = false
 			gemStatus.VulnerabilityInfo = ""
+			gemStatus.VulnerabilityURL = ""
 		}
 	}
 }
