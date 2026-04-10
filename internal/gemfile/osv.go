@@ -419,6 +419,14 @@ func (c *OSVClient) enrichVulnerabilitiesWithDetails(ctx context.Context, vulns 
 			}
 			logger.Info("✓ Enriched %s: CVSS %.1f, Severity: %s", vulns[i].OSVId, cvssScore, vulns[i].Severity)
 		}
+
+		// Extract workarounds from detailed response (batch endpoint doesn't include Details)
+		if detailVuln.Details != "" && vulns[i].Workarounds == "" {
+			vulns[i].Workarounds = extractWorkarounds(detailVuln.Details)
+			if vulns[i].Workarounds != "" {
+				logger.Info("✓ Extracted workarounds for %s", vulns[i].OSVId)
+			}
+		}
 	}
 	logger.Info("Vulnerability enrichment complete")
 }
