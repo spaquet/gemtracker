@@ -220,3 +220,90 @@ func FormatBytes(bytes int64) string {
 		return fmt.Sprintf("%d B", bytes)
 	}
 }
+
+// ============================================================================
+// Gem Info Parsing
+// ============================================================================
+
+// InstalledVersion represents a single installed version of a gem and its location.
+type InstalledVersion struct {
+	Version string
+	Path    string
+}
+
+// ParsedGemInfo contains parsed information extracted from `gem info` output.
+type ParsedGemInfo struct {
+	Versions []InstalledVersion // Ordered list: newest first
+}
+
+// ParseGemInfo parses the output from `gem info <name>` to extract installed versions and paths.
+// Example output format:
+//
+//	rack (3.2.6, 3.2.5, 3.2.4)
+//	    Author: ...
+//	    Installed at (3.2.6): /path/to/gems
+//	                 (3.2.5): /path/to/gems
+//	                 (3.2.4): /path/to/gems
+func ParseGemInfo(output string) *ParsedGemInfo {
+	if output == "" {
+		return &ParsedGemInfo{}
+	}
+
+	result := &ParsedGemInfo{
+		Versions: make([]InstalledVersion, 0),
+	}
+
+	lines := strings.Split(output, "\n")
+
+	// Parse installed versions and paths
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+
+		// Match "Installed at (VERSION): PATH" pattern (first version)
+		if strings.HasPrefix(trimmed, "Installed at (") && strings.Contains(trimmed, "):") {
+			version, path := parseVersionLine(trimmed)
+			if version != "" && path != "" {
+				result.Versions = append(result.Versions, InstalledVersion{
+					Version: version,
+					Path:    path,
+				})
+			}
+		} else if strings.HasPrefix(trimmed, "(") && strings.Contains(trimmed, "):") && !strings.HasPrefix(trimmed, "Installed") {
+			// Match continuation line "(VERSION): PATH" (subsequent versions)
+			version, path := parseVersionLine(trimmed)
+			if version != "" && path != "" {
+				result.Versions = append(result.Versions, InstalledVersion{
+					Version: version,
+					Path:    path,
+				})
+			}
+		}
+	}
+
+	return result
+}
+
+// parseVersionLine extracts version and path from a line like:
+// "Installed at (3.2.6): /path/to/gems" or "(3.2.5): /path/to/gems"
+func parseVersionLine(line string) (string, string) {
+	// Find the version in parentheses
+	versionStart := strings.Index(line, "(")
+	versionEnd := strings.Index(line, ")")
+	if versionStart == -1 || versionEnd == -1 || versionEnd <= versionStart {
+		return "", ""
+	}
+
+	version := line[versionStart+1 : versionEnd]
+	version = strings.TrimSpace(version)
+
+	// Find the path after the colon
+	colonIdx := strings.Index(line, ":")
+	if colonIdx == -1 || colonIdx >= len(line) {
+		return version, ""
+	}
+
+	path := line[colonIdx+1:]
+	path = strings.TrimSpace(path)
+
+	return version, path
+}

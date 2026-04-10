@@ -645,10 +645,13 @@ func (m *Model) handleSanityKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "enter", "i":
 		// Open gem info modal with current gem data
 		if len(allGems) > 0 && m.SanityCursor < len(allGems) {
+			gem := allGems[m.SanityCursor]
 			m.ShowingGemInfo = true
-			// TODO: Re-enable async gem info fetching after stabilizing the goroutine handling
-			// For now, just show the modal without fetching to prevent crashes
-			return m, nil
+			m.GemInfoLoading = true
+			m.CurrentGemInfoOutput = ""
+			m.ParsedGemInfo = nil
+			// Fetch gem info asynchronously
+			return m, fetchGemInfo(gem.Name)
 		}
 		return m, nil
 	}
@@ -1535,6 +1538,8 @@ func (m *Model) handleSanityData(msg SanityDataMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m *Model) handleGemInfo(msg GemInfoMsg) (tea.Model, tea.Cmd) {
+	m.GemInfoLoading = false
+
 	if msg.Error != nil {
 		logger.Warn("Failed to get gem info for %s: %v", msg.GemName, msg.Error)
 		// Still show output even if error occurred
@@ -1542,6 +1547,9 @@ func (m *Model) handleGemInfo(msg GemInfoMsg) (tea.Model, tea.Cmd) {
 	} else {
 		m.CurrentGemInfoOutput = msg.Output
 	}
+
+	// Store parsed gem info data (versions and paths)
+	m.ParsedGemInfo = msg.Parsed
 
 	return m, nil
 }

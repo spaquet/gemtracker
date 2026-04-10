@@ -187,6 +187,7 @@ type GemInfoMsg struct {
 	GemName string
 	Output  string
 	Error   error
+	Parsed  *gemfile.ParsedGemInfo
 }
 
 // ============================================================================
@@ -270,11 +271,13 @@ type Model struct {
 	RubyManager           string           // Detected Ruby version manager
 	ProjectTotalSizeBytes int64            // Total size of all project gems
 	GemSizes              map[string]int64 // Gem name → size in bytes
-	SanityCursor          int              // Selection position in gem list
-	SanityOffset          int              // Scroll offset for pagination
-	ShowingGemInfo        bool             // Toggle for modal visibility
-	CurrentGemInfoOutput  string           // Output from `gem info` command
-	SanityLoading         bool             // Is size calculation in progress?
+	SanityCursor          int                      // Selection position in gem list
+	SanityOffset          int                      // Scroll offset for pagination
+	ShowingGemInfo        bool                     // Toggle for modal visibility
+	CurrentGemInfoOutput  string                   // Output from `gem info` command
+	SanityLoading         bool                     // Is size calculation in progress?
+	GemInfoLoading        bool                     // Is gem info fetch in progress?
+	ParsedGemInfo         *gemfile.ParsedGemInfo   // Parsed installed versions and paths
 
 	// Project Info screen state
 	RubyVersion        string
@@ -1150,10 +1153,17 @@ func fetchGemInfo(gemName string) tea.Cmd {
 			output = "(no output available)"
 		}
 
+		// Parse the gem info output to extract installed versions
+		var parsed *gemfile.ParsedGemInfo
+		if output != "" && output != "(no output available)" {
+			parsed = gemfile.ParseGemInfo(output)
+		}
+
 		return GemInfoMsg{
 			GemName: gemName,
 			Output:  output,
 			Error:   err,
+			Parsed:  parsed,
 		}
 	}
 }

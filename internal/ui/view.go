@@ -1755,31 +1755,30 @@ func (m *Model) renderGemInfoModalBox() string {
 		}
 	}
 
-	// Show full gem info output if available (with truncation and wrapping)
-	if m.CurrentGemInfoOutput != "" {
-		lines = append(lines, "")
-		lines = append(lines, "Gem Info:")
-		lines = append(lines, "----------")
-		gemInfoLines := strings.Split(m.CurrentGemInfoOutput, "\n")
+	// Show installed versions and paths
+	lines = append(lines, "")
+	lines = append(lines, "Installed Versions:")
 
-		// Limit to max 30 lines and truncate each line to 76 chars to fit in modal
-		maxLines := 30
-		lineCount := 0
-		for _, line := range gemInfoLines {
-			if lineCount >= maxLines {
-				lines = append(lines, "... (output truncated)")
-				break
+	if m.GemInfoLoading {
+		// Show loading indicator while fetching
+		loadingFrame := spinnerFrames[m.AnimationFrame%len(spinnerFrames)]
+		lines = append(lines, fmt.Sprintf("  %s Fetching version info...", loadingFrame))
+	} else if m.ParsedGemInfo != nil && len(m.ParsedGemInfo.Versions) > 0 {
+		// Display parsed versions and paths
+		for _, ver := range m.ParsedGemInfo.Versions {
+			versionLine := fmt.Sprintf("  %-8s  %s", ver.Version, ver.Path)
+			// Truncate long paths if needed to fit in modal
+			if len(versionLine) > 76 {
+				versionLine = versionLine[:73] + "..."
 			}
-			trimmed := strings.TrimSpace(line)
-			if trimmed != "" {
-				// Truncate long lines to prevent rendering issues
-				if len(trimmed) > 76 {
-					trimmed = trimmed[:73] + "..."
-				}
-				lines = append(lines, trimmed)
-				lineCount++
-			}
+			lines = append(lines, versionLine)
 		}
+	} else if m.CurrentGemInfoOutput != "" {
+		// Fallback: show that fetch completed but no versions were found
+		lines = append(lines, "  (no versions found)")
+	} else {
+		// No data yet
+		lines = append(lines, "  —")
 	}
 
 	// Create the modal box with border
