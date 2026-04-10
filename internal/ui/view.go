@@ -1781,8 +1781,39 @@ func (m *Model) renderGemInfoModalBox() string {
 		lines = append(lines, "  —")
 	}
 
+	// Apply scrolling if content exceeds available modal height
+	// Calculate available height for content (modal height minus borders/padding)
+	maxModalHeight := m.Height - 6 // Leave room for header, footer, and padding
+	if maxModalHeight < 5 {
+		maxModalHeight = 5
+	}
+
+	// Ensure scroll offset doesn't exceed content
+	if m.GemInfoScrollOffset >= len(lines) {
+		m.GemInfoScrollOffset = len(lines) - 1
+	}
+	if m.GemInfoScrollOffset < 0 {
+		m.GemInfoScrollOffset = 0
+	}
+
+	// Slice lines based on scroll offset
+	visibleLines := lines
+	if len(lines) > maxModalHeight {
+		endIdx := m.GemInfoScrollOffset + maxModalHeight
+		if endIdx > len(lines) {
+			endIdx = len(lines)
+		}
+		visibleLines = lines[m.GemInfoScrollOffset:endIdx]
+
+		// Add scroll indicator at the bottom if there's more content
+		if endIdx < len(lines) {
+			visibleLines = append(visibleLines, "")
+			visibleLines = append(visibleLines, "  ↓ scroll for more")
+		}
+	}
+
 	// Create the modal box with border
-	content := strings.Join(lines, "\n")
+	content := strings.Join(visibleLines, "\n")
 
 	// Calculate width - limit to reasonable size
 	modalWidth := 80

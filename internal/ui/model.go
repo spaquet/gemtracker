@@ -278,6 +278,7 @@ type Model struct {
 	SanityLoading         bool                     // Is size calculation in progress?
 	GemInfoLoading        bool                     // Is gem info fetch in progress?
 	ParsedGemInfo         *gemfile.ParsedGemInfo   // Parsed installed versions and paths
+	GemInfoScrollOffset   int                      // Scroll offset for gem info modal
 
 	// Project Info screen state
 	RubyVersion        string

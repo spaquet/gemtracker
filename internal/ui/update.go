@@ -650,6 +650,7 @@ func (m *Model) handleSanityKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.GemInfoLoading = true
 			m.CurrentGemInfoOutput = ""
 			m.ParsedGemInfo = nil
+			m.GemInfoScrollOffset = 0 // Reset scroll position
 			// Fetch gem info asynchronously
 			return m, fetchGemInfo(gem.Name)
 		}
@@ -663,6 +664,18 @@ func (m *Model) handleGemInfoKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "esc", "q":
 		m.ShowingGemInfo = false
+		m.GemInfoScrollOffset = 0 // Reset scroll position when closing
+		return m, nil
+
+	case "up":
+		if m.GemInfoScrollOffset > 0 {
+			m.GemInfoScrollOffset--
+		}
+		return m, nil
+
+	case "down":
+		// Allow scrolling down (actual max will be checked in rendering)
+		m.GemInfoScrollOffset++
 		return m, nil
 	}
 
