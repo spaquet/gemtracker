@@ -490,33 +490,33 @@ func (c *OSVClient) queryVulnerabilityDetails(ctx context.Context, vulnID string
 	return &vuln, nil
 }
 
-// extractWorkarounds extracts the "Workarounds" section from OSV details text
+// extractWorkarounds extracts the "Workarounds" or "Mitigation" section from OSV details text
 // Preserves markdown formatting for rendering with glamour
 func extractWorkarounds(details string) string {
 	lines := strings.Split(details, "\n")
 
-	// Find the start of the Workarounds section
+	// Find the start of the Workarounds or Mitigation section
 	var workaroundLines []string
-	inWorkarounds := false
-	workaroundsHeaderIdx := -1
+	inSection := false
+	sectionHeaderIdx := -1
 
 	for i, line := range lines {
 		trimmed := strings.TrimSpace(line)
 
-		// Start of workarounds section (handles "### Workarounds", "## Workarounds", etc.)
-		if !inWorkarounds && isWorkaroundsHeader(trimmed) {
-			inWorkarounds = true
-			workaroundsHeaderIdx = i
+		// Start of workarounds/mitigation section (handles "### Workarounds", "## Mitigation", etc.)
+		if !inSection && (isWorkaroundsHeader(trimmed) || isMitigationHeader(trimmed)) {
+			inSection = true
+			sectionHeaderIdx = i
 			workaroundLines = append(workaroundLines, line)
 			continue
 		}
 
 		// Stop if we hit another major section header (### or ##)
-		if inWorkarounds && workaroundsHeaderIdx >= 0 && i > workaroundsHeaderIdx && isSectionHeader(trimmed) {
+		if inSection && sectionHeaderIdx >= 0 && i > sectionHeaderIdx && isSectionHeader(trimmed) {
 			break
 		}
 
-		if inWorkarounds {
+		if inSection {
 			workaroundLines = append(workaroundLines, line)
 		}
 	}
@@ -531,6 +531,14 @@ func isWorkaroundsHeader(line string) bool {
 	cleanLine := strings.TrimLeft(line, "#")
 	cleanLine = strings.TrimSpace(cleanLine)
 	return strings.EqualFold(cleanLine, "Workarounds")
+}
+
+// isMitigationHeader checks if a line is a Markdown header for the Mitigation section
+func isMitigationHeader(line string) bool {
+	// Remove Markdown header markers (###, ##, #)
+	cleanLine := strings.TrimLeft(line, "#")
+	cleanLine = strings.TrimSpace(cleanLine)
+	return strings.EqualFold(cleanLine, "Mitigation")
 }
 
 // isSectionHeader checks if a line is a Markdown section header
