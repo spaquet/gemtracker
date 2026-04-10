@@ -645,10 +645,10 @@ func (m *Model) handleSanityKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "enter", "i":
 		// Open gem info modal with current gem data
 		if len(allGems) > 0 && m.SanityCursor < len(allGems) {
-			gem := allGems[m.SanityCursor]
 			m.ShowingGemInfo = true
-			// Fetch gem info asynchronously, but don't block modal from showing
-			return m, fetchGemInfo(gem.Name)
+			// TODO: Re-enable async gem info fetching after stabilizing the goroutine handling
+			// For now, just show the modal without fetching to prevent crashes
+			return m, nil
 		}
 		return m, nil
 	}

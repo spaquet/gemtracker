@@ -1125,7 +1125,31 @@ func loadSanityData(gems []*gemfile.Gem) tea.Cmd {
 
 func fetchGemInfo(gemName string) tea.Cmd {
 	return func() tea.Msg {
-		output, err := gemfile.GetGemInfo(gemName)
+		defer func() {
+			if r := recover(); r != nil {
+				logger.Error("Panic in fetchGemInfo for %s: %v", gemName, r)
+			}
+		}()
+
+		// Safely get gem info with error handling
+		var output string
+		var err error
+
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					logger.Error("Panic in GetGemInfo: %v", r)
+					err = fmt.Errorf("GetGemInfo panicked: %v", r)
+				}
+			}()
+			output, err = gemfile.GetGemInfo(gemName)
+		}()
+
+		// Make sure output is valid before creating message
+		if output == "" && err != nil {
+			output = "(no output available)"
+		}
+
 		return GemInfoMsg{
 			GemName: gemName,
 			Output:  output,

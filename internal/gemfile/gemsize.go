@@ -104,10 +104,10 @@ func dirSize(path string) (int64, error) {
 	return size, err
 }
 
-// GetGemInfo executes `gem info <gemName>` and returns the raw output.
+// GetGemInfo executes `gem info <gemName>` and returns the sanitized output.
 // Uses a timeout to prevent hanging if the gem command is slow or unresponsive.
 func GetGemInfo(gemName string) (string, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, "gem", "info", gemName)
@@ -117,14 +117,69 @@ func GetGemInfo(gemName string) (string, error) {
 
 	err := cmd.Run()
 	if ctx.Err() == context.DeadlineExceeded {
-		return "", fmt.Errorf("gem info command timed out (5s)")
-	}
-	if err != nil {
-		// gem info returns non-zero if gem not found, but output is still useful
-		return out.String(), fmt.Errorf("gem info command failed: %w", err)
+		return "", fmt.Errorf("gem info command timed out (3s)")
 	}
 
-	return out.String(), nil
+	output := out.String()
+
+	// Sanitize output: remove ANSI codes and clean up whitespace
+	output = sanitizeGemOutput(output)
+
+	if err != nil {
+		// gem info returns non-zero if gem not found, but output is still useful
+		return output, fmt.Errorf("gem info command failed: %w", err)
+	}
+
+	return output, nil
+}
+
+// sanitizeGemOutput removes ANSI escape codes and cleans up output for safe display
+func sanitizeGemOutput(s string) string {
+	// Remove ANSI escape sequences (colors, formatting)
+	s = removeANSICodes(s)
+
+	// Convert to valid UTF-8, replacing invalid sequences
+	s = replaceInvalidUTF8(s)
+
+	// Limit total length to prevent huge outputs from crashing rendering
+	maxLen := 5000
+	if len(s) > maxLen {
+		s = s[:maxLen] + "\n... (output truncated)"
+	}
+
+	return s
+}
+
+// removeANSICodes removes ANSI escape sequences from a string
+func removeANSICodes(s string) string {
+	// Basic ANSI escape sequence removal
+	result := ""
+	inEscape := false
+	for _, ch := range s {
+		if ch == '\x1b' {
+			inEscape = true
+		} else if inEscape {
+			if (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') {
+				inEscape = false
+			}
+		} else {
+			result += string(ch)
+		}
+	}
+	return result
+}
+
+// replaceInvalidUTF8 replaces invalid UTF-8 sequences with '?'
+func replaceInvalidUTF8(s string) string {
+	result := ""
+	for _, ch := range s {
+		if ch == '\ufffd' { // Unicode replacement character
+			result += "?"
+		} else {
+			result += string(ch)
+		}
+	}
+	return result
 }
 
 // CalculateProjectSize calculates the total size of all project gems and returns

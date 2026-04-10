@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"os"
 	"runtime"
 	"sort"
 	"strings"
@@ -72,8 +73,22 @@ func (m *Model) statusBarTotalHeight() int {
 // It uses ANSI-aware truncation to preserve the background view left of the overlay while placing
 // the overlay content in the center and allowing the terminal default background to appear on the right.
 func placeOverlay(startRow, startCol int, fg, bg string) string {
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Fprintf(os.Stderr, "PANIC in placeOverlay: %v\n", r)
+		}
+	}()
+
+	if startRow < 0 || startCol < 0 {
+		return bg // Invalid positioning, return background
+	}
+
 	fgLines := strings.Split(fg, "\n")
 	bgLines := strings.Split(bg, "\n")
+
+	if len(bgLines) == 0 {
+		return fg // No background, return foreground
+	}
 
 	for i, fgLine := range fgLines {
 		row := startRow + i
@@ -95,6 +110,12 @@ func placeOverlay(startRow, startCol int, fg, bg string) string {
 // ============================================================================
 
 func (m *Model) View() string {
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Fprintf(os.Stderr, "PANIC in View(): %v\n", r)
+		}
+	}()
+
 	if m.Quitting {
 		return ""
 	}
@@ -1617,18 +1638,46 @@ func (m *Model) renderSanityTable(height int) string {
 }
 
 func (m *Model) viewGemInfoModal() string {
-	// Render Sanity list as background
-	background := m.viewSanity()
-	m.ShowingGemInfo = false // Prevent recursion
+	// Render Sanity list as background (directly call renderSanityTable to avoid recursion)
+	statusbarLines := m.statusBarTotalHeight()
+	contentHeight := m.Height - 2 - statusbarLines
+	if contentHeight < 1 {
+		contentHeight = 1
+	}
+	sanityContent := m.renderSanityTable(contentHeight)
+	background := m.assembleViewWithChrome(sanityContent)
 
 	// Create info modal
 	modal := m.renderGemInfoModalBox()
-	m.ShowingGemInfo = true
+
+	// Safety checks for invalid terminal size
+	if m.Height <= 0 || m.Width <= 0 {
+		return background // Can't render modal if terminal is invalid
+	}
 
 	// Calculate centered position
 	modalLines := strings.Split(modal, "\n")
 	modalH := len(modalLines)
+
+	// Calculate width safely, with fallback to reasonable default
 	modalW := lipgloss.Width(modal)
+	if modalW <= 0 {
+		modalW = 80 // Fallback to default width
+	}
+
+	// Limit modal height to prevent exceeding screen bounds
+	maxModalH := m.Height - 4
+	if maxModalH < 10 {
+		maxModalH = 10
+	}
+	if modalH > maxModalH {
+		modalH = maxModalH
+	}
+
+	// Safety check to prevent division issues
+	if modalH <= 0 || modalW <= 0 {
+		return background
+	}
 
 	startRow := (m.Height - modalH) / 2
 	startCol := (m.Width - modalW) / 2
@@ -1645,12 +1694,21 @@ func (m *Model) viewGemInfoModal() string {
 }
 
 func (m *Model) renderGemInfoModalBox() string {
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Fprintf(os.Stderr, "PANIC in renderGemInfoModalBox: %v\n", r)
+		}
+	}()
+
 	allGems := m.allGemsForSanity()
-	if m.SanityCursor >= len(allGems) {
+	if len(allGems) == 0 || m.SanityCursor < 0 || m.SanityCursor >= len(allGems) {
 		return ""
 	}
 
 	gem := allGems[m.SanityCursor]
+	if gem == nil {
+		return ""
+	}
 
 	// Build content lines
 	lines := []string{}
@@ -1697,15 +1755,29 @@ func (m *Model) renderGemInfoModalBox() string {
 		}
 	}
 
-	// Show full gem info output if available
+	// Show full gem info output if available (with truncation and wrapping)
 	if m.CurrentGemInfoOutput != "" {
 		lines = append(lines, "")
 		lines = append(lines, "Gem Info:")
 		lines = append(lines, "----------")
 		gemInfoLines := strings.Split(m.CurrentGemInfoOutput, "\n")
+
+		// Limit to max 30 lines and truncate each line to 76 chars to fit in modal
+		maxLines := 30
+		lineCount := 0
 		for _, line := range gemInfoLines {
-			if strings.TrimSpace(line) != "" {
-				lines = append(lines, line)
+			if lineCount >= maxLines {
+				lines = append(lines, "... (output truncated)")
+				break
+			}
+			trimmed := strings.TrimSpace(line)
+			if trimmed != "" {
+				// Truncate long lines to prevent rendering issues
+				if len(trimmed) > 76 {
+					trimmed = trimmed[:73] + "..."
+				}
+				lines = append(lines, trimmed)
+				lineCount++
 			}
 		}
 	}
