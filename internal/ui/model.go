@@ -86,6 +86,8 @@ const (
 	ViewCVEFilterMenu
 	// ViewCVEInfo displays detailed information for a selected CVE
 	ViewCVEInfo
+	// ViewCVEComment displays a modal for adding/editing comments on a CVE
+	ViewCVEComment
 	// ViewSelectPath displays an input prompt to select a project directory
 	ViewSelectPath
 	// ViewError displays an error message
@@ -175,6 +177,16 @@ type CVELoadFromCacheMsg struct {
 	CacheTTL        time.Duration
 }
 
+type CVECommentsLoadedMsg struct {
+	Comments *gemfile.CVEComments
+	Error    error
+}
+
+type CVEEnrichmentCompleteMsg struct {
+	Vulnerabilities []*gemfile.Vulnerability
+	Error           error
+}
+
 type SanityDataMsg struct {
 	GemDirPath       string
 	RubyManager      string
@@ -250,24 +262,31 @@ type Model struct {
 	UpgradeableOffset         int
 
 	// CVE screen state
-	VulnerableGems        []*gemfile.GemStatus
-	CVECursor             int
-	CVEOffset             int
-	CVEInfoScroll         int                      // Scroll offset for CVE info modal content
-	CVEVulnerabilities    []*gemfile.Vulnerability // Actual vulnerability data from OSV.dev
-	UnfilteredCVEs        []*gemfile.Vulnerability // All CVEs before filtering
-	CVESelectedSeverities map[string]bool          // "CRITICAL","HIGH","MODERATE","LOW" → true/false
-	CVEShowOnlyDirect     bool                     // Filter to show only direct dependency CVEs
-	CVEFilterMenuCursor   int                      // Position in the CVE filter menu
-	LastGemsSignature     string                   // SHA256 of last scanned gems
-	CVERefreshInProgress  bool                     // Is a CVE refresh happening in background?
-	CVELastScanTime       time.Time                // When was CVE data last scanned?
-	CVECacheLoadedAt      time.Time                // When was cache loaded?
-	CVECacheTTL           time.Duration            // Default: 1 hour
-	CVELastError          string                   // Last error message if scan failed
-	CVEInfoCachedCVEID    string                   // CVE ID of currently cached modal content
-	CVEInfoCachedLines    []string                 // Cached rendered lines for modal
-	CVEInfoCachedWidth    int                      // Terminal width when modal was cached
+	VulnerableGems          []*gemfile.GemStatus
+	CVECursor               int
+	CVEOffset               int
+	CVEInfoScroll           int                      // Scroll offset for CVE info modal content
+	CVEVulnerabilities      []*gemfile.Vulnerability // Actual vulnerability data from OSV.dev
+	UnfilteredCVEs          []*gemfile.Vulnerability // All CVEs before filtering
+	CVESelectedSeverities   map[string]bool          // "CRITICAL","HIGH","MODERATE","LOW" → true/false
+	CVEShowOnlyDirect       bool                     // Filter to show only direct dependency CVEs
+	CVEAcknowledgmentFilter string                   // "" (all), "acknowledged", or "unacknowledged"
+	CVEFilterMenuCursor     int                      // Position in the CVE filter menu
+	LastGemsSignature       string                   // SHA256 of last scanned gems
+	CVERefreshInProgress    bool                     // Is a CVE refresh happening in background?
+	CVELastScanTime         time.Time                // When was CVE data last scanned?
+	CVECacheLoadedAt        time.Time                // When was cache loaded?
+	CVECacheTTL             time.Duration            // Default: 1 hour
+	CVELastError            string                   // Last error message if scan failed
+	CVEInfoCachedCVEID      string                   // CVE ID of currently cached modal content
+	CVEInfoCachedLines      []string                 // Cached rendered lines for modal
+	CVEInfoCachedWidth      int                      // Terminal width when modal was cached
+
+	// CVE comment modal state
+	CVEComments           *gemfile.CVEComments       // Loaded CVE comments from project
+	CVECommentInput       textinput.Model            // Text input for comment body
+	CVECommentDecision    gemfile.CVECommentDecision // Current decision being edited (acknowledged/ignored)
+	CVECommentDecisionIdx int                        // 0=Acknowledged, 1=Ignored (for toggle)
 
 	// Sanity screen state
 	GemDirPath            string                 // Result of `gem env gemdir`
@@ -373,6 +392,10 @@ func NewModel(version, commit, date, projectPath string, noCache, verbose bool) 
 	// Configure path input
 	m.PathInput = textinput.New()
 	m.PathInput.Placeholder = "/path/to/project"
+
+	// Configure CVE comment input
+	m.CVECommentInput = textinput.New()
+	m.CVECommentInput.Placeholder = "e.g. only in dev, workaround applied, patched in production..."
 
 	// Load the provided project path
 	m.loadProject(projectPath)
@@ -822,6 +845,20 @@ func (m *Model) applyCVEFilters() {
 			}
 		}
 
+		// Check acknowledgment filter
+		if m.CVEAcknowledgmentFilter != "" {
+			key := gemfile.GetCVECommentKey(vuln)
+			comment, exists := m.CVEComments.Entries[key]
+			isAcknowledged := exists && comment.Decision == gemfile.DecisionAcknowledged
+
+			if m.CVEAcknowledgmentFilter == "acknowledged" && !isAcknowledged {
+				continue
+			}
+			if m.CVEAcknowledgmentFilter == "unacknowledged" && isAcknowledged {
+				continue
+			}
+		}
+
 		m.CVEVulnerabilities = append(m.CVEVulnerabilities, vuln)
 	}
 
@@ -843,6 +880,7 @@ func (m *Model) initializeCVEFilters(vulns []*gemfile.Vulnerability) {
 		"LOW":      true,
 	}
 	m.CVEShowOnlyDirect = false
+	m.CVEAcknowledgmentFilter = ""
 	m.CVEFilterMenuCursor = 0
 }
 
@@ -1036,7 +1074,7 @@ func performCVEScan(gems []*gemfile.Gem) tea.Cmd {
 		}
 
 		if cacheEntry != nil && gemfile.IsCacheValid(cacheEntry) {
-			// Cache hit! Return cached data
+			// Cache hit! Return cached data immediately (don't enrich yet)
 			cacheAge := gemfile.GetCacheAge(cacheEntry)
 			cacheTTL := time.Duration(cacheEntry.TTLSeconds) * time.Second
 
@@ -1049,16 +1087,8 @@ func performCVEScan(gems []*gemfile.Gem) tea.Cmd {
 				vulnPtrs[i] = &cacheEntry.Vulnerabilities[i]
 			}
 
-			// Enrich cached data with workarounds and detailed CVSS/Severity
-			// This is needed because:
-			// 1. Old cached data may not have workarounds (feature was added later)
-			// 2. Enrichment fetches individual vulnerability details from OSV API
-			logger.Info("Enriching %d cached vulnerabilities with workarounds and details...", len(vulnPtrs))
-			osv := gemfile.NewOSVClient()
-			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-			defer cancel()
-			osv.EnrichVulnerabilitiesWithDetails(ctx, vulnPtrs)
-
+			// Return immediately so UI can display cached data
+			// Enrichment will happen asynchronously in the model's update handler
 			return CVELoadFromCacheMsg{
 				Vulnerabilities: vulnPtrs,
 				CacheAge:        cacheAge,
@@ -1103,6 +1133,36 @@ func performCVEScan(gems []*gemfile.Gem) tea.Cmd {
 		}
 
 		return CVECompleteMsg{Vulnerabilities: vulnPtrs, Error: nil}
+	}
+}
+
+// loadCVECommentsCmd loads CVE comments from the project directory
+func (m *Model) loadCVECommentsCmd() tea.Cmd {
+	return func() tea.Msg {
+		projectDir := filepath.Dir(m.GemfileLockPath)
+		comments, err := gemfile.LoadCVEComments(projectDir)
+		if err != nil {
+			logger.Warn("Failed to load CVE comments: %v", err)
+			return CVECommentsLoadedMsg{Comments: nil, Error: err}
+		}
+		return CVECommentsLoadedMsg{Comments: comments, Error: nil}
+	}
+}
+
+// enrichCachedVulnerabilitiesCmd enriches vulnerabilities with details from OSV API
+// This runs in the background after cached data is displayed
+func enrichCachedVulnerabilitiesCmd(vulns []*gemfile.Vulnerability) tea.Cmd {
+	return func() tea.Msg {
+		logger.Info("Enriching %d cached vulnerabilities with workarounds and details...", len(vulns))
+		osv := gemfile.NewOSVClient()
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		osv.EnrichVulnerabilitiesWithDetails(ctx, vulns)
+
+		return CVEEnrichmentCompleteMsg{
+			Vulnerabilities: vulns,
+			Error:           nil,
+		}
 	}
 }
 

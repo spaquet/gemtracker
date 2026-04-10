@@ -5,19 +5,6 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
-
-### Added
-- **Remediation Advice for CVEs** - Display recommended remediation and workarounds when available
-  - Shows both mitigations and workarounds from OSV vulnerability details
-  - Accessible in CVE info modal (press 'i' on a CVE to view details)
-  - Note: Users should follow the official CVE link to verify complete and current remediation guidance
-- **BubbleTea v2 Upgrade** - Updated TUI framework and components to latest version
-  - charm.land/bubbletea/v2 v2.0.2
-  - charm.land/bubbles/v2 v2.1.0
-  - charm.land/lipgloss/v2 v2.0.2
-  - Improved keyboard event handling and View API
-
 ## [v1.2.0] - 2026-04-09
 
 ### Added
@@ -36,6 +23,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Text reports show dedicated "INSECURE GEM SOURCES" section with security guidance
   - CSV and JSON exports include source and insecure flag for each gem
   - Helps security teams identify gems from untrusted or unencrypted sources
+
+## [Unreleased]
+
+### Added
+- **CVE Advisory Comments** (Issue #55) - Add custom rationale and comments to CVE advisories
+  - Store project-specific CVE assessment and remediation notes in `.gemtracker_comments.json`
+  - Two comment types: "acknowledged" for assessed vulnerabilities, "ignored" for accepted risks
+  - Edit comments with 'c' key on any CVE in the CVE tab
+  - Comments persist across scans and share findings with team members
+  - Helps track which vulnerabilities have been evaluated and why
+- **Remediation Advice for CVEs** - Display recommended remediation and workarounds when available
+  - Shows both mitigations and workarounds from OSV vulnerability details
+  - Accessible in CVE info modal (press 'i' on a CVE to view details)
+  - Note: Users should follow the official CVE link to verify complete and current remediation guidance
+- **BubbleTea v2 Upgrade** - Updated TUI framework and components to latest version
+  - charm.land/bubbletea/v2 v2.0.2
+  - charm.land/bubbles/v2 v2.1.0
+  - charm.land/lipgloss/v2 v2.0.2
+  - Improved keyboard event handling and View API
+
+### Fixed
+- **CVE Tab Loading State** - Show animated loading indicator during vulnerability scans
+  - Displays spinning animation instead of misleading "safe" message while scanning
+  - Improves UX when opening CVE tab during initial scan or cache refresh
+- **CVE Cache Performance** - Instant display of cached vulnerabilities without blocking UI
+  - Removed synchronous enrichment during cache hits that blocked for 1-2 seconds
+  - Cached vulnerabilities now display immediately while enrichment happens in background
+  - Vulnerability details and workarounds fetch asynchronously for seamless experience
 
 ## [v1.1.8] - 2026-04-09
 
