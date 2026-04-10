@@ -263,9 +263,9 @@ func TestNormalizeSeverity_ValidValues(t *testing.T) {
 	}{
 		{"CRITICAL", "CRITICAL"},
 		{"HIGH", "HIGH"},
-		{"MEDIUM", "MEDIUM"},
+		{"MODERATE", "MODERATE"},
 		{"LOW", "LOW"},
-		{"", "MEDIUM"},
+		{"", "MODERATE"},
 		{"UNKNOWN", "UNKNOWN"},
 	}
 

@@ -1253,7 +1253,7 @@ func (m *Model) renderCVEHeader(maxHeight int) string {
 			critCount++
 		case "HIGH":
 			highCount++
-		case "MEDIUM":
+		case "MODERATE":
 			mediumCount++
 		case "LOW":
 			lowCount++
@@ -1262,7 +1262,7 @@ func (m *Model) renderCVEHeader(maxHeight int) string {
 
 	// Severity summary line with colors
 	severityLine := fmt.Sprintf(
-		"  Severity: %s CRITICAL (%d)  %s HIGH (%d)  %s MEDIUM (%d)  %s LOW (%d)",
+		"  Severity: %s CRITICAL (%d)  %s HIGH (%d)  %s MODERATE (%d)  %s LOW (%d)",
 		BadgeCriticalDotStyle.Render("●"), critCount,
 		BadgeHighDotStyle.Render("●"), highCount,
 		BadgeWarningDotStyle.Render("●"), mediumCount,
@@ -1431,7 +1431,7 @@ func (m *Model) formatCVERow(vuln *gemfile.Vulnerability, selected bool, rowNum 
 		severityBadge = BadgeCriticalDotStyle.Render("●")
 	case "HIGH":
 		severityBadge = BadgeHighDotStyle.Render("●")
-	case "MEDIUM":
+	case "MODERATE":
 		severityBadge = BadgeWarningDotStyle.Render("●")
 	default:
 		severityBadge = BadgeHealthyDotStyle.Render("●")
@@ -1798,7 +1798,7 @@ func (m *Model) renderCVEFilterModalBox() string {
 	lines = append(lines, "")
 
 	// Severity filter options
-	severities := []string{"CRITICAL", "HIGH", "MEDIUM", "LOW"}
+	severities := []string{"CRITICAL", "HIGH", "MODERATE", "LOW"}
 	for i, severity := range severities {
 		severityLine := checkbox(m.CVESelectedSeverities[severity]) + " " + severity + " only"
 		if m.CVEFilterMenuCursor == i {
@@ -1910,7 +1910,7 @@ func (m *Model) renderCVEInfoModalBox() string {
 		severityBadge = BadgeCriticalDotStyle.Render("●")
 	case "HIGH":
 		severityBadge = BadgeHighDotStyle.Render("●")
-	case "MEDIUM":
+	case "MODERATE":
 		severityBadge = BadgeWarningDotStyle.Render("●")
 	default:
 		severityBadge = BadgeHealthyDotStyle.Render("●")

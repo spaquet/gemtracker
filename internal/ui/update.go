@@ -806,8 +806,8 @@ func (m *Model) handleCVEFilterMenuKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.CVESelectedSeverities["CRITICAL"] = !m.CVESelectedSeverities["CRITICAL"]
 		case 1: // HIGH
 			m.CVESelectedSeverities["HIGH"] = !m.CVESelectedSeverities["HIGH"]
-		case 2: // MEDIUM
-			m.CVESelectedSeverities["MEDIUM"] = !m.CVESelectedSeverities["MEDIUM"]
+		case 2: // MODERATE
+			m.CVESelectedSeverities["MODERATE"] = !m.CVESelectedSeverities["MODERATE"]
 		case 3: // LOW
 			m.CVESelectedSeverities["LOW"] = !m.CVESelectedSeverities["LOW"]
 		case 4: // Direct only

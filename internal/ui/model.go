@@ -239,7 +239,7 @@ type Model struct {
 	CVEInfoScroll         int                      // Scroll offset for CVE info modal content
 	CVEVulnerabilities    []*gemfile.Vulnerability // Actual vulnerability data from OSV.dev
 	UnfilteredCVEs        []*gemfile.Vulnerability // All CVEs before filtering
-	CVESelectedSeverities map[string]bool          // "CRITICAL","HIGH","MEDIUM","LOW" → true/false
+	CVESelectedSeverities map[string]bool          // "CRITICAL","HIGH","MODERATE","LOW" → true/false
 	CVEShowOnlyDirect     bool                     // Filter to show only direct dependency CVEs
 	CVEFilterMenuCursor   int                      // Position in the CVE filter menu
 	LastGemsSignature     string                   // SHA256 of last scanned gems
@@ -810,7 +810,7 @@ func (m *Model) initializeCVEFilters(vulns []*gemfile.Vulnerability) {
 	m.CVESelectedSeverities = map[string]bool{
 		"CRITICAL": true,
 		"HIGH":     true,
-		"MEDIUM":   true,
+		"MODERATE": true,
 		"LOW":      true,
 	}
 	m.CVEShowOnlyDirect = false
