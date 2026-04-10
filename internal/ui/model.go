@@ -267,18 +267,18 @@ type Model struct {
 	CVELastError          string                   // Last error message if scan failed
 
 	// Sanity screen state
-	GemDirPath            string           // Result of `gem env gemdir`
-	RubyManager           string           // Detected Ruby version manager
-	ProjectTotalSizeBytes int64            // Total size of all project gems
-	GemSizes              map[string]int64 // Gem name → size in bytes
-	SanityCursor          int                      // Selection position in gem list
-	SanityOffset          int                      // Scroll offset for pagination
-	ShowingGemInfo        bool                     // Toggle for modal visibility
-	CurrentGemInfoOutput  string                   // Output from `gem info` command
-	SanityLoading         bool                     // Is size calculation in progress?
-	GemInfoLoading        bool                     // Is gem info fetch in progress?
-	ParsedGemInfo         *gemfile.ParsedGemInfo   // Parsed installed versions and paths
-	GemInfoScrollOffset   int                      // Scroll offset for gem info modal
+	GemDirPath            string                 // Result of `gem env gemdir`
+	RubyManager           string                 // Detected Ruby version manager
+	ProjectTotalSizeBytes int64                  // Total size of all project gems
+	GemSizes              map[string]int64       // Gem name → size in bytes
+	SanityCursor          int                    // Selection position in gem list
+	SanityOffset          int                    // Scroll offset for pagination
+	ShowingGemInfo        bool                   // Toggle for modal visibility
+	CurrentGemInfoOutput  string                 // Output from `gem info` command
+	SanityLoading         bool                   // Is size calculation in progress?
+	GemInfoLoading        bool                   // Is gem info fetch in progress?
+	ParsedGemInfo         *gemfile.ParsedGemInfo // Parsed installed versions and paths
+	GemInfoScrollOffset   int                    // Scroll offset for gem info modal
 
 	// Project Info screen state
 	RubyVersion        string
@@ -1168,4 +1168,3 @@ func fetchGemInfo(gemName string) tea.Cmd {
 		}
 	}
 }
-
