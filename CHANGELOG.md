@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v1.2.5] - 2026-04-11
+
+### Fixed
+- **Sentry Error Tracking for Production Panics** - Runtime panics now properly captured and reported
+  - All panic recovery points now send errors to Sentry with Fatal severity level
+  - Includes panics from placeOverlay(), View() rendering, renderGemInfoModalBox(), and fetchGemInfo()
+  - Ensures critical production issues are visible in Sentry dashboard for debugging
+  - Complements existing SENTRY_DSN configuration and GitHub Actions release workflow
+
+### Improved
+- **Enhanced Production Debugging with Sentry Source Upload** - Source files now pushed to Sentry on release
+  - GitHub Actions workflow uploads all source code to Sentry on new release tag
+  - Developers see full code context directly in Sentry error views (no external GitHub calls)
+  - Commits linked to releases for tracking code changes alongside errors
+  - Proper file path rewriting ensures correct source mapping
+  - Makes production troubleshooting significantly faster and more efficient
+
 ## [v1.2.4] - 2026-04-11
 
 ### Fixed

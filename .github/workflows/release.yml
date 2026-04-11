@@ -53,10 +53,26 @@ jobs:
           VERSION="${GITHUB_REF#refs/tags/}"
           echo "Creating Sentry release for version: $VERSION"
           curl -sL https://sentry.io/get-cli/ | bash
+
+          # Create release in Sentry
           sentry-cli releases new "$VERSION"
+          echo "✓ Release created"
+
+          # Upload source files for code context in error views
+          sentry-cli releases files upload-sourcemaps . \
+            --release "$VERSION" \
+            --ignore "dist,build,.git,.github" \
+            --ignore-flat "go.mod,go.sum,Makefile,.goreleaser.yml,LICENSE" \
+            --rewrite
+          echo "✓ Source files uploaded"
+
+          # Link commits to the release for better context
           sentry-cli releases set-commits "$VERSION" --auto
+          echo "✓ Commits linked"
+
+          # Finalize the release
           sentry-cli releases finalize "$VERSION"
-          echo "✓ Sentry release created successfully"
+          echo "✓ Release finalized and ready for tracking"
         env:
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
           SENTRY_ORG: gemtracker
