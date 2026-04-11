@@ -767,7 +767,7 @@ func (m *Model) viewGemDetail() string {
 	var forwardContent string
 	var reverseContent string
 
-	if m.DependencyResult != nil {
+	if m.DependencyResult != nil && m.DependencyResult.DependencyInfo != nil {
 		forwardContent = m.renderDependencyPanel(m.DependencyResult.DependencyInfo.ForwardTree, panelHeight, true)
 		reverseContent = m.renderReverseDepsList(panelHeight)
 	} else {
