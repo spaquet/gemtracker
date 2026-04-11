@@ -115,6 +115,35 @@ func placeOverlay(startRow, startCol int, fg, bg string) string {
 	return strings.Join(bgLines, "\n")
 }
 
+// clipLinesToWindow slices lines to fit within a scrollable window.
+// offset is the starting line in the slice, height is the max lines to return.
+func clipLinesToWindow(lines []string, offset, height int) []string {
+	if height < 1 || len(lines) == 0 {
+		return lines
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	if offset >= len(lines) {
+		offset = len(lines) - 1
+	}
+	if offset+height >= len(lines) {
+		return lines[offset:]
+	}
+	return lines[offset : offset+height]
+}
+
+// clampInt returns v clamped to the range [lo, hi].
+func clampInt(v, lo, hi int) int {
+	if v < lo {
+		return lo
+	}
+	if v > hi {
+		return hi
+	}
+	return v
+}
+
 // ============================================================================
 // View Rendering
 // ============================================================================
@@ -126,47 +155,65 @@ func (m *Model) View() tea.View {
 		}
 	}()
 
-	var content string
-	if m.Quitting {
-		content = ""
-	} else {
-		switch m.CurrentView {
-		case ViewLoading:
-			content = m.viewLoading()
-		case ViewGemList:
-			content = m.viewGemList()
-		case ViewGemDetail:
-			content = m.viewGemDetail()
-		case ViewSearch:
-			content = m.viewSearch()
-		case ViewUpgradeable:
-			content = m.viewUpgradeable()
-		case ViewCVE:
-			content = m.viewCVE()
-		case ViewSanity:
-			content = m.viewSanity()
-		case ViewProjectInfo:
-			content = m.viewProjectInfo()
-		case ViewFilterMenu:
-			content = m.viewFilterMenu()
-		case ViewCVEFilterMenu:
-			content = m.viewCVEFilterMenu()
-		case ViewCVEInfo:
-			content = m.viewCVEInfo()
-		case ViewCVEComment:
-			content = m.viewCVEComment()
-		case ViewSelectPath:
-			content = m.viewSelectPath()
-		case ViewError:
-			content = m.viewError()
-		default:
-			content = m.viewGemList()
-		}
-	}
-
-	v := tea.NewView(content)
+	v := tea.NewView(m.renderCurrentView())
 	v.AltScreen = true
 	return v
+}
+
+// renderCurrentView dispatches to the correct view based on CurrentView mode.
+func (m *Model) renderCurrentView() string {
+	if m.Quitting {
+		return ""
+	}
+	if content := m.renderPrimaryView(); content != "" {
+		return content
+	}
+	if content := m.renderSecondaryView(); content != "" {
+		return content
+	}
+	return m.viewGemList()
+}
+
+// renderPrimaryView renders main application views.
+func (m *Model) renderPrimaryView() string {
+	switch m.CurrentView {
+	case ViewLoading:
+		return m.viewLoading()
+	case ViewGemList:
+		return m.viewGemList()
+	case ViewGemDetail:
+		return m.viewGemDetail()
+	case ViewSearch:
+		return m.viewSearch()
+	case ViewUpgradeable:
+		return m.viewUpgradeable()
+	case ViewCVE:
+		return m.viewCVE()
+	case ViewSanity:
+		return m.viewSanity()
+	}
+	return ""
+}
+
+// renderSecondaryView renders secondary/modal views.
+func (m *Model) renderSecondaryView() string {
+	switch m.CurrentView {
+	case ViewProjectInfo:
+		return m.viewProjectInfo()
+	case ViewFilterMenu:
+		return m.viewFilterMenu()
+	case ViewCVEFilterMenu:
+		return m.viewCVEFilterMenu()
+	case ViewCVEInfo:
+		return m.viewCVEInfo()
+	case ViewCVEComment:
+		return m.viewCVEComment()
+	case ViewSelectPath:
+		return m.viewSelectPath()
+	case ViewError:
+		return m.viewError()
+	}
+	return ""
 }
 
 // ============================================================================
@@ -1146,40 +1193,16 @@ func (m *Model) renderUpgradeableTable(height int) string {
 
 	allUpgradeable := m.allUpgradeableGems()
 
-	// If checking for updates and no upgradeable gems yet, show loading indicator
-	if len(allUpgradeable) == 0 && m.OutdatedLoading {
-		frames := []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
-		frameIdx := (time.Now().UnixNano() / 80000000) % int64(len(frames))
-		spinner := frames[frameIdx]
-		doneCount := len(m.FirstLevelGems) - len(m.OutdatedPending)
-		msg := fmt.Sprintf("%s Checking for updates... (%d/%d)", spinner, doneCount, len(m.FirstLevelGems))
-		return lipgloss.NewStyle().
-			Foreground(lipgloss.Color(ColorWarning)).
-			Padding(2, 2).
-			Render(msg)
-	}
-
-	// If no upgradeable gems found and not checking, show clean state
-	if len(allUpgradeable) == 0 && !m.OutdatedLoading {
-		msg := "All gems are up to date! ✓"
-		return lipgloss.NewStyle().
-			Foreground(lipgloss.Color(ColorSuccess)).
-			Bold(true).
-			Padding(2, 2).
-			Render(msg)
+	// Check for empty state (loading or all up-to-date)
+	if handled, content := m.renderUpgradeableEmptyState(allUpgradeable); handled {
+		return content
 	}
 
 	var lines []string
-
-	// Add top spacing
 	lines = append(lines, "")
 
-	// Map gem index to section info
-	// Track which section each gem index belongs to
 	directCount := len(m.UpgradeableGems)
 	frameworkCount := len(m.UpgradeableFrameworkGems)
-
-	// Track which section we're currently rendering
 	var lastSection string
 
 	// Render gems starting from UpgradeableOffset
@@ -1188,37 +1211,11 @@ func (m *Model) renderUpgradeableTable(height int) string {
 			break
 		}
 
-		// Determine which section this gem belongs to
-		var currentSection string
-		if gemIdx < directCount {
-			currentSection = "DIRECT DEPENDENCIES"
-		} else if gemIdx < directCount+frameworkCount {
-			currentSection = "FRAMEWORK COMPONENTS"
-		} else {
-			currentSection = "TRANSITIVE DEPENDENCIES"
-		}
+		currentSection := m.sectionLabelForGemIdx(gemIdx, directCount, frameworkCount)
 
 		// Add section header when entering a new section
 		if currentSection != lastSection {
-			// Add blank line before section (except for the very first section)
-			if lastSection != "" && len(lines) < height {
-				lines = append(lines, "")
-			}
-
-			if len(lines) < height {
-				lines = append(lines, lipgloss.NewStyle().
-					Bold(true).
-					Foreground(lipgloss.Color(ColorPrimary)).
-					Render(currentSection))
-			}
-
-			if len(lines) < height {
-				headerRow := fmt.Sprintf("  %-24s %-11s %-11s %s",
-					"Gem Name", "Installed", "Latest", "")
-				header := TableHeaderStyle.Render(headerRow)
-				lines = append(lines, header)
-			}
-
+			lines = m.appendUpgradeableSectionHeader(lines, currentSection, height)
 			lastSection = currentSection
 		}
 
@@ -1228,21 +1225,88 @@ func (m *Model) renderUpgradeableTable(height int) string {
 
 		gem := allUpgradeable[gemIdx]
 		isSelected := gemIdx == m.UpgradeableCursor
-		row := fmt.Sprintf("  %-24s %-11s %-11s %s",
-			truncateStr(gem.Name, 24),
-			gem.Version,
-			gem.LatestVersion,
-			BadgeOutdatedStyle.Render("↑"),
-		)
-		if isSelected {
-			row = RowSelectedStyle.Render(row)
-		} else {
-			row = RowNormalStyle.Render(row)
-		}
+		row := m.renderUpgradeableGemRow(gem, isSelected)
 		lines = append(lines, row)
 	}
 
 	return lipgloss.JoinVertical(lipgloss.Left, lines...)
+}
+
+// renderUpgradeableEmptyState returns whether we should show empty state and the content.
+func (m *Model) renderUpgradeableEmptyState(allUpgradeable []*gemfile.GemStatus) (bool, string) {
+	// If checking for updates and no upgradeable gems yet, show loading indicator
+	if len(allUpgradeable) == 0 && m.OutdatedLoading {
+		frames := []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
+		frameIdx := (time.Now().UnixNano() / 80000000) % int64(len(frames))
+		spinner := frames[frameIdx]
+		doneCount := len(m.FirstLevelGems) - len(m.OutdatedPending)
+		msg := fmt.Sprintf("%s Checking for updates... (%d/%d)", spinner, doneCount, len(m.FirstLevelGems))
+		return true, lipgloss.NewStyle().
+			Foreground(lipgloss.Color(ColorWarning)).
+			Padding(2, 2).
+			Render(msg)
+	}
+
+	// If no upgradeable gems found and not checking, show clean state
+	if len(allUpgradeable) == 0 && !m.OutdatedLoading {
+		msg := "All gems are up to date! ✓"
+		return true, lipgloss.NewStyle().
+			Foreground(lipgloss.Color(ColorSuccess)).
+			Bold(true).
+			Padding(2, 2).
+			Render(msg)
+	}
+
+	return false, ""
+}
+
+// sectionLabelForGemIdx returns the section label for a gem at the given index.
+func (m *Model) sectionLabelForGemIdx(gemIdx, directCount, frameworkCount int) string {
+	if gemIdx < directCount {
+		return "DIRECT DEPENDENCIES"
+	}
+	if gemIdx < directCount+frameworkCount {
+		return "FRAMEWORK COMPONENTS"
+	}
+	return "TRANSITIVE DEPENDENCIES"
+}
+
+// appendUpgradeableSectionHeader appends a section header (blank, title, column headers) to lines.
+func (m *Model) appendUpgradeableSectionHeader(lines []string, section string, height int) []string {
+	// Add blank line before section (except for the very first section)
+	if section != "DIRECT DEPENDENCIES" && len(lines) < height {
+		lines = append(lines, "")
+	}
+
+	if len(lines) < height {
+		lines = append(lines, lipgloss.NewStyle().
+			Bold(true).
+			Foreground(lipgloss.Color(ColorPrimary)).
+			Render(section))
+	}
+
+	if len(lines) < height {
+		headerRow := fmt.Sprintf("  %-24s %-11s %-11s %s",
+			"Gem Name", "Installed", "Latest", "")
+		header := TableHeaderStyle.Render(headerRow)
+		lines = append(lines, header)
+	}
+
+	return lines
+}
+
+// renderUpgradeableGemRow renders a single gem row with selection styling.
+func (m *Model) renderUpgradeableGemRow(gem *gemfile.GemStatus, selected bool) string {
+	row := fmt.Sprintf("  %-24s %-11s %-11s %s",
+		truncateStr(gem.Name, 24),
+		gem.Version,
+		gem.LatestVersion,
+		BadgeOutdatedStyle.Render("↑"),
+	)
+	if selected {
+		return RowSelectedStyle.Render(row)
+	}
+	return RowNormalStyle.Render(row)
 }
 
 // ============================================================================
@@ -1309,68 +1373,19 @@ func (m *Model) renderCVETable(height int) string {
 func (m *Model) renderCVEHeader(maxHeight int) string {
 	lines := []string{}
 
-	// Count vulnerabilities by severity
-	critCount := 0
-	highCount := 0
-	mediumCount := 0
-	lowCount := 0
-
-	for _, vuln := range m.CVEVulnerabilities {
-		switch vuln.Severity {
-		case "CRITICAL":
-			critCount++
-		case "HIGH":
-			highCount++
-		case "MODERATE":
-			mediumCount++
-		case "LOW":
-			lowCount++
-		}
-	}
-
-	// Severity summary line with colors
+	// Count and render severity summary
+	crit, high, medium, low := m.countVulnsBySeverity()
 	severityLine := fmt.Sprintf(
 		"  Severity: %s CRITICAL (%d)  %s HIGH (%d)  %s MODERATE (%d)  %s LOW (%d)",
-		BadgeCriticalDotStyle.Render("●"), critCount,
-		BadgeHighDotStyle.Render("●"), highCount,
-		BadgeWarningDotStyle.Render("●"), mediumCount,
-		BadgeHealthyDotStyle.Render("●"), lowCount,
+		BadgeCriticalDotStyle.Render("●"), crit,
+		BadgeHighDotStyle.Render("●"), high,
+		BadgeWarningDotStyle.Render("●"), medium,
+		BadgeHealthyDotStyle.Render("●"), low,
 	)
 	lines = append(lines, severityLine)
 
-	// Cache status line
-	cacheStatusParts := []string{}
-
-	if m.CVEVulnerabilities != nil && len(m.CVEVulnerabilities) > 0 {
-		// Show cache age
-		if !m.CVECacheLoadedAt.IsZero() {
-			cacheAge := time.Since(m.CVECacheLoadedAt)
-			cacheAgeStr := formatDuration(cacheAge)
-			cacheStatusParts = append(cacheStatusParts, fmt.Sprintf("Cache: %s old", cacheAgeStr))
-
-			// Show TTL countdown
-			remaining := m.CVECacheTTL - cacheAge
-			if remaining > 0 {
-				remainingStr := formatDuration(remaining)
-				cacheStatusParts = append(cacheStatusParts, fmt.Sprintf("expires in %s", remainingStr))
-			} else {
-				cacheStatusParts = append(cacheStatusParts, "(expired)")
-			}
-		}
-
-		// Show last scan time
-		if !m.CVELastScanTime.IsZero() {
-			scanAge := time.Since(m.CVELastScanTime)
-			scanAgeStr := formatDuration(scanAge)
-			cacheStatusParts = append(cacheStatusParts, fmt.Sprintf("last scanned: %s ago", scanAgeStr))
-		}
-
-		// Show gem count scanned
-		if m.AnalysisResult != nil && len(m.AnalysisResult.AllGems) > 0 {
-			cacheStatusParts = append(cacheStatusParts, fmt.Sprintf("%d gems scanned", len(m.AnalysisResult.AllGems)))
-		}
-	}
-
+	// Add cache status line if available
+	cacheStatusParts := m.buildCVECacheStatusParts()
 	if len(cacheStatusParts) > 0 {
 		cacheLine := "  " + strings.Join(cacheStatusParts, " · ")
 		lines = append(lines, cacheLine)
@@ -1389,6 +1404,62 @@ func (m *Model) renderCVEHeader(maxHeight int) string {
 	}
 
 	return strings.Join(lines, "\n")
+}
+
+// countVulnsBySeverity counts vulnerabilities by severity level.
+func (m *Model) countVulnsBySeverity() (crit, high, medium, low int) {
+	for _, vuln := range m.CVEVulnerabilities {
+		switch vuln.Severity {
+		case "CRITICAL":
+			crit++
+		case "HIGH":
+			high++
+		case "MODERATE":
+			medium++
+		case "LOW":
+			low++
+		}
+	}
+	return
+}
+
+// buildCVECacheStatusParts builds the cache status information parts.
+func (m *Model) buildCVECacheStatusParts() []string {
+	var parts []string
+
+	if m.CVEVulnerabilities == nil || len(m.CVEVulnerabilities) == 0 {
+		return parts
+	}
+
+	// Show cache age
+	if !m.CVECacheLoadedAt.IsZero() {
+		cacheAge := time.Since(m.CVECacheLoadedAt)
+		cacheAgeStr := formatDuration(cacheAge)
+		parts = append(parts, fmt.Sprintf("Cache: %s old", cacheAgeStr))
+
+		// Show TTL countdown
+		remaining := m.CVECacheTTL - cacheAge
+		if remaining > 0 {
+			remainingStr := formatDuration(remaining)
+			parts = append(parts, fmt.Sprintf("expires in %s", remainingStr))
+		} else {
+			parts = append(parts, "(expired)")
+		}
+	}
+
+	// Show last scan time
+	if !m.CVELastScanTime.IsZero() {
+		scanAge := time.Since(m.CVELastScanTime)
+		scanAgeStr := formatDuration(scanAge)
+		parts = append(parts, fmt.Sprintf("last scanned: %s ago", scanAgeStr))
+	}
+
+	// Show gem count scanned
+	if m.AnalysisResult != nil && len(m.AnalysisResult.AllGems) > 0 {
+		parts = append(parts, fmt.Sprintf("%d gems scanned", len(m.AnalysisResult.AllGems)))
+	}
+
+	return parts
 }
 
 // getCVEGemInfo returns the type (Direct/Transitive) and group for a gem in a vulnerability
@@ -1790,107 +1861,18 @@ func (m *Model) renderGemInfoModalBox() string {
 		return ""
 	}
 
-	// Build content lines
-	lines := []string{}
+	// Build all content lines
+	lines := m.buildGemInfoContentLines(gem)
 
-	// Title
-	title := fmt.Sprintf("Gem Info: %s", gem.Name)
-	titleStyle := lipgloss.NewStyle().
-		Bold(true).
-		Foreground(lipgloss.Color(ColorPrimary))
-	lines = append(lines, titleStyle.Render(title))
-	lines = append(lines, "")
+	// Clamp scroll offset
+	m.clampGemInfoScroll(len(lines))
 
-	// Gem details
-	lines = append(lines, fmt.Sprintf("Name: %s", gem.Name))
-	lines = append(lines, fmt.Sprintf("Version: %s", gem.Version))
-
-	size := m.GemSizes[gem.Name]
-	lines = append(lines, fmt.Sprintf("Size: %s", gemfile.FormatBytes(size)))
-	lines = append(lines, "")
-
-	// Show gem type
-	isDirect := false
-	for _, direct := range m.FirstLevelGems {
-		if direct.Name == gem.Name {
-			isDirect = true
-			break
-		}
-	}
-
-	if isDirect {
-		lines = append(lines, "Type: Direct Dependency")
-	} else {
-		lines = append(lines, "Type: Transitive Dependency")
-	}
-
-	// Show description if available
-	if gem.Description != "" {
-		lines = append(lines, "")
-		lines = append(lines, "Description:")
-		// Wrap description text
-		descLines := wrapText(gem.Description, 60)
-		for _, line := range descLines {
-			lines = append(lines, fmt.Sprintf("  %s", line))
-		}
-	}
-
-	// Show installed versions and paths
-	lines = append(lines, "")
-	lines = append(lines, "Installed Versions:")
-
-	if m.GemInfoLoading {
-		// Show loading indicator while fetching
-		loadingFrame := spinnerFrames[m.AnimationFrame%len(spinnerFrames)]
-		lines = append(lines, fmt.Sprintf("  %s Fetching version info...", loadingFrame))
-	} else if m.ParsedGemInfo != nil && len(m.ParsedGemInfo.Versions) > 0 {
-		// Display parsed versions and paths
-		for _, ver := range m.ParsedGemInfo.Versions {
-			versionLine := fmt.Sprintf("  %-8s  %s", ver.Version, ver.Path)
-			// Truncate long paths if needed to fit in modal
-			if len(versionLine) > 76 {
-				versionLine = versionLine[:73] + "..."
-			}
-			lines = append(lines, versionLine)
-		}
-	} else if m.CurrentGemInfoOutput != "" {
-		// Fallback: show that fetch completed but no versions were found
-		lines = append(lines, "  (no versions found)")
-	} else {
-		// No data yet
-		lines = append(lines, "  —")
-	}
-
-	// Apply scrolling if content exceeds available modal height
-	// Calculate available height for content (modal height minus borders/padding)
-	maxModalHeight := m.Height - 6 // Leave room for header, footer, and padding
+	// Clip lines to window with scroll indicator
+	maxModalHeight := m.Height - 6
 	if maxModalHeight < 5 {
 		maxModalHeight = 5
 	}
-
-	// Ensure scroll offset doesn't exceed content
-	if m.GemInfoScrollOffset >= len(lines) {
-		m.GemInfoScrollOffset = len(lines) - 1
-	}
-	if m.GemInfoScrollOffset < 0 {
-		m.GemInfoScrollOffset = 0
-	}
-
-	// Slice lines based on scroll offset
-	visibleLines := lines
-	if len(lines) > maxModalHeight {
-		endIdx := m.GemInfoScrollOffset + maxModalHeight
-		if endIdx > len(lines) {
-			endIdx = len(lines)
-		}
-		visibleLines = lines[m.GemInfoScrollOffset:endIdx]
-
-		// Add scroll indicator at the bottom if there's more content
-		if endIdx < len(lines) {
-			visibleLines = append(visibleLines, "")
-			visibleLines = append(visibleLines, "  ↓ scroll for more")
-		}
-	}
+	visibleLines := m.clipAndScrollGemInfoLines(lines, maxModalHeight)
 
 	// Create the modal box with border
 	content := strings.Join(visibleLines, "\n")
@@ -1912,6 +1894,105 @@ func (m *Model) renderGemInfoModalBox() string {
 		Padding(1, 2)
 
 	return boxStyle.Width(modalWidth).Render(content)
+}
+
+// buildGemInfoContentLines builds all content lines for gem info modal.
+func (m *Model) buildGemInfoContentLines(gem *gemfile.GemStatus) []string {
+	lines := []string{}
+
+	// Title
+	title := fmt.Sprintf("Gem Info: %s", gem.Name)
+	titleStyle := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color(ColorPrimary))
+	lines = append(lines, titleStyle.Render(title))
+	lines = append(lines, "")
+
+	// Gem details
+	lines = append(lines, fmt.Sprintf("Name: %s", gem.Name))
+	lines = append(lines, fmt.Sprintf("Version: %s", gem.Version))
+
+	size := m.GemSizes[gem.Name]
+	lines = append(lines, fmt.Sprintf("Size: %s", gemfile.FormatBytes(size)))
+	lines = append(lines, "")
+
+	// Show gem type
+	if m.isDirectDependency(gem.Name) {
+		lines = append(lines, "Type: Direct Dependency")
+	} else {
+		lines = append(lines, "Type: Transitive Dependency")
+	}
+
+	// Show description if available
+	if gem.Description != "" {
+		lines = append(lines, "")
+		lines = append(lines, "Description:")
+		descLines := wrapText(gem.Description, 60)
+		for _, line := range descLines {
+			lines = append(lines, fmt.Sprintf("  %s", line))
+		}
+	}
+
+	// Show installed versions and paths
+	lines = append(lines, "")
+	lines = append(lines, "Installed Versions:")
+	versionLines := m.buildGemInstalledVersionsLines()
+	lines = append(lines, versionLines...)
+
+	return lines
+}
+
+// buildGemInstalledVersionsLines builds the installed versions section.
+func (m *Model) buildGemInstalledVersionsLines() []string {
+	var lines []string
+
+	if m.GemInfoLoading {
+		loadingFrame := spinnerFrames[m.AnimationFrame%len(spinnerFrames)]
+		lines = append(lines, fmt.Sprintf("  %s Fetching version info...", loadingFrame))
+	} else if m.ParsedGemInfo != nil && len(m.ParsedGemInfo.Versions) > 0 {
+		for _, ver := range m.ParsedGemInfo.Versions {
+			versionLine := fmt.Sprintf("  %-8s  %s", ver.Version, ver.Path)
+			if len(versionLine) > 76 {
+				versionLine = versionLine[:73] + "..."
+			}
+			lines = append(lines, versionLine)
+		}
+	} else if m.CurrentGemInfoOutput != "" {
+		lines = append(lines, "  (no versions found)")
+	} else {
+		lines = append(lines, "  —")
+	}
+
+	return lines
+}
+
+// clampGemInfoScroll clamps the scroll offset to valid range.
+func (m *Model) clampGemInfoScroll(totalLines int) {
+	if m.GemInfoScrollOffset >= totalLines {
+		m.GemInfoScrollOffset = totalLines - 1
+	}
+	if m.GemInfoScrollOffset < 0 {
+		m.GemInfoScrollOffset = 0
+	}
+}
+
+// clipAndScrollGemInfoLines clips lines to window and adds scroll indicator.
+func (m *Model) clipAndScrollGemInfoLines(lines []string, maxHeight int) []string {
+	visibleLines := lines
+	if len(lines) > maxHeight {
+		endIdx := m.GemInfoScrollOffset + maxHeight
+		if endIdx > len(lines) {
+			endIdx = len(lines)
+		}
+		visibleLines = lines[m.GemInfoScrollOffset:endIdx]
+
+		// Add scroll indicator at the bottom if there's more content
+		if endIdx < len(lines) {
+			visibleLines = append(visibleLines, "")
+			visibleLines = append(visibleLines, "  ↓ scroll for more")
+		}
+	}
+	return visibleLines
 }
 
 // Helper function to get all gems for Sanity tab display
@@ -2350,8 +2431,7 @@ func (m *Model) renderCVEInfoModalBox() string {
 	vuln := m.CVEVulnerabilities[m.CVECursor]
 
 	// Check if we have cached content for this CVE and width hasn't changed
-	if m.CVEInfoCachedCVEID == vuln.CVE && m.CVEInfoCachedWidth == m.Width && len(m.CVEInfoCachedLines) > 0 {
-		// Use cached lines to avoid re-rendering on every keystroke
+	if m.isCVECacheValid(vuln) {
 		return m.renderCVEInfoModalWithLines(m.CVEInfoCachedLines)
 	}
 
@@ -2367,6 +2447,63 @@ func (m *Model) renderCVEInfoModalBox() string {
 		Foreground(lipgloss.Color(ColorPrimary))
 	lines = append(lines, titleStyle.Render(title))
 	lines = append(lines, "")
+
+	// Add basic info section
+	basicLines := m.buildCVEBasicInfoLines(vuln, gemType, group)
+	lines = append(lines, basicLines...)
+
+	// Remediation section
+	if vuln.FixedVersion != "" {
+		lines = append(lines, "Remediation:")
+		lines = append(lines, fmt.Sprintf("  Upgrade %s to version %s or later", vuln.GemName, vuln.FixedVersion))
+		lines = append(lines, "")
+	}
+
+	// Workarounds section
+	if vuln.Workarounds != "" {
+		workaroundLines := m.renderCVEWorkaroundLines(vuln.Workarounds, vuln.CVE)
+		lines = append(lines, workaroundLines...)
+		lines = append(lines, "")
+	}
+
+	// OSV link
+	if vuln.OSVId != "" {
+		osvLink := fmt.Sprintf("https://osv.dev/vulnerability/%s", vuln.OSVId)
+		lines = append(lines, fmt.Sprintf("Link:      %s", osvLink))
+		lines = append(lines, "")
+	}
+
+	// Affected versions
+	if len(vuln.AffectedVersions) > 0 {
+		lines = append(lines, "Affected versions:")
+		for _, version := range vuln.AffectedVersions {
+			lines = append(lines, fmt.Sprintf("  • %s", version))
+		}
+		lines = append(lines, "")
+	}
+
+	// For transitive gems, show pulling-in parents
+	if gemType == "Transitive" {
+		parentLines := m.buildCVETransitiveParentLines(vuln.GemName)
+		lines = append(lines, parentLines...)
+	}
+
+	// Cache the lines for this CVE to avoid re-rendering on every keystroke
+	m.CVEInfoCachedCVEID = vuln.CVE
+	m.CVEInfoCachedLines = lines
+	m.CVEInfoCachedWidth = m.Width
+
+	return m.renderCVEInfoModalWithLines(lines)
+}
+
+// isCVECacheValid checks if the CVE cache is still valid.
+func (m *Model) isCVECacheValid(vuln *gemfile.Vulnerability) bool {
+	return m.CVEInfoCachedCVEID == vuln.CVE && m.CVEInfoCachedWidth == m.Width && len(m.CVEInfoCachedLines) > 0
+}
+
+// buildCVEBasicInfoLines builds the basic CVE information section.
+func (m *Model) buildCVEBasicInfoLines(vuln *gemfile.Vulnerability, gemType, group string) []string {
+	var lines []string
 
 	// CVE ID
 	lines = append(lines, fmt.Sprintf("ID:       %s", vuln.CVE))
@@ -2404,136 +2541,78 @@ func (m *Model) renderCVEInfoModalBox() string {
 
 	// Group
 	lines = append(lines, fmt.Sprintf("Group:    %s", group))
-
 	lines = append(lines, "")
 
-	// Remediation section
-	if vuln.FixedVersion != "" {
-		lines = append(lines, "Remediation:")
-		lines = append(lines, fmt.Sprintf("  Upgrade %s to version %s or later", vuln.GemName, vuln.FixedVersion))
-		lines = append(lines, "")
+	return lines
+}
+
+// renderCVEWorkaroundLines renders the workarounds section with glamour markdown rendering.
+func (m *Model) renderCVEWorkaroundLines(workarounds, cveID string) []string {
+	var lines []string
+
+	estimatedWidth := 60
+	if m.Width > 80 {
+		estimatedWidth = m.Width - 20
 	}
 
-	// Workarounds section rendered with glamour for markdown formatting
-	if vuln.Workarounds != "" {
-		// Estimate modal width for glamour rendering
-		estimatedWidth := 60
-		if m.Width > 80 {
-			estimatedWidth = m.Width - 20
-		}
-
-		// Render workarounds markdown with glamour
-		renderer := NewMarkdownRenderer(estimatedWidth)
-		renderedWorkarounds, err := renderer.Render(vuln.Workarounds)
-		if err != nil {
-			logger.Warn("Glamour rendering failed for %s: %v, using fallback", vuln.CVE, err)
-			// Fallback to plain text if rendering fails
-			lines = append(lines, "Remediation:")
-			workaroundLines := strings.Split(vuln.Workarounds, "\n")
-			for _, wLine := range workaroundLines {
-				trimmed := strings.TrimSpace(wLine)
-				if trimmed != "" {
-					wrapped := wrapText(trimmed, 60)
-					for _, wrappedLine := range wrapped {
-						lines = append(lines, fmt.Sprintf("  %s", wrappedLine))
-					}
+	renderer := NewMarkdownRenderer(estimatedWidth)
+	renderedWorkarounds, err := renderer.Render(workarounds)
+	if err != nil {
+		logger.Warn("Glamour rendering failed for %s: %v, using fallback", cveID, err)
+		// Fallback to plain text if rendering fails
+		lines = append(lines, "Remediation:")
+		workaroundLines := strings.Split(workarounds, "\n")
+		for _, wLine := range workaroundLines {
+			trimmed := strings.TrimSpace(wLine)
+			if trimmed != "" {
+				wrapped := wrapText(trimmed, 60)
+				for _, wrappedLine := range wrapped {
+					lines = append(lines, fmt.Sprintf("  %s", wrappedLine))
 				}
 			}
-		} else {
-			// Add rendered markdown (trim trailing newlines)
-			renderedLines := strings.Split(strings.TrimSpace(renderedWorkarounds), "\n")
-			lines = append(lines, renderedLines...)
+		}
+	} else {
+		// Add rendered markdown (trim trailing newlines)
+		renderedLines := strings.Split(strings.TrimSpace(renderedWorkarounds), "\n")
+		lines = append(lines, renderedLines...)
+	}
+
+	return lines
+}
+
+// buildCVETransitiveParentLines builds the section showing parents of transitive gems.
+func (m *Model) buildCVETransitiveParentLines(gemName string) []string {
+	var lines []string
+
+	parentGems := m.findParentGems(gemName)
+	if len(parentGems) > 0 {
+		lines = append(lines, "Pulled in by:")
+		for _, parent := range parentGems {
+			lines = append(lines, fmt.Sprintf("  › %s", parent))
 		}
 		lines = append(lines, "")
 	}
 
-	// OSV link
-	if vuln.OSVId != "" {
-		osvLink := fmt.Sprintf("https://osv.dev/vulnerability/%s", vuln.OSVId)
-		lines = append(lines, fmt.Sprintf("Link:      %s", osvLink))
-		lines = append(lines, "")
-	}
-
-	// Affected versions
-	if len(vuln.AffectedVersions) > 0 {
-		lines = append(lines, "Affected versions:")
-		for _, version := range vuln.AffectedVersions {
-			lines = append(lines, fmt.Sprintf("  • %s", version))
-		}
-		lines = append(lines, "")
-	}
-
-	// For transitive gems, show pulling-in parents
-	if gemType == "Transitive" {
-		parentGems := m.findParentGems(vuln.GemName)
-		if len(parentGems) > 0 {
-			lines = append(lines, "Pulled in by:")
-			for _, parent := range parentGems {
-				lines = append(lines, fmt.Sprintf("  › %s", parent))
-			}
-			lines = append(lines, "")
-		}
-	}
-
-	// Cache the lines for this CVE to avoid re-rendering on every keystroke
-	m.CVEInfoCachedCVEID = vuln.CVE
-	m.CVEInfoCachedLines = lines
-	m.CVEInfoCachedWidth = m.Width
-
-	return m.renderCVEInfoModalWithLines(lines)
+	return lines
 }
 
 // renderCVEInfoModalWithLines renders the CVE modal using pre-built lines
 // This is extracted to avoid re-rendering on every keystroke during scrolling
 func (m *Model) renderCVEInfoModalWithLines(lines []string) string {
-	// Create the modal box with border
 	content := strings.Join(lines, "\n")
 
-	// Calculate width - use enough space
-	modalWidth := lipgloss.Width(content) + 4 // 2 for padding left/right, 2 for border
-	if modalWidth < 60 {
-		modalWidth = 60
-	}
-	if modalWidth > m.Width-4 {
-		modalWidth = m.Width - 4
-	}
+	// Determine modal dimensions
+	modalWidth, availableHeight := m.clampCVEModalDimensions(lipgloss.Width(content))
 
-	// Calculate available height for modal (leave space for header + footer + margins)
-	// Reserve at least 4 lines for header/footer/margins
-	availableHeight := m.Height - 8
-	if availableHeight < 10 {
-		availableHeight = 10
-	}
-
-	// Clamp scroll position to valid range
-	maxScroll := len(lines) - availableHeight
-	if maxScroll < 0 {
-		maxScroll = 0
-	}
-	if m.CVEInfoScroll > maxScroll {
-		m.CVEInfoScroll = maxScroll
-	}
+	// Clamp scroll position
+	m.clampCVEInfoScroll(availableHeight, len(lines))
 
 	// Clip content to fit within available height
-	clippedLines := lines
-	if m.CVEInfoScroll > 0 && len(lines) > availableHeight {
-		endIdx := m.CVEInfoScroll + availableHeight
-		if endIdx > len(lines) {
-			endIdx = len(lines)
-		}
-		clippedLines = lines[m.CVEInfoScroll:endIdx]
-	} else if len(lines) > availableHeight {
-		clippedLines = lines[:availableHeight]
-	}
-
+	clippedLines := clipLinesToWindow(lines, m.CVEInfoScroll, availableHeight)
 	clippedContent := strings.Join(clippedLines, "\n")
 
-	// Add scroll indicator if needed
-	scrollHint := ""
-	if m.CVEInfoScroll > 0 || (m.CVEInfoScroll+availableHeight < len(lines)) {
-		scrollPercent := (m.CVEInfoScroll * 100) / len(lines)
-		scrollHint = fmt.Sprintf(" [%d%%]", scrollPercent)
-	}
+	// Build scroll hint
+	scrollHint := m.buildScrollHint(m.CVEInfoScroll, availableHeight, len(lines))
 
 	// Apply border and styling with height constraint
 	boxStyle := lipgloss.NewStyle().
@@ -2544,20 +2623,64 @@ func (m *Model) renderCVEInfoModalWithLines(lines []string) string {
 
 	rendered := boxStyle.Width(modalWidth).Height(availableHeight + 2).Render(clippedContent)
 
-	// Add scroll hint to the output if content is scrollable
+	// Inject scroll hint into border if needed
 	if scrollHint != "" {
-		renderedLines := strings.Split(rendered, "\n")
-		if len(renderedLines) > 0 {
-			// Append scroll hint to the last line of the box
-			lastIdx := len(renderedLines) - 1
-			if lastIdx >= 0 && strings.Contains(renderedLines[lastIdx], "╰") {
-				renderedLines[lastIdx] = strings.TrimSuffix(renderedLines[lastIdx], "╯") + scrollHint + "╯"
-			}
-		}
-		rendered = strings.Join(renderedLines, "\n")
+		rendered = m.injectScrollHintIntoBorder(rendered, scrollHint)
 	}
 
 	return rendered
+}
+
+// clampCVEModalDimensions calculates and clamps the modal width and available height.
+func (m *Model) clampCVEModalDimensions(contentWidth int) (width, height int) {
+	// Calculate width
+	width = contentWidth + 4 // 2 for padding left/right, 2 for border
+	if width < 60 {
+		width = 60
+	}
+	if width > m.Width-4 {
+		width = m.Width - 4
+	}
+
+	// Calculate available height for modal
+	height = m.Height - 8 // Leave space for header + footer + margins
+	if height < 10 {
+		height = 10
+	}
+
+	return
+}
+
+// clampCVEInfoScroll clamps the scroll position to valid range.
+func (m *Model) clampCVEInfoScroll(availableHeight, totalLines int) {
+	maxScroll := totalLines - availableHeight
+	if maxScroll < 0 {
+		maxScroll = 0
+	}
+	if m.CVEInfoScroll > maxScroll {
+		m.CVEInfoScroll = maxScroll
+	}
+}
+
+// buildScrollHint builds the scroll percentage hint string.
+func (m *Model) buildScrollHint(scroll, availableHeight, totalLines int) string {
+	if scroll > 0 || (scroll+availableHeight < totalLines) {
+		scrollPercent := (scroll * 100) / totalLines
+		return fmt.Sprintf(" [%d%%]", scrollPercent)
+	}
+	return ""
+}
+
+// injectScrollHintIntoBorder injects a scroll hint into the modal border.
+func (m *Model) injectScrollHintIntoBorder(rendered, hint string) string {
+	renderedLines := strings.Split(rendered, "\n")
+	if len(renderedLines) > 0 {
+		lastIdx := len(renderedLines) - 1
+		if lastIdx >= 0 && strings.Contains(renderedLines[lastIdx], "╰") {
+			renderedLines[lastIdx] = strings.TrimSuffix(renderedLines[lastIdx], "╯") + hint + "╯"
+		}
+	}
+	return strings.Join(renderedLines, "\n")
 }
 
 // findParentGems returns a list of direct gems that transitively depend on the given gem
