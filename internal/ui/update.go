@@ -108,41 +108,14 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case ProgressMsg:
 		return m.handleProgress(msg)
 
-	case HealthItemMsg:
-		return m.handleHealthItem(msg)
+	case HealthItemMsg, HealthCompleteMsg, GitHubBatchCompleteMsg, HealthRateLimitedMsg:
+		return m.dispatchHealthMessages(msg)
 
-	case HealthCompleteMsg:
-		return m.handleHealthComplete()
+	case OutdatedItemMsg, OutdatedCompleteMsg:
+		return m.dispatchOutdatedMessages(msg)
 
-	case GitHubBatchCompleteMsg:
-		return m.handleGitHubBatchComplete(msg)
-
-	case HealthRateLimitedMsg:
-		return m.handleHealthRateLimited(msg)
-
-	case OutdatedItemMsg:
-		return m.handleOutdatedItem(msg)
-
-	case OutdatedCompleteMsg:
-		return m.handleOutdatedComplete()
-
-	case CVEScanStartedMsg:
-		return m.handleCVEScanStarted()
-
-	case CVEProgressMsg:
-		return m.handleCVEProgress(msg)
-
-	case CVECompleteMsg:
-		return m.handleCVEComplete(msg)
-
-	case CVELoadFromCacheMsg:
-		return m.handleCVELoadFromCache(msg)
-
-	case CVECommentsLoadedMsg:
-		return m.handleCVECommentsLoaded(msg)
-
-	case CVEEnrichmentCompleteMsg:
-		return m.handleCVEEnrichmentComplete(msg)
+	case CVEScanStartedMsg, CVEProgressMsg, CVECompleteMsg, CVELoadFromCacheMsg, CVECommentsLoadedMsg, CVEEnrichmentCompleteMsg:
+		return m.dispatchCVEMessages(msg)
 
 	case SanityDataMsg:
 		return m.handleSanityData(msg)
@@ -151,6 +124,48 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.handleGemInfo(msg)
 	}
 
+	return m, nil
+}
+
+func (m *Model) dispatchHealthMessages(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case HealthItemMsg:
+		return m.handleHealthItem(msg)
+	case HealthCompleteMsg:
+		return m.handleHealthComplete()
+	case GitHubBatchCompleteMsg:
+		return m.handleGitHubBatchComplete(msg)
+	case HealthRateLimitedMsg:
+		return m.handleHealthRateLimited(msg)
+	}
+	return m, nil
+}
+
+func (m *Model) dispatchOutdatedMessages(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case OutdatedItemMsg:
+		return m.handleOutdatedItem(msg)
+	case OutdatedCompleteMsg:
+		return m.handleOutdatedComplete()
+	}
+	return m, nil
+}
+
+func (m *Model) dispatchCVEMessages(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case CVEScanStartedMsg:
+		return m.handleCVEScanStarted()
+	case CVEProgressMsg:
+		return m.handleCVEProgress(msg)
+	case CVECompleteMsg:
+		return m.handleCVEComplete(msg)
+	case CVELoadFromCacheMsg:
+		return m.handleCVELoadFromCache(msg)
+	case CVECommentsLoadedMsg:
+		return m.handleCVECommentsLoaded(msg)
+	case CVEEnrichmentCompleteMsg:
+		return m.handleCVEEnrichmentComplete(msg)
+	}
 	return m, nil
 }
 
