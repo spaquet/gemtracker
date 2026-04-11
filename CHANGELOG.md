@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v1.2.4] - 2026-04-11
+
+### Fixed
+- **Nil Pointer Dereference on Gem Detail View** - Fixed crash when opening dependencies view
+  - Added nil check for DependencyInfo before accessing ForwardTree
+  - Prevents panic when gem detail view is opened in Gems, Search, Updates, CVE, and Sanity tabs
+  - Improves robustness when analyzing gems with missing dependency data
+
 ## [v1.2.3] - 2026-04-10
 
 ### Fixed
