@@ -262,25 +262,25 @@ type Model struct {
 	UpgradeableOffset         int
 
 	// CVE screen state
-	VulnerableGems          []*gemfile.GemStatus
-	CVECursor               int
-	CVEOffset               int
-	CVEInfoScroll           int                      // Scroll offset for CVE info modal content
-	CVEVulnerabilities      []*gemfile.Vulnerability // Actual vulnerability data from OSV.dev
-	UnfilteredCVEs          []*gemfile.Vulnerability // All CVEs before filtering
-	CVESelectedSeverities   map[string]bool          // "CRITICAL","HIGH","MODERATE","LOW" → true/false
-	CVEShowOnlyDirect       bool                     // Filter to show only direct dependency CVEs
-	CVEAcknowledgmentFilter string                   // "" (all), "acknowledged", or "unacknowledged"
-	CVEFilterMenuCursor     int                      // Position in the CVE filter menu
-	LastGemsSignature       string                   // SHA256 of last scanned gems
-	CVERefreshInProgress    bool                     // Is a CVE refresh happening in background?
-	CVELastScanTime         time.Time                // When was CVE data last scanned?
-	CVECacheLoadedAt        time.Time                // When was cache loaded?
-	CVECacheTTL             time.Duration            // Default: 1 hour
-	CVELastError            string                   // Last error message if scan failed
-	CVEInfoCachedCVEID      string                   // CVE ID of currently cached modal content
-	CVEInfoCachedLines      []string                 // Cached rendered lines for modal
-	CVEInfoCachedWidth      int                      // Terminal width when modal was cached
+	VulnerableGems           []*gemfile.GemStatus
+	CVECursor                int
+	CVEOffset                int
+	CVEInfoScroll            int                      // Scroll offset for CVE info modal content
+	CVEVulnerabilities       []*gemfile.Vulnerability // Actual vulnerability data from OSV.dev
+	UnfilteredCVEs           []*gemfile.Vulnerability // All CVEs before filtering
+	CVESelectedSeverities    map[string]bool          // "CRITICAL","HIGH","MODERATE","LOW" → true/false
+	CVEShowOnlyDirect        bool                     // Filter to show only direct dependency CVEs
+	CVEAcknowledgmentFilters map[string]bool          // "acknowledged", "ignored", "unacknowledged" → true/false
+	CVEFilterMenuCursor      int                      // Position in the CVE filter menu
+	LastGemsSignature        string                   // SHA256 of last scanned gems
+	CVERefreshInProgress     bool                     // Is a CVE refresh happening in background?
+	CVELastScanTime          time.Time                // When was CVE data last scanned?
+	CVECacheLoadedAt         time.Time                // When was cache loaded?
+	CVECacheTTL              time.Duration            // Default: 1 hour
+	CVELastError             string                   // Last error message if scan failed
+	CVEInfoCachedCVEID       string                   // CVE ID of currently cached modal content
+	CVEInfoCachedLines       []string                 // Cached rendered lines for modal
+	CVEInfoCachedWidth       int                      // Terminal width when modal was cached
 
 	// CVE comment modal state
 	CVEComments           *gemfile.CVEComments       // Loaded CVE comments from project
@@ -850,7 +850,7 @@ func (m *Model) shouldIncludeVulnerability(vuln *gemfile.Vulnerability) bool {
 	}
 
 	// Check acknowledgment filter
-	if m.CVEAcknowledgmentFilter != "" && !m.matchesAcknowledgmentFilter(vuln) {
+	if !m.matchesAcknowledgmentFilter(vuln) {
 		return false
 	}
 
@@ -869,17 +869,33 @@ func (m *Model) isDirectDependency(gemName string) bool {
 
 // matchesAcknowledgmentFilter checks if a vulnerability matches the acknowledgment filter.
 func (m *Model) matchesAcknowledgmentFilter(vuln *gemfile.Vulnerability) bool {
-	key := gemfile.GetCVECommentKey(vuln)
-	comment, exists := m.CVEComments.Entries[key]
-	isAcknowledged := exists && comment.Decision == gemfile.DecisionAcknowledged
+	// If no filters selected, include all
+	if !m.CVEAcknowledgmentFilters["acknowledged"] && !m.CVEAcknowledgmentFilters["ignored"] && !m.CVEAcknowledgmentFilters["unacknowledged"] {
+		return true
+	}
 
-	if m.CVEAcknowledgmentFilter == "acknowledged" {
-		return isAcknowledged
+	// Determine the vulnerability's acknowledgment state
+	var vulnState string
+	if m.CVEComments != nil {
+		key := gemfile.GetCVECommentKey(vuln)
+		comment, exists := m.CVEComments.Entries[key]
+		if exists && comment != nil {
+			if comment.Decision == gemfile.DecisionAcknowledged {
+				vulnState = "acknowledged"
+			} else if comment.Decision == gemfile.DecisionIgnored {
+				vulnState = "ignored"
+			} else {
+				vulnState = "unacknowledged"
+			}
+		} else {
+			vulnState = "unacknowledged"
+		}
+	} else {
+		vulnState = "unacknowledged"
 	}
-	if m.CVEAcknowledgmentFilter == "unacknowledged" {
-		return !isAcknowledged
-	}
-	return true
+
+	// Check if this state is selected in the filter
+	return m.CVEAcknowledgmentFilters[vulnState]
 }
 
 // initializeCVEFilters sets up the CVE filter state when vulnerabilities are loaded
@@ -893,7 +909,11 @@ func (m *Model) initializeCVEFilters(vulns []*gemfile.Vulnerability) {
 		"LOW":      true,
 	}
 	m.CVEShowOnlyDirect = false
-	m.CVEAcknowledgmentFilter = ""
+	m.CVEAcknowledgmentFilters = map[string]bool{
+		"acknowledged":   true,
+		"ignored":        true,
+		"unacknowledged": true,
+	}
 	m.CVEFilterMenuCursor = 0
 }
 
