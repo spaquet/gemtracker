@@ -337,7 +337,7 @@ func TestGenerateWithNonexistentPath(t *testing.T) {
 	if err == nil {
 		t.Errorf("expected error for nonexistent path, got nil")
 	}
-	if !strings.Contains(err.Error(), "failed to parse gemfile") {
+	if !strings.Contains(err.Error(), "failed to parse dependencies") {
 		t.Errorf("expected parsing error, got: %v", err)
 	}
 }

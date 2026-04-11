@@ -533,7 +533,9 @@ func performAnalysis(gemfilePath string, noCache bool) tea.Cmd {
 		var gf *gemfile.Gemfile
 		var err error
 
-		if strings.HasSuffix(gemfilePath, ".gemspec") {
+		isGemspec := strings.HasSuffix(gemfilePath, ".gemspec")
+
+		if isGemspec {
 			gf, err = gemfile.ParseGemspec(gemfilePath)
 		} else {
 			gf, err = gemfile.Parse(gemfilePath)
@@ -547,13 +549,19 @@ func performAnalysis(gemfilePath string, noCache bool) tea.Cmd {
 		}
 
 		// Load group information from Gemfile (only for lock files, not gemspec)
-		if !strings.HasSuffix(gemfilePath, ".gemspec") {
+		if !isGemspec {
 			dir := filepath.Dir(gemfilePath)
 			gf.LoadGroupsFromGemfile(dir)
 		}
 
 		// Create the outdated checker once and reuse it
 		outdatedChecker := gemfile.NewOutdatedChecker()
+
+		// If analyzing a gemspec-only project, enrich dependencies from RubyGems API
+		if isGemspec {
+			logger.Info("Enriching gemspec dependencies from RubyGems API...")
+			outdatedChecker.EnrichGemspecDependencies(gf)
+		}
 
 		result := gemfile.Analyze(gf)
 		// Lazy load source code URIs during health fetching to keep UI responsive
