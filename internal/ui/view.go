@@ -2354,18 +2354,22 @@ func (m *Model) renderCVEFilterModalBox() string {
 
 	lines = append(lines, "")
 
-	// Acknowledgment filter
-	ackStatus := ""
-	if m.CVEAcknowledgmentFilter == "acknowledged" {
-		ackStatus = " (acknowledged)"
-	} else if m.CVEAcknowledgmentFilter == "unacknowledged" {
-		ackStatus = " (unacknowledged)"
+	// Acknowledgment filter options
+	ackStates := []struct {
+		key   string
+		label string
+	}{
+		{"acknowledged", "Acknowledged"},
+		{"ignored", "Ignored"},
+		{"unacknowledged", "Unacknowledged"},
 	}
-	ackLine := "Filter by acknowledgment" + ackStatus
-	if m.CVEFilterMenuCursor == 5 {
-		lines = append(lines, RowSelectedStyle.Render("› "+ackLine))
-	} else {
-		lines = append(lines, "  "+ackLine)
+	for i, state := range ackStates {
+		ackLine := checkbox(m.CVEAcknowledgmentFilters[state.key]) + " " + state.label
+		if m.CVEFilterMenuCursor == 5+i {
+			lines = append(lines, RowSelectedStyle.Render("› "+ackLine))
+		} else {
+			lines = append(lines, "  "+ackLine)
+		}
 	}
 
 	// Footer hint

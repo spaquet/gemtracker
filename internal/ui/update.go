@@ -690,6 +690,10 @@ func (m *Model) handleCVEInfoKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			return m, cmd
 		}
 		return m, nil
+
+	case "c":
+		m.openCVECommentModal()
+		return m, nil
 	}
 
 	return m, nil
@@ -757,6 +761,7 @@ func (m *Model) openCVECommentModal() {
 		}
 	}
 
+	m.CurrentView = ViewCVEComment
 	m.CVECommentInput.Focus()
 }
 
@@ -1119,8 +1124,8 @@ func (m *Model) handleFilterMenuKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m *Model) handleCVEFilterMenuKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
-	// 4 severity options + 1 direct option + 1 acknowledgment option
-	totalOptions := 6
+	// 4 severity options + 1 direct option + 3 acknowledgment options
+	totalOptions := 8
 
 	switch msg.String() {
 	case "up":
@@ -1148,16 +1153,12 @@ func (m *Model) handleCVEFilterMenuKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd
 			m.CVESelectedSeverities["LOW"] = !m.CVESelectedSeverities["LOW"]
 		case 4: // Direct only
 			m.CVEShowOnlyDirect = !m.CVEShowOnlyDirect
-		case 5: // Acknowledgment filter
-			// Cycle through: "" (all) -> "acknowledged" -> "unacknowledged" -> ""
-			switch m.CVEAcknowledgmentFilter {
-			case "":
-				m.CVEAcknowledgmentFilter = "acknowledged"
-			case "acknowledged":
-				m.CVEAcknowledgmentFilter = "unacknowledged"
-			case "unacknowledged":
-				m.CVEAcknowledgmentFilter = ""
-			}
+		case 5: // Acknowledged
+			m.CVEAcknowledgmentFilters["acknowledged"] = !m.CVEAcknowledgmentFilters["acknowledged"]
+		case 6: // Ignored
+			m.CVEAcknowledgmentFilters["ignored"] = !m.CVEAcknowledgmentFilters["ignored"]
+		case 7: // Unacknowledged
+			m.CVEAcknowledgmentFilters["unacknowledged"] = !m.CVEAcknowledgmentFilters["unacknowledged"]
 		}
 		// Apply filters immediately
 		m.applyCVEFilters()

@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v1.2.3] - 2026-04-10
+
+### Fixed
+- **CVE Comment Modal Not Opening from Info View** - Pressing 'c' in CVE info modal now opens comment editor
+  - Added 'c' key handler to CVE info view for consistency
+  - Comments can now be edited from both main CVE list and detailed info modal
+- **CVE Acknowledgment Filter Not Working** - Complete refactor with checkbox support
+  - Changed from single-state cycling to multi-select checkbox filtering
+  - Now supports three independent filter states: Acknowledged, Ignored, Unacknowledged
+  - Users can select any combination of states with space bar (like severity filters)
+  - All three states are enabled by default (shows all vulnerabilities)
+  - Properly detects "Unacknowledged" as initial state (no comment on CVE)
+  - Fixed nil panic when filtering with no comments loaded
+
 ## [v1.2.1] - 2026-04-10
 
 ### Improved
