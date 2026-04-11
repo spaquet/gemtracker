@@ -2,7 +2,6 @@ package ui
 
 import (
 	"fmt"
-	"os"
 	"runtime"
 	"sort"
 	"strings"
@@ -11,8 +10,10 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/getsentry/sentry-go"
 	"github.com/spaquet/gemtracker/internal/gemfile"
 	"github.com/spaquet/gemtracker/internal/logger"
+	"github.com/spaquet/gemtracker/internal/telemetry"
 )
 
 // ============================================================================
@@ -85,7 +86,9 @@ func (m *Model) statusBarTotalHeight() int {
 func placeOverlay(startRow, startCol int, fg, bg string) string {
 	defer func() {
 		if r := recover(); r != nil {
-			fmt.Fprintf(os.Stderr, "PANIC in placeOverlay: %v\n", r)
+			err := fmt.Errorf("panic in placeOverlay: %v", r)
+			telemetry.CaptureException(err, sentry.LevelFatal)
+			logger.Error("PANIC in placeOverlay: %v", r)
 		}
 	}()
 
@@ -151,7 +154,9 @@ func clampInt(v, lo, hi int) int {
 func (m *Model) View() tea.View {
 	defer func() {
 		if r := recover(); r != nil {
-			fmt.Fprintf(os.Stderr, "PANIC in View(): %v\n", r)
+			err := fmt.Errorf("panic in View(): %v", r)
+			telemetry.CaptureException(err, sentry.LevelFatal)
+			logger.Error("PANIC in View(): %v", r)
 		}
 	}()
 
@@ -1847,7 +1852,9 @@ func (m *Model) viewGemInfoModal() string {
 func (m *Model) renderGemInfoModalBox() string {
 	defer func() {
 		if r := recover(); r != nil {
-			fmt.Fprintf(os.Stderr, "PANIC in renderGemInfoModalBox: %v\n", r)
+			err := fmt.Errorf("panic in renderGemInfoModalBox: %v", r)
+			telemetry.CaptureException(err, sentry.LevelFatal)
+			logger.Error("PANIC in renderGemInfoModalBox: %v", r)
 		}
 	}()
 

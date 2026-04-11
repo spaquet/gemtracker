@@ -19,9 +19,11 @@ import (
 
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
+	"github.com/getsentry/sentry-go"
 	"github.com/spaquet/gemtracker/internal/cache"
 	"github.com/spaquet/gemtracker/internal/gemfile"
 	"github.com/spaquet/gemtracker/internal/logger"
+	"github.com/spaquet/gemtracker/internal/telemetry"
 )
 
 // Spinner frames for loading animation (8-frame braille sequence)
@@ -1231,6 +1233,8 @@ func fetchGemInfo(gemName string) tea.Cmd {
 	return func() tea.Msg {
 		defer func() {
 			if r := recover(); r != nil {
+				err := fmt.Errorf("panic in fetchGemInfo for %s: %v", gemName, r)
+				telemetry.CaptureException(err, sentry.LevelFatal)
 				logger.Error("Panic in fetchGemInfo for %s: %v", gemName, r)
 			}
 		}()
@@ -1242,6 +1246,8 @@ func fetchGemInfo(gemName string) tea.Cmd {
 		func() {
 			defer func() {
 				if r := recover(); r != nil {
+					panicErr := fmt.Errorf("panic in GetGemInfo: %v", r)
+					telemetry.CaptureException(panicErr, sentry.LevelFatal)
 					logger.Error("Panic in GetGemInfo: %v", r)
 					err = fmt.Errorf("GetGemInfo panicked: %v", r)
 				}
