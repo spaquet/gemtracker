@@ -82,4 +82,8 @@ homebrew:
     homepage: "https://github.com/spaquet/gemtracker"
     description: "An interactive TUI for analyzing Ruby gem dependencies and security risks"
     license: MIT
-    skip_upload: false
+    directory: Formula
+    install: |
+      bin.install "gemtracker"
+    test: |
+      system "#{bin}/gemtracker", "--version"
