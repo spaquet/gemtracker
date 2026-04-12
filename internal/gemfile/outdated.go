@@ -289,29 +289,42 @@ func (oc *OutdatedChecker) GetVersionCreatedAt(gemName string) string {
 
 // EnrichGemspecDependencies fetches runtime and development dependencies from RubyGems for each
 // gem in the parsed gemspec file. This resolves the full dependency tree that was not available
-// in the gemspec file itself. Dependencies are fetched in parallel with rate limiting to avoid
-// overwhelming the RubyGems API. Returns the number of gems successfully enriched.
+// in the gemspec file itself. Dependencies are cached to avoid duplicate API calls.
+// Returns the number of gems successfully enriched.
 func (oc *OutdatedChecker) EnrichGemspecDependencies(gf *Gemfile) int {
 	if gf == nil || len(gf.Gems) == 0 {
+		logger.Info("No gems to enrich")
 		return 0
 	}
 
 	enrichedCount := 0
+	totalGems := len(gf.Gems)
+	processed := 0
+
+	logger.Info("Starting RubyGems API enrichment for %d gems from gemspec", totalGems)
 
 	// Fetch dependencies for each gem
 	for gemName := range gf.Gems {
+		processed++
 		deps, err := oc.fetchGemDependenciesFromAPI(gemName)
+
 		if err != nil {
-			logger.Info("Skipping dependency enrichment for %q (not found on RubyGems)", gemName)
+			logger.Info("Failed to fetch deps for %q (status: %v)", gemName, err)
 			continue
 		}
 
+		// Set dependencies regardless of whether it's empty (nil vs empty list matters)
+		gf.Gems[gemName].Dependencies = deps
+		enrichedCount++
+
 		if len(deps) > 0 {
-			gf.Gems[gemName].Dependencies = deps
-			enrichedCount++
+			logger.Info("✓ Enriched %q with %d dependencies (%d/%d)", gemName, len(deps), processed, totalGems)
+		} else {
+			logger.Info("✓ Enriched %q (no dependencies) (%d/%d)", gemName, processed, totalGems)
 		}
 	}
 
+	logger.Info("RubyGems enrichment complete: %d/%d gems enriched", enrichedCount, totalGems)
 	return enrichedCount
 }
 
@@ -323,6 +336,7 @@ func (oc *OutdatedChecker) fetchGemDependenciesFromAPI(gemName string) ([]string
 	oc.mu.Lock()
 	if cached, ok := oc.dependencies[gemName]; ok {
 		oc.mu.Unlock()
+		logger.Info("  [cached] %s", gemName)
 		return cached, nil
 	}
 	oc.mu.Unlock()
@@ -331,28 +345,34 @@ func (oc *OutdatedChecker) fetchGemDependenciesFromAPI(gemName string) ([]string
 	url := fmt.Sprintf("https://rubygems.org/api/v1/gems/%s/dependencies", gemName)
 	resp, err := oc.client.Get(url)
 	if err != nil {
+		logger.Info("  [api-err] %s: %v", gemName, err)
 		return nil, fmt.Errorf("failed to fetch dependencies: %w", err)
 	}
 	defer resp.Body.Close()
 
 	// Handle rate limiting and not found
 	if resp.StatusCode == 429 {
+		logger.Info("  [rate-limit] %s", gemName)
 		return nil, fmt.Errorf("rate limited (429) by rubygems.org")
 	}
 	if resp.StatusCode == http.StatusNotFound {
+		logger.Info("  [not-found] %s", gemName)
 		return nil, nil // Gem not found, return empty list
 	}
 	if resp.StatusCode != http.StatusOK {
+		logger.Info("  [http-%d] %s", resp.StatusCode, gemName)
 		return nil, fmt.Errorf("failed to fetch (status %d)", resp.StatusCode)
 	}
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
+		logger.Info("  [read-err] %s: %v", gemName, err)
 		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
 
 	var deps []RubygemesDependency
 	if err := json.Unmarshal(body, &deps); err != nil {
+		logger.Info("  [parse-err] %s: %v", gemName, err)
 		return nil, fmt.Errorf("failed to parse dependencies: %w", err)
 	}
 

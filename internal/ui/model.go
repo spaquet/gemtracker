@@ -674,14 +674,25 @@ func performAnalysisWithProgressStages(gemfilePath string) tea.Cmd {
 
 func performDependencyAnalysis(gemfilePath string, gemName string) tea.Cmd {
 	return func() tea.Msg {
-		gf, err := gemfile.Parse(gemfilePath)
+		var gf *gemfile.Gemfile
+		var err error
+
+		// Detect file type and parse accordingly
+		if strings.HasSuffix(gemfilePath, ".gemspec") {
+			gf, err = gemfile.ParseGemspec(gemfilePath)
+		} else {
+			gf, err = gemfile.Parse(gemfilePath)
+		}
+
 		if err != nil {
 			return DependencyCompleteMsg{Error: err}
 		}
 
-		// Load group information from Gemfile
-		dir := filepath.Dir(gemfilePath)
-		gf.LoadGroupsFromGemfile(dir)
+		// Load group information from Gemfile (only for lock files, not gemspec)
+		if !strings.HasSuffix(gemfilePath, ".gemspec") {
+			dir := filepath.Dir(gemfilePath)
+			gf.LoadGroupsFromGemfile(dir)
+		}
 
 		result := gemfile.AnalyzeDependencies(gf, gemName)
 		return DependencyCompleteMsg{Result: result}
