@@ -476,8 +476,18 @@ func (m *Model) loadProject(path string) {
 	// It's a directory (or doesn't exist yet)
 	m.ProjectPath = absPath
 
-	// For gem projects: try to find a .gemspec file FIRST (it's the authoritative source)
-	// This ensures we get all production dependencies, not just what's in Gemfile.lock
+	// Priority order: lock files first (resolved dependencies), then gemspec (declared dependencies)
+
+	// 1. Check for lock files first (gems.locked, then Gemfile.lock)
+	lockFile := gemfile.FindLockFile(m.ProjectPath)
+	if lockFile != "" {
+		m.GemfileLockPath = lockFile
+		m.GemfileSource = filepath.Base(lockFile)
+		logger.Info("Project loaded from lock file: %s", m.GemfileSource)
+		return
+	}
+
+	// 2. Check for .gemspec file (only if no lock file found)
 	files, err := os.ReadDir(m.ProjectPath)
 	if err == nil {
 		for _, file := range files {
@@ -490,19 +500,10 @@ func (m *Model) loadProject(path string) {
 		}
 	}
 
-	// For Rails/Bundler projects: try to find a lock file (gems.locked or Gemfile.lock)
-	lockFile := gemfile.FindLockFile(m.ProjectPath)
-	if lockFile != "" {
-		m.GemfileLockPath = lockFile
-		m.GemfileSource = filepath.Base(lockFile)
-		logger.Info("Project loaded from lock file: %s", m.GemfileSource)
-		return
-	}
-
-	// Fallback to Gemfile.lock (default behavior for backward compatibility)
+	// 3. No dependency files found - set default but don't log success
 	m.GemfileLockPath = filepath.Join(m.ProjectPath, "Gemfile.lock")
 	m.GemfileSource = "Gemfile.lock"
-	logger.Info("No files found, defaulting to: %s", m.GemfileSource)
+	logger.Warn("No dependency files found (gems.locked, Gemfile.lock, or .gemspec) in %s", m.ProjectPath)
 }
 
 // ============================================================================
@@ -532,7 +533,9 @@ func performAnalysis(gemfilePath string, noCache bool) tea.Cmd {
 		var gf *gemfile.Gemfile
 		var err error
 
-		if strings.HasSuffix(gemfilePath, ".gemspec") {
+		isGemspec := strings.HasSuffix(gemfilePath, ".gemspec")
+
+		if isGemspec {
 			gf, err = gemfile.ParseGemspec(gemfilePath)
 		} else {
 			gf, err = gemfile.Parse(gemfilePath)
@@ -546,13 +549,19 @@ func performAnalysis(gemfilePath string, noCache bool) tea.Cmd {
 		}
 
 		// Load group information from Gemfile (only for lock files, not gemspec)
-		if !strings.HasSuffix(gemfilePath, ".gemspec") {
+		if !isGemspec {
 			dir := filepath.Dir(gemfilePath)
 			gf.LoadGroupsFromGemfile(dir)
 		}
 
 		// Create the outdated checker once and reuse it
 		outdatedChecker := gemfile.NewOutdatedChecker()
+
+		// If analyzing a gemspec-only project, enrich dependencies from RubyGems API
+		if isGemspec {
+			logger.Info("Enriching gemspec dependencies from RubyGems API...")
+			outdatedChecker.EnrichGemspecDependencies(gf)
+		}
 
 		result := gemfile.Analyze(gf)
 		// Lazy load source code URIs during health fetching to keep UI responsive
@@ -665,14 +674,32 @@ func performAnalysisWithProgressStages(gemfilePath string) tea.Cmd {
 
 func performDependencyAnalysis(gemfilePath string, gemName string) tea.Cmd {
 	return func() tea.Msg {
-		gf, err := gemfile.Parse(gemfilePath)
+		var gf *gemfile.Gemfile
+		var err error
+		isGemspec := strings.HasSuffix(gemfilePath, ".gemspec")
+
+		// Detect file type and parse accordingly
+		if isGemspec {
+			gf, err = gemfile.ParseGemspec(gemfilePath)
+		} else {
+			gf, err = gemfile.Parse(gemfilePath)
+		}
+
 		if err != nil {
 			return DependencyCompleteMsg{Error: err}
 		}
 
-		// Load group information from Gemfile
-		dir := filepath.Dir(gemfilePath)
-		gf.LoadGroupsFromGemfile(dir)
+		// Load group information from Gemfile (only for lock files, not gemspec)
+		if !isGemspec {
+			dir := filepath.Dir(gemfilePath)
+			gf.LoadGroupsFromGemfile(dir)
+		}
+
+		// Enrich gemspec dependencies from RubyGems API
+		if isGemspec {
+			outdatedChecker := gemfile.NewOutdatedChecker()
+			outdatedChecker.EnrichGemspecDependencies(gf)
+		}
 
 		result := gemfile.AnalyzeDependencies(gf, gemName)
 		return DependencyCompleteMsg{Result: result}

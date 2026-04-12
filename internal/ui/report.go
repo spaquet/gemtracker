@@ -161,6 +161,59 @@ func resolveOutputPath(outputPath string) (string, bool, error) {
 	}
 }
 
+// parseProjectDependencies detects whether the project has a lock file or gemspec and parses accordingly.
+// Returns the parsed Gemfile, a boolean indicating if it's a gemspec, and any error.
+func parseProjectDependencies(projectPath string) (*gemfile.Gemfile, bool, error) {
+	// Expand ~ to home directory
+	expandedPath := projectPath
+	if len(projectPath) > 0 && projectPath[0] == '~' {
+		home := os.Getenv("HOME")
+		expandedPath = home + projectPath[1:]
+	}
+
+	// Convert to absolute path
+	absPath, err := filepath.Abs(expandedPath)
+	if err != nil {
+		absPath = expandedPath
+	}
+
+	// Check if it's a directory
+	fileInfo, err := os.Stat(absPath)
+	if err == nil && !fileInfo.IsDir() {
+		// It's a file - check if it's a gemspec
+		if strings.HasSuffix(absPath, ".gemspec") {
+			gf, err := gemfile.ParseGemspec(absPath)
+			return gf, true, err
+		}
+		// It's a lock file
+		gf, err := gemfile.Parse(absPath)
+		return gf, false, err
+	}
+
+	// It's a directory - find the appropriate file
+	// Try lock files first
+	lockFile := gemfile.FindLockFile(absPath)
+	if lockFile != "" {
+		gf, err := gemfile.Parse(lockFile)
+		return gf, false, err
+	}
+
+	// Try gemspec next
+	files, err := os.ReadDir(absPath)
+	if err == nil {
+		for _, file := range files {
+			if !file.IsDir() && strings.HasSuffix(file.Name(), ".gemspec") {
+				gemspecPath := filepath.Join(absPath, file.Name())
+				gf, err := gemfile.ParseGemspec(gemspecPath)
+				return gf, true, err
+			}
+		}
+	}
+
+	// No dependency files found
+	return nil, false, fmt.Errorf("no dependency files found (gems.locked, Gemfile.lock, or .gemspec) in %s", absPath)
+}
+
 // Generate analyzes the project and generates a report in the specified format (text, csv, or json).
 // If outputPath is empty, writes to stdout. Returns an error if analysis or report writing fails.
 func (rg *ReportGenerator) Generate(format, outputPath string) error {
@@ -174,13 +227,13 @@ func (rg *ReportGenerator) Generate(format, outputPath string) error {
 		return nil
 	}
 	outputPath = resolvedPath // use the resolved (possibly new) path
-	// Parse the Gemfile
-	printProgress("Parsing Gemfile.lock...")
-	gf, err := gemfile.Parse(rg.projectPath)
+	// Parse the Gemfile or Gemspec
+	printProgress("Parsing dependencies...")
+	gf, isGemspec, err := parseProjectDependencies(rg.projectPath)
 	if err != nil {
-		return fmt.Errorf("failed to parse gemfile: %w", err)
+		return fmt.Errorf("failed to parse dependencies: %w", err)
 	}
-	logger.Info("Parsing Gemfile...")
+	logger.Info("Parsed %d gems", len(gf.GetGemsAsList()))
 	printProgressDone("✓ Parsed %d gems", len(gf.GetGemsAsList()))
 
 	// Analyze gems
@@ -191,6 +244,12 @@ func (rg *ReportGenerator) Generate(format, outputPath string) error {
 	printProgress("Checking for outdated gems... ")
 	logger.Info("Checking for outdated gems...")
 	outdatedChecker := gemfile.NewOutdatedChecker()
+
+	// If analyzing a gemspec-only project, enrich dependencies from RubyGems API
+	if isGemspec {
+		logger.Info("Enriching gemspec dependencies from RubyGems API...")
+		outdatedChecker.EnrichGemspecDependencies(gf)
+	}
 
 	// Build gem status map
 	gemStatusMap := make(map[string]*gemfile.GemStatus)

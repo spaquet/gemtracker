@@ -5,6 +5,35 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v1.2.6] - 2026-04-12
+
+### Added
+- **Gemspec-Only Project Support** - Analyze Ruby gems and libraries without Gemfile.lock
+  - Automatically detects and parses `.gemspec` files when Gemfile.lock is absent
+  - Enriches dependencies from RubyGems API to populate full dependency tree
+  - File detection order: Gemfile.lock → gems.locked → .gemspec
+  - Enables dependency analysis for gem development projects and libraries
+
+### Fixed
+- **Sentry Release Source Upload** - Fixed incorrect sentry-cli command syntax
+  - Changed from non-existent `upload-sourcemaps` to correct `upload` subcommand
+  - Properly uploads Go source files for code context in Sentry error tracking
+- **PATH Section Parsing in Gemfile.lock** - Fixed parsing of local gem references
+  - Now correctly handles PATH sections for gems sourced from local directories
+  - Enables proper parsing of gemspec-based projects with local path gems
+
+### Improved
+- **Dependency Detection Robustness** - Better error handling for missing dependency files
+  - Gracefully reports when no dependency files (lock or gemspec) are found
+  - Clearer error messages guide users to available formats
+
+### Known Limitations
+- **Gemspec-Only Projects**: When parsing `.gemspec` files without a lock file:
+  - Dependency **versions** are not guaranteed (shown as `?` when unavailable)
+  - "Used By" relationships may be empty (would require full lock file for complete reverse dependency analysis)
+  - RubyGems API provides forward dependencies but cannot reverse-map all consuming gems
+  - Full analysis requires `Gemfile.lock` for complete dependency graph with versions
+
 ## [v1.2.5] - 2026-04-11
 
 ### Fixed

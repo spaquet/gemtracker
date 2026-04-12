@@ -26,6 +26,32 @@ type RubygemeInfo struct {
 	Info string `json:"info"`
 }
 
+// RubygemesDependency represents a dependency from the RubyGems API response.
+type RubygemesDependency struct {
+	// Name is the name of the dependency gem
+	Name string `json:"name"`
+	// Requirements describes the version constraint(s) for this dependency
+	Requirements interface{} `json:"requirements"`
+}
+
+// RubygemsDependencies groups runtime and development dependencies from the API.
+type RubygemsDependencies struct {
+	// Runtime dependencies (production gems required for the app to run)
+	Runtime []RubygemesDependency `json:"runtime"`
+	// Development dependencies (development and test gems)
+	Development []RubygemesDependency `json:"development"`
+}
+
+// DependencyType distinguishes between runtime and development dependencies.
+type DependencyType int
+
+const (
+	// RuntimeDependency is a production runtime dependency
+	RuntimeDependency DependencyType = iota
+	// DevelopmentDependency is a development-only dependency
+	DevelopmentDependency
+)
+
 // OutdatedChecker checks if gems have newer versions available and fetches gem metadata
 // from the rubygems.org API. It caches all results to minimize API calls.
 type OutdatedChecker struct {
@@ -43,6 +69,8 @@ type OutdatedChecker struct {
 	sourceCodeURIs map[string]string
 	// versionCreatedAts maps gem names to the release timestamp of the latest version
 	versionCreatedAts map[string]string
+	// dependencies maps gem names to their dependency lists (for gemspec enrichment)
+	dependencies map[string][]string
 }
 
 // NewOutdatedChecker creates a new OutdatedChecker with a 10-second HTTP timeout
@@ -57,6 +85,7 @@ func NewOutdatedChecker() *OutdatedChecker {
 		descriptions:      make(map[string]string),
 		sourceCodeURIs:    make(map[string]string),
 		versionCreatedAts: make(map[string]string),
+		dependencies:      make(map[string][]string),
 	}
 }
 
@@ -264,6 +293,128 @@ func (oc *OutdatedChecker) GetVersionCreatedAt(gemName string) string {
 	oc.mu.Unlock()
 
 	return ""
+}
+
+// EnrichGemspecDependencies fetches runtime and development dependencies from RubyGems for each
+// gem in the parsed gemspec file. This resolves the full dependency tree that was not available
+// in the gemspec file itself. Dependencies are cached to avoid duplicate API calls.
+// Returns the number of gems successfully enriched.
+func (oc *OutdatedChecker) EnrichGemspecDependencies(gf *Gemfile) int {
+	if gf == nil || len(gf.Gems) == 0 {
+		logger.Info("No gems to enrich")
+		return 0
+	}
+
+	enrichedCount := 0
+	totalGems := len(gf.Gems)
+	processed := 0
+
+	logger.Info("Starting RubyGems API enrichment for %d gems from gemspec", totalGems)
+
+	// Fetch dependencies for each gem
+	for gemName := range gf.Gems {
+		processed++
+		deps, err := oc.fetchGemDependenciesFromAPI(gemName)
+
+		if err != nil {
+			logger.Info("Failed to fetch deps for %q (status: %v)", gemName, err)
+			continue
+		}
+
+		// Set dependencies regardless of whether it's empty (nil vs empty list matters)
+		gf.Gems[gemName].Dependencies = deps
+		enrichedCount++
+
+		if len(deps) > 0 {
+			logger.Info("✓ Enriched %q with %d dependencies (%d/%d)", gemName, len(deps), processed, totalGems)
+		} else {
+			logger.Info("✓ Enriched %q (no dependencies) (%d/%d)", gemName, processed, totalGems)
+		}
+	}
+
+	logger.Info("RubyGems enrichment complete: %d/%d gems enriched", enrichedCount, totalGems)
+	return enrichedCount
+}
+
+// fetchGemDependenciesFromAPI fetches the list of dependency gem names for a given gem
+// from the RubyGems API (combines runtime and development dependencies).
+// Returns cached results if available. Returns an empty list if the gem is not found or an error occurs.
+func (oc *OutdatedChecker) fetchGemDependenciesFromAPI(gemName string) ([]string, error) {
+	// Check cache first
+	oc.mu.Lock()
+	if cached, ok := oc.dependencies[gemName]; ok {
+		oc.mu.Unlock()
+		logger.Info("  [cached] %s", gemName)
+		return cached, nil
+	}
+	oc.mu.Unlock()
+
+	// Query the RubyGems gem info API which includes dependencies
+	url := fmt.Sprintf("https://rubygems.org/api/v1/gems/%s.json", gemName)
+	resp, err := oc.client.Get(url)
+	if err != nil {
+		logger.Info("  [api-err] %s: %v", gemName, err)
+		return nil, fmt.Errorf("failed to fetch gem info: %w", err)
+	}
+	defer resp.Body.Close()
+
+	// Handle rate limiting and not found
+	if resp.StatusCode == 429 {
+		logger.Info("  [rate-limit] %s", gemName)
+		return nil, fmt.Errorf("rate limited (429) by rubygems.org")
+	}
+	if resp.StatusCode == http.StatusNotFound {
+		logger.Info("  [not-found] %s", gemName)
+		return nil, nil // Gem not found, return empty list
+	}
+	if resp.StatusCode != http.StatusOK {
+		logger.Info("  [http-%d] %s", resp.StatusCode, gemName)
+		return nil, fmt.Errorf("failed to fetch (status %d)", resp.StatusCode)
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		logger.Info("  [read-err] %s: %v", gemName, err)
+		return nil, fmt.Errorf("failed to read response: %w", err)
+	}
+
+	// Parse the gem info response containing dependencies
+	var gemInfo struct {
+		Dependencies RubygemsDependencies `json:"dependencies"`
+	}
+	if err := json.Unmarshal(body, &gemInfo); err != nil {
+		logger.Info("  [parse-err] %s: %v", gemName, err)
+		return nil, fmt.Errorf("failed to parse gem info: %w", err)
+	}
+
+	// Extract dependency names from both runtime and development
+	depNames := extractDependencyNames(gemInfo.Dependencies)
+
+	// Cache the result
+	oc.mu.Lock()
+	oc.dependencies[gemName] = depNames
+	oc.mu.Unlock()
+
+	return depNames, nil
+}
+
+// extractDependencyNames extracts gem names from runtime and development dependencies.
+func extractDependencyNames(deps RubygemsDependencies) []string {
+	depNames := make([]string, 0, len(deps.Runtime)+len(deps.Development))
+
+	for _, dep := range deps.Runtime {
+		if dep.Name != "" {
+			depNames = append(depNames, strings.ToLower(dep.Name))
+		}
+	}
+
+	for _, dep := range deps.Development {
+		if dep.Name != "" {
+			depNames = append(depNames, strings.ToLower(dep.Name))
+		}
+	}
+
+	return depNames
 }
 
 // stripPlatformSuffix removes platform/architecture suffixes from version strings while preserving

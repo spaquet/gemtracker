@@ -123,6 +123,9 @@ func processParserLine(line string, gf *Gemfile, state *parseState, gemLineRegex
 		state.inSection = newSection
 		if newSection == "GEM" {
 			state.currentSource = "https://rubygems.org/"
+		} else if newSection == "PATH" {
+			// PATH section source will be set by the remote line, default to "."
+			state.currentSource = "."
 		}
 		return false
 	}
@@ -131,8 +134,8 @@ func processParserLine(line string, gf *Gemfile, state *parseState, gemLineRegex
 		return false
 	}
 
-	// Parse remote lines in GIT section
-	if state.inSection == "GIT" {
+	// Parse remote lines in GIT and PATH sections
+	if state.inSection == "GIT" || state.inSection == "PATH" {
 		remoteMatches := remoteRegex.FindStringSubmatch(line)
 		if len(remoteMatches) > 0 {
 			state.currentSource = strings.TrimSpace(remoteMatches[1])
@@ -140,8 +143,8 @@ func processParserLine(line string, gf *Gemfile, state *parseState, gemLineRegex
 		}
 	}
 
-	// Parse GIT and GEM sections
-	if state.inSection == "GIT" || state.inSection == "GEM" {
+	// Parse GIT, PATH, and GEM sections (all contain gem specifications)
+	if state.inSection == "GIT" || state.inSection == "PATH" || state.inSection == "GEM" {
 		state.currentGem = parseGemOrGitLine(line, gf, state.currentGem, gemLineRegex, dependencyRegex)
 		if state.currentGem != nil && state.currentGem.Source == "" {
 			state.currentGem.Source = state.currentSource
@@ -161,6 +164,8 @@ func processParserLine(line string, gf *Gemfile, state *parseState, gemLineRegex
 // and a boolean indicating whether it's a section header.
 func detectSection(line string) (string, bool) {
 	switch {
+	case strings.HasPrefix(line, "PATH"):
+		return "PATH", true
 	case strings.HasPrefix(line, "GIT"):
 		return "GIT", true
 	case strings.HasPrefix(line, "GEM"):
