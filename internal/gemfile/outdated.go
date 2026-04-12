@@ -26,12 +26,20 @@ type RubygemeInfo struct {
 	Info string `json:"info"`
 }
 
-// RubygemesDependency represents a dependency returned by the RubyGems dependencies API.
+// RubygemesDependency represents a dependency from the RubyGems API response.
 type RubygemesDependency struct {
 	// Name is the name of the dependency gem
 	Name string `json:"name"`
 	// Requirements describes the version constraint(s) for this dependency
 	Requirements interface{} `json:"requirements"`
+}
+
+// RubygemsDependencies groups runtime and development dependencies from the API.
+type RubygemsDependencies struct {
+	// Runtime dependencies (production gems required for the app to run)
+	Runtime []RubygemesDependency `json:"runtime"`
+	// Development dependencies (development and test gems)
+	Development []RubygemesDependency `json:"development"`
 }
 
 // DependencyType distinguishes between runtime and development dependencies.
@@ -329,8 +337,8 @@ func (oc *OutdatedChecker) EnrichGemspecDependencies(gf *Gemfile) int {
 }
 
 // fetchGemDependenciesFromAPI fetches the list of dependency gem names for a given gem
-// from the RubyGems dependencies API. Returns cached results if available.
-// Returns an empty list if the gem is not found or an error occurs.
+// from the RubyGems API (combines runtime and development dependencies).
+// Returns cached results if available. Returns an empty list if the gem is not found or an error occurs.
 func (oc *OutdatedChecker) fetchGemDependenciesFromAPI(gemName string) ([]string, error) {
 	// Check cache first
 	oc.mu.Lock()
@@ -341,12 +349,12 @@ func (oc *OutdatedChecker) fetchGemDependenciesFromAPI(gemName string) ([]string
 	}
 	oc.mu.Unlock()
 
-	// Query the RubyGems dependencies API
-	url := fmt.Sprintf("https://rubygems.org/api/v1/gems/%s/dependencies", gemName)
+	// Query the RubyGems gem info API which includes dependencies
+	url := fmt.Sprintf("https://rubygems.org/api/v1/gems/%s.json", gemName)
 	resp, err := oc.client.Get(url)
 	if err != nil {
 		logger.Info("  [api-err] %s: %v", gemName, err)
-		return nil, fmt.Errorf("failed to fetch dependencies: %w", err)
+		return nil, fmt.Errorf("failed to fetch gem info: %w", err)
 	}
 	defer resp.Body.Close()
 
@@ -370,19 +378,17 @@ func (oc *OutdatedChecker) fetchGemDependenciesFromAPI(gemName string) ([]string
 		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
 
-	var deps []RubygemesDependency
-	if err := json.Unmarshal(body, &deps); err != nil {
+	// Parse the gem info response containing dependencies
+	var gemInfo struct {
+		Dependencies RubygemsDependencies `json:"dependencies"`
+	}
+	if err := json.Unmarshal(body, &gemInfo); err != nil {
 		logger.Info("  [parse-err] %s: %v", gemName, err)
-		return nil, fmt.Errorf("failed to parse dependencies: %w", err)
+		return nil, fmt.Errorf("failed to parse gem info: %w", err)
 	}
 
-	// Extract just the dependency names
-	depNames := make([]string, 0, len(deps))
-	for _, dep := range deps {
-		if dep.Name != "" {
-			depNames = append(depNames, strings.ToLower(dep.Name))
-		}
-	}
+	// Extract dependency names from both runtime and development
+	depNames := extractDependencyNames(gemInfo.Dependencies)
 
 	// Cache the result
 	oc.mu.Lock()
@@ -390,6 +396,25 @@ func (oc *OutdatedChecker) fetchGemDependenciesFromAPI(gemName string) ([]string
 	oc.mu.Unlock()
 
 	return depNames, nil
+}
+
+// extractDependencyNames extracts gem names from runtime and development dependencies.
+func extractDependencyNames(deps RubygemsDependencies) []string {
+	depNames := make([]string, 0, len(deps.Runtime)+len(deps.Development))
+
+	for _, dep := range deps.Runtime {
+		if dep.Name != "" {
+			depNames = append(depNames, strings.ToLower(dep.Name))
+		}
+	}
+
+	for _, dep := range deps.Development {
+		if dep.Name != "" {
+			depNames = append(depNames, strings.ToLower(dep.Name))
+		}
+	}
+
+	return depNames
 }
 
 // stripPlatformSuffix removes platform/architecture suffixes from version strings while preserving
