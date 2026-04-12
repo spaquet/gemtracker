@@ -676,9 +676,10 @@ func performDependencyAnalysis(gemfilePath string, gemName string) tea.Cmd {
 	return func() tea.Msg {
 		var gf *gemfile.Gemfile
 		var err error
+		isGemspec := strings.HasSuffix(gemfilePath, ".gemspec")
 
 		// Detect file type and parse accordingly
-		if strings.HasSuffix(gemfilePath, ".gemspec") {
+		if isGemspec {
 			gf, err = gemfile.ParseGemspec(gemfilePath)
 		} else {
 			gf, err = gemfile.Parse(gemfilePath)
@@ -689,9 +690,15 @@ func performDependencyAnalysis(gemfilePath string, gemName string) tea.Cmd {
 		}
 
 		// Load group information from Gemfile (only for lock files, not gemspec)
-		if !strings.HasSuffix(gemfilePath, ".gemspec") {
+		if !isGemspec {
 			dir := filepath.Dir(gemfilePath)
 			gf.LoadGroupsFromGemfile(dir)
+		}
+
+		// Enrich gemspec dependencies from RubyGems API
+		if isGemspec {
+			outdatedChecker := gemfile.NewOutdatedChecker()
+			outdatedChecker.EnrichGemspecDependencies(gf)
 		}
 
 		result := gemfile.AnalyzeDependencies(gf, gemName)
