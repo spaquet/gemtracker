@@ -124,7 +124,7 @@ make build
 
 ### Basic Usage
 ```bash
-# Analyze current directory (must contain Gemfile.lock)
+# Analyze current directory (looks for Gemfile.lock, gems.locked, or .gemspec)
 gemtracker
 
 # Analyze specific project
@@ -133,6 +133,9 @@ gemtracker /path/to/project
 # Analyze specific Gemfile.lock directly
 gemtracker /path/to/project/Gemfile.lock
 
+# Analyze gem project with .gemspec (enriches dependencies from RubyGems API)
+gemtracker /path/to/gem-project
+
 # Expand tilde for home directory
 gemtracker ~/my-rails-app
 
@@ -140,6 +143,11 @@ gemtracker ~/my-rails-app
 gemtracker -v
 gemtracker --version
 ```
+
+**Supported Input Files** (auto-detected in this priority order):
+1. **Gemfile.lock** - Resolved dependencies with exact versions (recommended)
+2. **gems.locked** - Alternative lock file format
+3. **.gemspec** - Gem specification file (enriches from RubyGems API, see [Known Limitations](#known-limitations))
 
 ### Export Reports for CI/CD
 
@@ -614,7 +622,12 @@ Once gemtracker has stable releases, we plan to submit it to [homebrew/homebrew-
 
 ## Known Limitations
 
-- Only parses standard Gemfile.lock format
+- **Gemspec-Only Projects**: When analyzing `.gemspec` files without `Gemfile.lock`:
+  - Dependency versions are **not guaranteed** (shown as `?` when unavailable)
+  - "Used By" relationships may be incomplete (would require full lock file for complete reverse dependency graph)
+  - Forward dependencies are fetched from RubyGems API, but version resolution is limited
+  - **Recommendation**: Generate a `Gemfile.lock` with `bundle lock` for complete analysis
+
 - Outdated version checking requires network access
 - CVE database is static (not real-time updated)
 - No support for Gemfile global options or git/path sources yet
