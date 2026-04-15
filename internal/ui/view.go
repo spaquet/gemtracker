@@ -813,9 +813,10 @@ func (m *Model) viewGemDetail() string {
 		forwardTitle = fmt.Sprintf("Dependencies of %s", currentGem)
 	}
 
-	// Format titles with width constraint
-	forwardTitleFormatted := truncateStr(forwardTitle, panelWidth-2)
-	reverseTitleFormatted := truncateStr(reverseTitle, panelWidth-2)
+	// Format titles with width constraint and apply text styling
+	titleStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(ColorText))
+	forwardTitleFormatted := titleStyle.Render(truncateStr(forwardTitle, panelWidth-2))
+	reverseTitleFormatted := titleStyle.Render(truncateStr(reverseTitle, panelWidth-2))
 
 	forwardSection := lipgloss.JoinVertical(lipgloss.Left,
 		forwardTitleFormatted,
@@ -1044,7 +1045,8 @@ func (m *Model) renderHealthSection(health *gemfile.GemHealth, maxLen int) []str
 		scoreStr = "? UNKNOWN"
 	}
 
-	healthHeader := "  Health: " + scoreStyle.Render(scoreStr)
+	healthHeaderText := lipgloss.NewStyle().Foreground(lipgloss.Color(ColorText)).Render("  Health: ")
+	healthHeader := healthHeaderText + scoreStyle.Render(scoreStr)
 	lines = append(lines, healthHeader)
 
 	// Health details line
