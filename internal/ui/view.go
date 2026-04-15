@@ -2122,7 +2122,7 @@ func (m *Model) renderProjectInfo(height int) string {
 	// Padding to fill height
 	lines := sections
 	for len(lines) < height {
-		lines = append(lines, "")
+		lines = append(lines, AppBackgroundStyle.Width(m.Width).Render(""))
 	}
 
 	return lipgloss.JoinVertical(lipgloss.Left, lines[:height]...)
