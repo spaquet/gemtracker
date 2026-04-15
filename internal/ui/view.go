@@ -2122,13 +2122,18 @@ func (m *Model) renderProjectInfo(height int) string {
 		}
 	}
 
-	// Padding to fill height
-	lines := sections
-	for len(lines) < height {
-		lines = append(lines, AppBackgroundStyle.Width(m.Width).Render(""))
+	// Pad each line to full width with background color
+	var paddedLines []string
+	for _, line := range sections {
+		paddedLines = append(paddedLines, AppBackgroundStyle.Width(m.Width).Render(line))
 	}
 
-	return lipgloss.JoinVertical(lipgloss.Left, lines[:height]...)
+	// Padding to fill height
+	for len(paddedLines) < height {
+		paddedLines = append(paddedLines, AppBackgroundStyle.Width(m.Width).Render(""))
+	}
+
+	return lipgloss.JoinVertical(lipgloss.Left, paddedLines[:height]...)
 }
 
 func (m *Model) formatInfoLine(label string, value string) string {
