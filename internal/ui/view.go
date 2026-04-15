@@ -359,7 +359,7 @@ func (m *Model) renderAppHeader() string {
 	spacer := strings.Repeat(" ", spacerCount)
 
 	// Apply background to spacer to fill full width
-	headerStyle := lipgloss.NewStyle().Background(lipgloss.Color(ColorSurface))
+	headerStyle := lipgloss.NewStyle().Background(lipgloss.Color("#3a3a3a"))
 	headerSpaceFill := headerStyle.Render(spacer)
 
 	return left + headerSpaceFill + right
@@ -393,7 +393,7 @@ func (m *Model) renderTabBar() string {
 
 	// Fill remaining width with background
 	if tabWidth < m.Width {
-		fillStyle := lipgloss.NewStyle().Background(lipgloss.Color(ColorSurface))
+		fillStyle := lipgloss.NewStyle().Background(lipgloss.Color("#3a3a3a"))
 		fillWidth := m.Width - tabWidth
 		fill := fillStyle.Render(strings.Repeat(" ", fillWidth))
 		tabContent = tabContent + fill
@@ -415,17 +415,23 @@ func (m *Model) renderStatusBar() string {
 	if m.OutdatedLoading {
 		doneCount := len(m.FirstLevelGems) - len(m.OutdatedPending)
 		outdatedStatus := fmt.Sprintf("Checking updates... (%d/%d)", doneCount, len(m.FirstLevelGems))
-		statusStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(ColorWarning))
+		statusStyle := lipgloss.NewStyle().
+			Foreground(lipgloss.Color(ColorWarning)).
+			Background(lipgloss.Color("#262626"))
 		statusParts = append(statusParts, statusStyle.Render(outdatedStatus))
 	}
 
 	if m.HealthLoading {
 		healthStatus := fmt.Sprintf("Fetching health... (%d/%d)", m.HealthLoadedCount, m.HealthTotalCount)
-		healthStatusStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(ColorWarning))
+		healthStatusStyle := lipgloss.NewStyle().
+			Foreground(lipgloss.Color(ColorWarning)).
+			Background(lipgloss.Color("#262626"))
 		statusParts = append(statusParts, healthStatusStyle.Render(healthStatus))
 	}
 
-	errorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(ColorDanger))
+	errorStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color(ColorDanger)).
+		Background(lipgloss.Color("#262626"))
 	if m.OutdatedRateLimited {
 		statusParts = append(statusParts, errorStyle.Render("updates: rate limited"))
 	}
