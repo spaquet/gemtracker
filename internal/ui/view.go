@@ -11,6 +11,7 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/getsentry/sentry-go"
+	"github.com/lucasb-eyer/go-colorful"
 	"github.com/spaquet/gemtracker/internal/gemfile"
 	"github.com/spaquet/gemtracker/internal/logger"
 	"github.com/spaquet/gemtracker/internal/telemetry"
@@ -163,7 +164,10 @@ func (m *Model) View() tea.View {
 	content := m.renderCurrentView()
 	v := tea.NewView(content)
 	v.AltScreen = true
-	v.BackgroundColor = lipgloss.Color("#262626")
+
+	bgColor, _ := colorful.Hex("#262626")
+	v.BackgroundColor = bgColor
+
 	return v
 }
 
