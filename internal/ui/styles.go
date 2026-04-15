@@ -38,13 +38,21 @@ const (
 )
 
 // ============================================================================
+// Base Container Style
+// ============================================================================
+
+// AppBackgroundStyle ensures consistent dark background regardless of terminal theme
+var AppBackgroundStyle = lipgloss.NewStyle().
+	Background(lipgloss.Color("#262626"))
+
+// ============================================================================
 // App Chrome Styles
 // ============================================================================
 
 var AppHeaderStyle = lipgloss.NewStyle().
 	Foreground(lipgloss.Color(ColorPrimary)).
 	Bold(true).
-	Background(lipgloss.Color(ColorSurface)).
+	Background(lipgloss.Color("#262626")).
 	Padding(0, 2)
 
 var ProjectPathStyle = lipgloss.NewStyle().
@@ -61,13 +69,13 @@ var AppVersionStyle = lipgloss.NewStyle().
 var TabStyle = lipgloss.NewStyle().
 	Foreground(lipgloss.Color(ColorTabInactive)).
 	Padding(0, 2).
-	Background(lipgloss.Color(ColorSurface))
+	Background(lipgloss.Color("#3a3a3a"))
 
 var TabActiveStyle = lipgloss.NewStyle().
 	Foreground(lipgloss.Color(ColorTabActive)).
 	Bold(true).
 	Padding(0, 2).
-	Background(lipgloss.Color(ColorSurface)).
+	Background(lipgloss.Color("#3a3a3a")).
 	Underline(true)
 
 // ============================================================================
@@ -75,7 +83,7 @@ var TabActiveStyle = lipgloss.NewStyle().
 // ============================================================================
 
 var StatusBarStyle = lipgloss.NewStyle().
-	Background(lipgloss.Color(ColorSurface)).
+	Background(lipgloss.Color("#3a3a3a")).
 	Foreground(lipgloss.Color(ColorTextMuted)).
 	Padding(0, 2)
 
@@ -150,11 +158,13 @@ var PanelTitleStyle = lipgloss.NewStyle().
 var PanelBorderStyle = lipgloss.NewStyle().
 	Border(lipgloss.RoundedBorder()).
 	BorderForeground(lipgloss.Color(ColorBorder)).
+	Background(lipgloss.Color("#262626")).
 	Padding(0, 1)
 
 var PanelBorderActiveStyle = lipgloss.NewStyle().
 	Border(lipgloss.RoundedBorder()).
 	BorderForeground(lipgloss.Color(ColorBorderActive)).
+	Background(lipgloss.Color("#262626")).
 	Padding(0, 1)
 
 // ============================================================================
@@ -168,11 +178,13 @@ var SearchPromptStyle = lipgloss.NewStyle().
 var SearchBoxStyle = lipgloss.NewStyle().
 	Border(lipgloss.RoundedBorder()).
 	BorderForeground(lipgloss.Color(ColorBorderActive)).
+	Background(lipgloss.Color("#262626")).
 	Padding(0, 1)
 
 var InputBoxStyle = lipgloss.NewStyle().
 	Border(lipgloss.RoundedBorder()).
 	BorderForeground(lipgloss.Color(ColorBorder)).
+	Background(lipgloss.Color("#262626")).
 	Padding(0, 1)
 
 // ============================================================================
@@ -208,6 +220,7 @@ var ErrorBoxStyle = lipgloss.NewStyle().
 	BorderForeground(lipgloss.Color(ColorDanger)).
 	Foreground(lipgloss.Color(ColorDanger)).
 	Bold(true).
+	Background(lipgloss.Color("#262626")).
 	Padding(1, 2)
 
 var ErrorTitleStyle = lipgloss.NewStyle().
@@ -222,7 +235,7 @@ var ErrorMessageStyle = lipgloss.NewStyle().
 // ============================================================================
 
 var UpdateBarStyle = lipgloss.NewStyle().
-	Background(lipgloss.Color(ColorSurface)).
+	Background(lipgloss.Color("#3a3a3a")).
 	Foreground(lipgloss.Color(ColorWarning)).
 	Padding(0, 2)
 

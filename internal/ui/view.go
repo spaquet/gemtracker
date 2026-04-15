@@ -295,7 +295,8 @@ func (m *Model) assembleViewWithChrome(contentString string) string {
 	contentHeight := len(allLines) - 2 // -2 for header and tabbar
 	paddingNeeded := availableForContent - contentHeight
 	for i := 0; i < paddingNeeded; i++ {
-		allLines = append(allLines, "")
+		// Create padded empty line with background color
+		allLines = append(allLines, AppBackgroundStyle.Width(m.Width).Render(""))
 	}
 
 	// Add status bar (can be multi-line)
@@ -314,7 +315,9 @@ func (m *Model) assembleViewWithChrome(contentString string) string {
 		allLines = allLines[:m.Height]
 	}
 
-	return lipgloss.JoinVertical(lipgloss.Left, allLines...)
+	result := lipgloss.JoinVertical(lipgloss.Left, allLines...)
+	// Apply background to entire result to ensure uniform color across all empty space
+	return AppBackgroundStyle.Width(m.Width).Render(result)
 }
 
 func (m *Model) renderAppHeader() string {
