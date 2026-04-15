@@ -1111,7 +1111,9 @@ func (m *Model) viewSearch() string {
 	if searchInputWidth < 10 {
 		searchInputWidth = 10
 	}
-	searchInput := SearchBoxStyle.Width(searchInputWidth).Render(m.SearchInput.View())
+	inputTextStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(ColorText))
+	styledInputView := inputTextStyle.Render(m.SearchInput.View())
+	searchInput := SearchBoxStyle.Width(searchInputWidth).Render(styledInputView)
 	searchLine := lipgloss.JoinHorizontal(lipgloss.Top, searchPrompt, searchInput)
 
 	// Search results - account for header (1), tabbar (1), searchLine (1), and statusbar (1-2)
@@ -1141,7 +1143,7 @@ func (m *Model) renderSearchResults(height int) string {
 	}
 
 	title := fmt.Sprintf("Gems matching \"%s\" (%d found)", m.SearchQuery, len(m.SearchResults))
-	title = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(ColorText)).Render(title)
+	title = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(ColorText)).Background(lipgloss.Color("#262626")).Render(title)
 
 	// Header
 	headerRow := fmt.Sprintf("  %-30s %-11s %s", "Gem Name", "Version", "Groups")

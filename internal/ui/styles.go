@@ -100,13 +100,15 @@ var KeyHintDescStyle = lipgloss.NewStyle().
 
 var TableHeaderStyle = lipgloss.NewStyle().
 	Foreground(lipgloss.Color(ColorTextMuted)).
+	Background(lipgloss.Color("#262626")).
 	Bold(true).
 	BorderBottom(true).
 	BorderStyle(lipgloss.NormalBorder()).
 	BorderForeground(lipgloss.Color(ColorBorder))
 
 var RowNormalStyle = lipgloss.NewStyle().
-	Foreground(lipgloss.Color(ColorText))
+	Foreground(lipgloss.Color(ColorText)).
+	Background(lipgloss.Color("#262626"))
 
 var RowSelectedStyle = lipgloss.NewStyle().
 	Background(lipgloss.Color(ColorSelected)).
@@ -178,7 +180,6 @@ var SearchPromptStyle = lipgloss.NewStyle().
 var SearchBoxStyle = lipgloss.NewStyle().
 	Border(lipgloss.RoundedBorder()).
 	BorderForeground(lipgloss.Color(ColorBorderActive)).
-	Foreground(lipgloss.Color(ColorText)).
 	Background(lipgloss.Color("#262626")).
 	Padding(0, 1)
 
