@@ -160,8 +160,11 @@ func (m *Model) View() tea.View {
 		}
 	}()
 
-	v := tea.NewView(m.renderCurrentView())
+	content := m.renderCurrentView()
+	v := tea.NewView(content)
 	v.AltScreen = true
+
+	v.BackgroundColor = lipgloss.Color("235")
 	return v
 }
 
