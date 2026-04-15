@@ -244,6 +244,10 @@ type ParsedGemInfo struct {
 //	    Installed at (3.2.6): /path/to/gems
 //	                 (3.2.5): /path/to/gems
 //	                 (3.2.4): /path/to/gems
+//
+// Handles both output formats:
+// Format A (legacy): "Installed at (VERSION): /path" with version in parentheses
+// Format B (current): First line "gem (v1, v2)" + "Installed at: /path" without version
 func ParseGemInfo(output string) *ParsedGemInfo {
 	if output == "" {
 		return &ParsedGemInfo{}
@@ -254,12 +258,46 @@ func ParseGemInfo(output string) *ParsedGemInfo {
 	}
 
 	lines := strings.Split(output, "\n")
+	if len(lines) == 0 {
+		return result
+	}
 
-	// Parse installed versions and paths
+	// Step 1: Extract versions from first line
+	firstLineVersions := extractVersionsFromFirstLine(lines[0])
+	versionQueue := firstLineVersions // Queue to assign versions when format B lacks explicit version
+
+	// Step 2: Parse all lines for installed paths
 	for _, line := range lines {
 		trimmed := strings.TrimSpace(line)
 
-		// Match "Installed at (VERSION): PATH" pattern (first version)
+		// Skip metadata lines (Platform, Authors, Homepage, License, Description)
+		if strings.HasPrefix(trimmed, "Platform:") ||
+			strings.HasPrefix(trimmed, "Authors:") ||
+			strings.HasPrefix(trimmed, "Author:") ||
+			strings.HasPrefix(trimmed, "Homepage:") ||
+			strings.HasPrefix(trimmed, "License:") ||
+			strings.HasPrefix(trimmed, "Installed at:") && !strings.Contains(trimmed, "):") {
+			// This is Format B "Installed at: /path" - continue below
+			_ = trimmed
+		}
+
+		// Format B: "Installed at: /path" (no version in parentheses)
+		if strings.HasPrefix(trimmed, "Installed at:") && !strings.Contains(trimmed, "):") {
+			// This will return empty version, fill from queue
+			_, path := parseVersionLine(trimmed)
+			if path != "" && len(versionQueue) > 0 {
+				// Pop next version from queue
+				version := versionQueue[0]
+				versionQueue = versionQueue[1:]
+				result.Versions = append(result.Versions, InstalledVersion{
+					Version: version,
+					Path:    path,
+				})
+			}
+			continue
+		}
+
+		// Format A: "Installed at (VERSION): PATH" pattern (first version with parens)
 		if strings.HasPrefix(trimmed, "Installed at (") && strings.Contains(trimmed, "):") {
 			version, path := parseVersionLine(trimmed)
 			if version != "" && path != "" {
@@ -268,8 +306,11 @@ func ParseGemInfo(output string) *ParsedGemInfo {
 					Path:    path,
 				})
 			}
-		} else if strings.HasPrefix(trimmed, "(") && strings.Contains(trimmed, "):") && !strings.HasPrefix(trimmed, "Installed") {
-			// Match continuation line "(VERSION): PATH" (subsequent versions)
+			continue
+		}
+
+		// Format A continuation: "(VERSION): PATH" (subsequent versions, no "Installed at" prefix)
+		if strings.HasPrefix(trimmed, "(") && strings.Contains(trimmed, "):") && !strings.HasPrefix(trimmed, "Installed") {
 			version, path := parseVersionLine(trimmed)
 			if version != "" && path != "" {
 				result.Versions = append(result.Versions, InstalledVersion{
@@ -280,13 +321,96 @@ func ParseGemInfo(output string) *ParsedGemInfo {
 		}
 	}
 
+	// Step 3: Sort by version descending (newest first)
+	sortVersionsDescending(result.Versions)
+
 	return result
 }
 
+// sortVersionsDescending sorts installed versions by semantic version in descending order
+func sortVersionsDescending(versions []InstalledVersion) {
+	if len(versions) <= 1 {
+		return
+	}
+
+	// Simple bubble sort for small arrays (usually only 2-3 versions)
+	for i := 0; i < len(versions)-1; i++ {
+		for j := i + 1; j < len(versions); j++ {
+			if isVersionLess(versions[i].Version, versions[j].Version) {
+				// Swap: i is older than j, so swap to put newer first
+				versions[i], versions[j] = versions[j], versions[i]
+			}
+		}
+	}
+}
+
+// extractVersionsFromFirstLine extracts version numbers from first line of gem info output.
+// Examples:
+//   - "pg (1.6.3)" → ["1.6.3"]
+//   - "pg (1.6.3-arm64-darwin)" → ["1.6.3"]
+//   - "pgvector (0.3.3, 0.3.2)" → ["0.3.3", "0.3.2"]
+//   - "pg (1.6.3)\n    Platform: arm64-darwin" → ["1.6.3"]
+func extractVersionsFromFirstLine(line string) []string {
+	line = strings.TrimSpace(line)
+	if line == "" {
+		return nil
+	}
+
+	// Find content in parentheses: "gemname (v1, v2, ...)"
+	start := strings.Index(line, "(")
+	end := strings.LastIndex(line, ")")
+	if start == -1 || end == -1 || end <= start {
+		return nil
+	}
+
+	versionsStr := line[start+1 : end]
+	versionsStr = strings.TrimSpace(versionsStr)
+
+	// Handle platform suffix: "1.6.3-arm64-darwin" → "1.6.3"
+	if idx := strings.Index(versionsStr, "-"); idx > 0 {
+		// Check if it looks like a platform suffix (arm64-darwin, x86_64-linux, etc.)
+		possiblePlatform := versionsStr[idx+1:]
+		if strings.HasPrefix(possiblePlatform, "arm64-darwin") ||
+			strings.HasPrefix(possiblePlatform, "x86_64-") ||
+			strings.HasPrefix(possiblePlatform, "aarch64-") {
+			versionsStr = versionsStr[:idx]
+		}
+	}
+
+	// Split by comma for multiple versions
+	parts := strings.Split(versionsStr, ",")
+	var versions []string
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			versions = append(versions, p)
+		}
+	}
+
+	return versions
+}
+
 // parseVersionLine extracts version and path from a line like:
-// "Installed at (3.2.6): /path/to/gems" or "(3.2.5): /path/to/gems"
+//   - "Installed at (3.2.6): /path/to/gems"
+//   - "(3.2.5): /path/to/gems"
+//   - "Installed at: /path/to/gems" (format B - no version in parens)
+//
+// Returns (version, path). For Format B (no parens), version is empty string.
 func parseVersionLine(line string) (string, string) {
-	// Find the version in parentheses
+	line = strings.TrimSpace(line)
+
+	// Check for Format B: "Installed at: /path" (no parentheses)
+	if strings.HasPrefix(line, "Installed at:") {
+		colonIdx := strings.Index(line, ":")
+		if colonIdx == -1 {
+			return "", ""
+		}
+		path := line[colonIdx+1:]
+		path = strings.TrimSpace(path)
+		return "", path // Empty version - to be filled from first-line context
+	}
+
+	// Find the version in parentheses (Format A)
 	versionStart := strings.Index(line, "(")
 	versionEnd := strings.Index(line, ")")
 	if versionStart == -1 || versionEnd == -1 || versionEnd <= versionStart {
