@@ -11,6 +11,7 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/getsentry/sentry-go"
+	"github.com/lucasb-eyer/go-colorful"
 	"github.com/spaquet/gemtracker/internal/gemfile"
 	"github.com/spaquet/gemtracker/internal/logger"
 	"github.com/spaquet/gemtracker/internal/telemetry"
@@ -160,8 +161,13 @@ func (m *Model) View() tea.View {
 		}
 	}()
 
-	v := tea.NewView(m.renderCurrentView())
+	content := m.renderCurrentView()
+	v := tea.NewView(content)
 	v.AltScreen = true
+
+	bgColor, _ := colorful.Hex("#262626")
+	v.BackgroundColor = bgColor
+
 	return v
 }
 
@@ -289,7 +295,8 @@ func (m *Model) assembleViewWithChrome(contentString string) string {
 	contentHeight := len(allLines) - 2 // -2 for header and tabbar
 	paddingNeeded := availableForContent - contentHeight
 	for i := 0; i < paddingNeeded; i++ {
-		allLines = append(allLines, "")
+		// Create padded empty line with background color
+		allLines = append(allLines, AppBackgroundStyle.Width(m.Width).Render(""))
 	}
 
 	// Add status bar (can be multi-line)
@@ -306,6 +313,11 @@ func (m *Model) assembleViewWithChrome(contentString string) string {
 	// Final safety check - ensure we don't exceed terminal height
 	if len(allLines) > m.Height {
 		allLines = allLines[:m.Height]
+	}
+
+	// Pad each line to full terminal width with background color
+	for i := range allLines {
+		allLines[i] = AppBackgroundStyle.Width(m.Width).Render(allLines[i])
 	}
 
 	return lipgloss.JoinVertical(lipgloss.Left, allLines...)
@@ -347,7 +359,7 @@ func (m *Model) renderAppHeader() string {
 	spacer := strings.Repeat(" ", spacerCount)
 
 	// Apply background to spacer to fill full width
-	headerStyle := lipgloss.NewStyle().Background(lipgloss.Color(ColorSurface))
+	headerStyle := lipgloss.NewStyle().Background(lipgloss.Color("#3a3a3a"))
 	headerSpaceFill := headerStyle.Render(spacer)
 
 	return left + headerSpaceFill + right
@@ -381,7 +393,7 @@ func (m *Model) renderTabBar() string {
 
 	// Fill remaining width with background
 	if tabWidth < m.Width {
-		fillStyle := lipgloss.NewStyle().Background(lipgloss.Color(ColorSurface))
+		fillStyle := lipgloss.NewStyle().Background(lipgloss.Color("#3a3a3a"))
 		fillWidth := m.Width - tabWidth
 		fill := fillStyle.Render(strings.Repeat(" ", fillWidth))
 		tabContent = tabContent + fill
@@ -403,17 +415,23 @@ func (m *Model) renderStatusBar() string {
 	if m.OutdatedLoading {
 		doneCount := len(m.FirstLevelGems) - len(m.OutdatedPending)
 		outdatedStatus := fmt.Sprintf("Checking updates... (%d/%d)", doneCount, len(m.FirstLevelGems))
-		statusStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(ColorWarning))
+		statusStyle := lipgloss.NewStyle().
+			Foreground(lipgloss.Color(ColorWarning)).
+			Background(lipgloss.Color("#262626"))
 		statusParts = append(statusParts, statusStyle.Render(outdatedStatus))
 	}
 
 	if m.HealthLoading {
 		healthStatus := fmt.Sprintf("Fetching health... (%d/%d)", m.HealthLoadedCount, m.HealthTotalCount)
-		healthStatusStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(ColorWarning))
+		healthStatusStyle := lipgloss.NewStyle().
+			Foreground(lipgloss.Color(ColorWarning)).
+			Background(lipgloss.Color("#262626"))
 		statusParts = append(statusParts, healthStatusStyle.Render(healthStatus))
 	}
 
-	errorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(ColorDanger))
+	errorStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color(ColorDanger)).
+		Background(lipgloss.Color("#262626"))
 	if m.OutdatedRateLimited {
 		statusParts = append(statusParts, errorStyle.Render("updates: rate limited"))
 	}

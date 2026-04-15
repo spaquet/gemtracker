@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 
 	"github.com/spaquet/gemtracker/internal/logger"
@@ -216,23 +217,78 @@ func shouldSkipLine(line string, inSection string) bool {
 	return false
 }
 
+// getCurrentPlatform returns the platform identifier for the current system.
+// This matches the format used in Gemfile.lock (e.g., "arm64-darwin", "x86_64-linux")
+func getCurrentPlatform() string {
+	goos := runtime.GOOS
+	goarch := runtime.GOARCH
+
+	if goos == "darwin" {
+		if goarch == "arm64" {
+			return "arm64-darwin"
+		}
+		return "x86_64-darwin"
+	}
+	if goos == "linux" {
+		if goarch == "arm64" {
+			return "aarch64-linux"
+		}
+		return "x86_64-linux"
+	}
+	return goos + "-" + goarch
+}
+
+// matchesPlatform checks if a version string's platform suffix matches the given platform.
+// Handles versions like "1.6.3-arm64-darwin", "1.6.3-x86_64-linux-musl", "1.6.3" (generic)
+func matchesPlatform(version, platform string) bool {
+	parts := strings.Split(version, "-")
+	if len(parts) <= 1 {
+		return false // Generic version, no platform suffix
+	}
+	// Check if version starts with the platform prefix
+	return strings.HasPrefix(version, platform)
+}
+
 // parseGemOrGitLine parses gem spec lines (4-space indent) and dependency lines (6-space indent)
 // from GIT/GEM sections of the Gemfile.lock. Returns the current or newly created Gem.
+// When multiple platform-specific versions exist for a gem, it selects the one matching the current system.
 func parseGemOrGitLine(line string, gf *Gemfile, currentGem *Gem, gemLineRegex, depRegex *regexp.Regexp) *Gem {
 	// Parse gem lines (4-space indent)
 	matches := gemLineRegex.FindStringSubmatch(line)
 	if len(matches) > 0 {
 		name := strings.ToLower(matches[1])
 		version := matches[2]
-		gem := &Gem{
-			Name:         name,
-			Version:      version,
-			Dependencies: []string{},
-			Groups:       []string{},
-			IsFirstLevel: false,
+
+		// Check if we already have a version for this gem and if it's the correct platform
+		existingGem, exists := gf.Gems[name]
+		shouldReplace := !exists
+
+		if exists {
+			// Replace if current platform matches better, or if we don't have the current platform yet
+			currentPlatform := getCurrentPlatform()
+			existingIsCurrentPlatform := matchesPlatform(version, currentPlatform)
+			existingIsCurrentPlatform = existingIsCurrentPlatform || matchesPlatform(existingGem.Version, currentPlatform)
+
+			// Prefer current platform version; if existing is generic and new is specific to current platform, replace
+			// Also replace if existing doesn't match current platform but new does
+			if strings.HasPrefix(version, currentPlatform) ||
+				(!strings.HasPrefix(existingGem.Version, currentPlatform) && strings.HasPrefix(version, currentPlatform)) {
+				shouldReplace = true
+			}
 		}
-		gf.Gems[name] = gem
-		return gem
+
+		if shouldReplace {
+			gem := &Gem{
+				Name:         name,
+				Version:      version,
+				Dependencies: []string{},
+				Groups:       []string{},
+				IsFirstLevel: false,
+			}
+			gf.Gems[name] = gem
+			return gem
+		}
+		return existingGem
 	}
 
 	// Parse dependency lines (6-space indent)
