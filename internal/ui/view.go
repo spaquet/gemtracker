@@ -1917,7 +1917,7 @@ func (m *Model) renderGemInfoModalBox() string {
 	boxStyle := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color(ColorBorderActive)).
-		Background(lipgloss.Color(ColorSurface)).
+		Background(lipgloss.Color("#3a3a3a")).
 		Padding(1, 2)
 
 	return boxStyle.Width(modalWidth).Render(content)
@@ -1926,6 +1926,8 @@ func (m *Model) renderGemInfoModalBox() string {
 // buildGemInfoContentLines builds all content lines for gem info modal.
 func (m *Model) buildGemInfoContentLines(gem *gemfile.GemStatus) []string {
 	lines := []string{}
+
+	textStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(ColorText))
 
 	// Title
 	title := fmt.Sprintf("Gem Info: %s", gem.Name)
@@ -1936,35 +1938,37 @@ func (m *Model) buildGemInfoContentLines(gem *gemfile.GemStatus) []string {
 	lines = append(lines, "")
 
 	// Gem details
-	lines = append(lines, fmt.Sprintf("Name: %s", gem.Name))
-	lines = append(lines, fmt.Sprintf("Version: %s", gem.Version))
+	lines = append(lines, textStyle.Render(fmt.Sprintf("Name: %s", gem.Name)))
+	lines = append(lines, textStyle.Render(fmt.Sprintf("Version: %s", gem.Version)))
 
 	size := m.GemSizes[gem.Name]
-	lines = append(lines, fmt.Sprintf("Size: %s", gemfile.FormatBytes(size)))
+	lines = append(lines, textStyle.Render(fmt.Sprintf("Size: %s", gemfile.FormatBytes(size))))
 	lines = append(lines, "")
 
 	// Show gem type
 	if m.isDirectDependency(gem.Name) {
-		lines = append(lines, "Type: Direct Dependency")
+		lines = append(lines, textStyle.Render("Type: Direct Dependency"))
 	} else {
-		lines = append(lines, "Type: Transitive Dependency")
+		lines = append(lines, textStyle.Render("Type: Transitive Dependency"))
 	}
 
 	// Show description if available
 	if gem.Description != "" {
 		lines = append(lines, "")
-		lines = append(lines, "Description:")
+		lines = append(lines, textStyle.Render("Description:"))
 		descLines := wrapText(gem.Description, 60)
 		for _, line := range descLines {
-			lines = append(lines, fmt.Sprintf("  %s", line))
+			lines = append(lines, textStyle.Render(fmt.Sprintf("  %s", line)))
 		}
 	}
 
 	// Show installed versions and paths
 	lines = append(lines, "")
-	lines = append(lines, "Installed Versions:")
+	lines = append(lines, textStyle.Render("Installed Versions:"))
 	versionLines := m.buildGemInstalledVersionsLines()
-	lines = append(lines, versionLines...)
+	for _, line := range versionLines {
+		lines = append(lines, textStyle.Render(line))
+	}
 
 	return lines
 }
@@ -2016,7 +2020,8 @@ func (m *Model) clipAndScrollGemInfoLines(lines []string, maxHeight int) []strin
 		// Add scroll indicator at the bottom if there's more content
 		if endIdx < len(lines) {
 			visibleLines = append(visibleLines, "")
-			visibleLines = append(visibleLines, "  ↓ scroll for more")
+			textStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(ColorTextMuted))
+			visibleLines = append(visibleLines, textStyle.Render("  ↓ scroll for more"))
 		}
 	}
 	return visibleLines
