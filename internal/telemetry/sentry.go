@@ -15,15 +15,22 @@ import (
 // InitSentry initializes Sentry error tracking if SENTRY_DSN environment variable is set.
 // If SENTRY_DSN is not set, this is a no-op. Returns an error only if initialization fails
 // with a configured DSN (not if DSN is missing).
-func InitSentry() error {
+// version should be the application version string (e.g., "1.2.7" or "dev").
+func InitSentry(version string) error {
 	dsn := os.Getenv("SENTRY_DSN")
 	if dsn == "" {
 		// Sentry is optional - only enable if explicitly configured
 		return nil
 	}
 
+	release := ""
+	if version != "" {
+		release = "gemtracker@" + version
+	}
+
 	err := sentry.Init(sentry.ClientOptions{
 		Dsn:              dsn,
+		Release:          release,
 		TracesSampleRate: 0.1, // Sample 10% of transactions
 		Debug:            false,
 		AttachStacktrace: true,

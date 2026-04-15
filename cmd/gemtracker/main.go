@@ -114,7 +114,7 @@ func parseArg(arg string, index int, args *Args) int {
 
 func main() {
 	// Initialize Sentry error tracking (optional, only if SENTRY_DSN is set)
-	if err := telemetry.InitSentry(); err != nil {
+	if err := telemetry.InitSentry(version); err != nil {
 		// Log error but continue - Sentry is optional
 		fmt.Fprintf(os.Stderr, "Warning: Failed to initialize error tracking: %v\n", err)
 	}
