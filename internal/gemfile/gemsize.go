@@ -9,7 +9,39 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/spaquet/gemtracker/internal/logger"
 )
+
+// ErrRubyNotFound is returned when the gem binary is not found in PATH
+type ErrRubyNotFound struct {
+	Binary string
+}
+
+func (e ErrRubyNotFound) Error() string {
+	return e.Binary + " binary not found in PATH"
+}
+
+// ErrCommandFailed is returned when a command fails to execute
+type ErrCommandFailed struct {
+	Binary string
+	Cause  error
+}
+
+func (e ErrCommandFailed) Error() string {
+	return e.Binary + " command failed: " + e.Cause.Error()
+}
+
+// checkBinaryExists validates that a binary exists in PATH
+// Returns nil if found, ErrRubyNotFound if not found
+func checkBinaryExists(binary string) error {
+	_, err := exec.LookPath(binary)
+	if err != nil {
+		logger.Warn("%s binary not found in system PATH", binary)
+		return ErrRubyNotFound{Binary: binary}
+	}
+	return nil
+}
 
 // DetectRubyManager extracts the Ruby version manager name from gem env gemdir output.
 // Examples:
@@ -39,7 +71,12 @@ func DetectRubyManager(gemDirPath string) string {
 }
 
 // GetGemDirPath executes `gem env gemdir` and returns the gem directory path.
+// Returns ErrRubyNotFound if gem binary is not found in PATH.
 func GetGemDirPath() (string, error) {
+	if err := checkBinaryExists("gem"); err != nil {
+		return "", err
+	}
+
 	cmd := exec.Command("gem", "env", "gemdir")
 	var out bytes.Buffer
 	cmd.Stdout = &out
@@ -47,12 +84,15 @@ func GetGemDirPath() (string, error) {
 
 	err := cmd.Run()
 	if err != nil {
-		return "", fmt.Errorf("failed to get gem directory: %w", err)
+		logger.Warn("Failed to execute 'gem env gemdir': %v", err)
+		return "", ErrCommandFailed{Binary: "gem", Cause: err}
 	}
 
 	gemDir := strings.TrimSpace(out.String())
 	if gemDir == "" {
-		return "", fmt.Errorf("gem env gemdir returned empty path")
+		err = fmt.Errorf("gem env gemdir returned empty path")
+		logger.Warn("%v", err)
+		return "", err
 	}
 
 	return gemDir, nil
@@ -106,7 +146,12 @@ func dirSize(path string) (int64, error) {
 
 // GetGemInfo executes `gem info <gemName>` and returns the sanitized output.
 // Uses a timeout to prevent hanging if the gem command is slow or unresponsive.
+// Returns ErrRubyNotFound if gem binary is not found in PATH.
 func GetGemInfo(gemName string) (string, error) {
+	if err := checkBinaryExists("gem"); err != nil {
+		return "", err
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
@@ -117,7 +162,9 @@ func GetGemInfo(gemName string) (string, error) {
 
 	err := cmd.Run()
 	if ctx.Err() == context.DeadlineExceeded {
-		return "", fmt.Errorf("gem info command timed out (3s)")
+		err = fmt.Errorf("gem info command timed out (3s)")
+		logger.Warn("%v", err)
+		return "", err
 	}
 
 	output := out.String()
@@ -127,7 +174,8 @@ func GetGemInfo(gemName string) (string, error) {
 
 	if err != nil {
 		// gem info returns non-zero if gem not found, but output is still useful
-		return output, fmt.Errorf("gem info command failed: %w", err)
+		logger.Warn("Failed to execute 'gem info %s': %v", gemName, err)
+		return output, ErrCommandFailed{Binary: "gem", Cause: err}
 	}
 
 	return output, nil
