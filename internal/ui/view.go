@@ -1141,7 +1141,7 @@ func (m *Model) renderSearchResults(height int) string {
 	}
 
 	title := fmt.Sprintf("Gems matching \"%s\" (%d found)", m.SearchQuery, len(m.SearchResults))
-	title = lipgloss.NewStyle().Bold(true).Render(title)
+	title = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(ColorText)).Render(title)
 
 	// Header
 	headerRow := fmt.Sprintf("  %-30s %-11s %s", "Gem Name", "Version", "Groups")

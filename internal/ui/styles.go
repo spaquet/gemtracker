@@ -178,6 +178,7 @@ var SearchPromptStyle = lipgloss.NewStyle().
 var SearchBoxStyle = lipgloss.NewStyle().
 	Border(lipgloss.RoundedBorder()).
 	BorderForeground(lipgloss.Color(ColorBorderActive)).
+	Foreground(lipgloss.Color(ColorText)).
 	Background(lipgloss.Color("#262626")).
 	Padding(0, 1)
 
