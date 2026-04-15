@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v1.2.7] - 2026-04-11
+
+### Improved
+- **Sentry Release Binding** - Application version now tracked in error tracking
+  - Release ID set to `gemtracker@{version}` when Sentry is initialized
+  - Enables release-based filtering and deployment tracking in Sentry dashboard
+  - Helps correlate errors to specific gemtracker versions in production
+  - Only active when SENTRY_DSN is configured (zero overhead when disabled)
+
 ## [v1.2.6] - 2026-04-12
 
 ### Added
