@@ -326,33 +326,10 @@ func (m *Model) assembleViewWithChrome(contentString string) string {
 func (m *Model) renderAppHeader() string {
 	appName := fmt.Sprintf("gemtracker %s", m.Version)
 
-	// Build right side: source file info
-	rightParts := []string{}
-
-	// Add source file
-	if m.GemfileSource != "" {
-		if strings.HasSuffix(m.GemfileSource, ".gemspec") {
-			rightParts = append(rightParts, fmt.Sprintf("Source: %s (unresolved)", m.GemfileSource))
-		} else {
-			rightParts = append(rightParts, fmt.Sprintf("Source: %s", m.GemfileSource))
-		}
-	}
-
-	// Add project path
-	projectPath := m.ProjectPath
-	if projectPath == "" {
-		projectPath = "(no project)"
-	}
-	rightParts = append(rightParts, projectPath)
-
-	rightContent := strings.Join(rightParts, " • ")
-
 	left := AppHeaderStyle.Render(appName)
-	right := ProjectPathStyle.Render(rightContent)
 
-	// Calculate spacing
-	totalLen := lipgloss.Width(left) + lipgloss.Width(right)
-	spacerCount := m.Width - totalLen
+	// Calculate spacing to fill full width
+	spacerCount := m.Width - lipgloss.Width(left)
 	if spacerCount < 0 {
 		spacerCount = 0
 	}
@@ -362,7 +339,7 @@ func (m *Model) renderAppHeader() string {
 	headerStyle := lipgloss.NewStyle().Background(lipgloss.Color("#3a3a3a"))
 	headerSpaceFill := headerStyle.Render(spacer)
 
-	return left + headerSpaceFill + right
+	return left + headerSpaceFill
 }
 
 func (m *Model) renderTabBar() string {
@@ -2083,6 +2060,24 @@ func (m *Model) renderProjectInfo(height int) string {
 	// Build info sections
 	var sections []string
 	sections = append(sections, titleStyle.Render(title))
+	sections = append(sections, "")
+
+	// Source file
+	if m.GemfileSource != "" {
+		if strings.HasSuffix(m.GemfileSource, ".gemspec") {
+			sections = append(sections, m.formatInfoLine("Source", fmt.Sprintf("%s (unresolved)", m.GemfileSource)))
+		} else {
+			sections = append(sections, m.formatInfoLine("Source", m.GemfileSource))
+		}
+	}
+
+	// Project path
+	projectPath := m.ProjectPath
+	if projectPath == "" {
+		projectPath = "(no project)"
+	}
+	sections = append(sections, m.formatInfoLine("Project Path", projectPath))
+
 	sections = append(sections, "")
 
 	// Ruby version
