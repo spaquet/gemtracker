@@ -231,9 +231,11 @@ var UpdateBarStyle = lipgloss.NewStyle().
 // ============================================================================
 
 // NewMarkdownRenderer creates a glamour renderer with our dark color scheme
+// Uses WithStandardStyle("dark") to enforce consistent dark background regardless of terminal settings
 func NewMarkdownRenderer(width int) *glamour.TermRenderer {
 	renderer, _ := glamour.NewTermRenderer(
 		glamour.WithWordWrap(width),
+		glamour.WithStandardStyle("dark"),
 	)
 	return renderer
 }
