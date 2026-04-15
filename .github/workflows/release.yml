@@ -58,14 +58,6 @@ jobs:
           sentry-cli releases new "$VERSION"
           echo "✓ Release created"
 
-          # Upload source files for code context in error views
-          sentry-cli releases upload . \
-            --release "$VERSION" \
-            --ignore "dist,build,.git,.github" \
-            --ignore-flat "go.mod,go.sum,Makefile,.goreleaser.yml,LICENSE" \
-            --rewrite
-          echo "✓ Source files uploaded"
-
           # Link commits to the release for better context
           sentry-cli releases set-commits "$VERSION" --auto
           echo "✓ Commits linked"
