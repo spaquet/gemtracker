@@ -19,6 +19,7 @@ import (
 
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/getsentry/sentry-go"
 	"github.com/spaquet/gemtracker/internal/cache"
 	"github.com/spaquet/gemtracker/internal/gemfile"
@@ -390,6 +391,24 @@ func NewModel(version, commit, date, projectPath string, noCache, verbose bool) 
 	// Configure search input
 	m.SearchInput = textinput.New()
 	m.SearchInput.Placeholder = "Search gems..."
+	m.SearchInput.Prompt = "> "
+	// Set text color to match header row in both light and dark modes
+	promptStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(ColorTextMuted))
+	textStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(ColorTextMuted))
+	searchStyles := textinput.Styles{
+		Focused: textinput.StyleState{
+			Text:   textStyle,
+			Prompt: promptStyle,
+		},
+		Blurred: textinput.StyleState{
+			Text:   textStyle,
+			Prompt: promptStyle,
+		},
+		Cursor: textinput.CursorStyle{
+			Color: lipgloss.Color(ColorTextMuted),
+		},
+	}
+	m.SearchInput.SetStyles(searchStyles)
 
 	// Configure path input
 	m.PathInput = textinput.New()

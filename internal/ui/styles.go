@@ -174,7 +174,7 @@ var PanelBorderActiveStyle = lipgloss.NewStyle().
 // ============================================================================
 
 var SearchPromptStyle = lipgloss.NewStyle().
-	Foreground(lipgloss.Color(ColorPrimary)).
+	Foreground(lipgloss.Color(ColorText)).
 	Bold(true)
 
 var SearchBoxStyle = lipgloss.NewStyle().
