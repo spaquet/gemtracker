@@ -936,7 +936,7 @@ func (m *Model) renderReverseDepsList(height int) string {
 
 	for _, depName := range reverseDeps {
 		// Bold gem name
-		nameLine := "  " + lipgloss.NewStyle().Bold(true).Render(depName)
+		nameLine := "  " + lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#d0d0d0")).Render(depName)
 		lines = append(lines, nameLine)
 		m.DetailReverseLines = append(m.DetailReverseLines, depName)
 

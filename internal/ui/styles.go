@@ -198,7 +198,7 @@ var TreeConnectorStyle = lipgloss.NewStyle().
 	Foreground(lipgloss.Color(ColorTextSubtle))
 
 var TreeGemNameStyle = lipgloss.NewStyle().
-	Foreground(lipgloss.Color(ColorText))
+	Foreground(lipgloss.Color("#d0d0d0"))
 
 var TreeVersionStyle = lipgloss.NewStyle().
 	Foreground(lipgloss.Color(ColorTextMuted))
