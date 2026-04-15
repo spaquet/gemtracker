@@ -2199,26 +2199,18 @@ func (m *Model) viewFilterMenu() string {
 }
 
 func (m *Model) renderFilterModalBox() string {
-	// Create checkbox styles
-	checkOn := lipgloss.NewStyle().
-		Foreground(lipgloss.Color(ColorSuccess)).
-		Render("[✓]")
-	checkOff := lipgloss.NewStyle().
-		Foreground(lipgloss.Color(ColorTextMuted)).
-		Render("[ ]")
+	textStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(ColorText)).Background(lipgloss.Color("#3a3a3a"))
+	mutedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(ColorTextMuted)).Background(lipgloss.Color("#3a3a3a"))
 
-	// Helper to choose checkbox
 	checkbox := func(on bool) string {
 		if on {
-			return checkOn
+			return "[✓]"
 		}
-		return checkOff
+		return "[ ]"
 	}
 
-	// Build content lines
 	lines := []string{}
 
-	// Title
 	title := "Filter Gems"
 	titleStyle := lipgloss.NewStyle().
 		Bold(true).
@@ -2226,20 +2218,18 @@ func (m *Model) renderFilterModalBox() string {
 	lines = append(lines, titleStyle.Render(title))
 	lines = append(lines, "")
 
-	// Upgradable filter option
 	upgradableLabel := "Show only upgradable"
 	upgradableLine := checkbox(m.ShowOnlyUpgradable) + " " + upgradableLabel
 	if m.FilterMenuCursor == 0 {
 		lines = append(lines, RowSelectedStyle.Render("› "+upgradableLine))
 	} else {
-		lines = append(lines, "  "+upgradableLine)
+		lines = append(lines, textStyle.Render("  "+upgradableLine))
 	}
 
 	lines = append(lines, "")
 
-	// Group filter options
 	if len(m.AvailableGroups) > 0 {
-		lines = append(lines, "Filter by group:")
+		lines = append(lines, mutedStyle.Render("Filter by group:"))
 
 		for i, group := range m.AvailableGroups {
 			groupLine := checkbox(m.SelectedGroups[group]) + " " + group
@@ -2247,20 +2237,19 @@ func (m *Model) renderFilterModalBox() string {
 			if m.FilterMenuCursor == menuIdx {
 				lines = append(lines, RowSelectedStyle.Render("› "+groupLine))
 			} else {
-				lines = append(lines, "  "+groupLine)
+				lines = append(lines, textStyle.Render("  "+groupLine))
 			}
 		}
 	}
 
-	// Active filters summary
 	lines = append(lines, "")
-	lines = append(lines, "Active filters:")
+	lines = append(lines, mutedStyle.Render("Active filters:"))
 
 	if !m.hasActiveFilters() {
-		lines = append(lines, "  (none)")
+		lines = append(lines, textStyle.Render("  (none)"))
 	} else {
 		if m.ShowOnlyUpgradable {
-			lines = append(lines, "  • Upgradable only")
+			lines = append(lines, textStyle.Render("  • Upgradable only"))
 		}
 		if len(m.SelectedGroups) > 0 {
 			var selectedGroups []string
@@ -2269,15 +2258,15 @@ func (m *Model) renderFilterModalBox() string {
 					selectedGroups = append(selectedGroups, g)
 				}
 			}
-			lines = append(lines, fmt.Sprintf("  • Groups: %s", strings.Join(selectedGroups, ", ")))
+			lines = append(lines, textStyle.Render(fmt.Sprintf("  • Groups: %s", strings.Join(selectedGroups, ", "))))
 		}
 	}
 
-	// Footer hint
 	lines = append(lines, "")
 	hintStyle := lipgloss.NewStyle().
 		Foreground(lipgloss.Color(ColorTextMuted)).
-		Italic(true)
+		Italic(true).
+		Background(lipgloss.Color("#3a3a3a"))
 	lines = append(lines, hintStyle.Render("↑↓ navigate  space toggle  enter/esc close"))
 
 	// Create the modal box with border
@@ -2296,7 +2285,7 @@ func (m *Model) renderFilterModalBox() string {
 	boxStyle := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color(ColorBorderActive)).
-		Background(lipgloss.Color(ColorSurface)).
+		Background(lipgloss.Color("#3a3a3a")).
 		Padding(1, 2)
 
 	return boxStyle.Width(modalWidth).Render(content)
@@ -2329,26 +2318,17 @@ func (m *Model) viewCVEFilterMenu() string {
 }
 
 func (m *Model) renderCVEFilterModalBox() string {
-	// Create checkbox styles
-	checkOn := lipgloss.NewStyle().
-		Foreground(lipgloss.Color(ColorSuccess)).
-		Render("[✓]")
-	checkOff := lipgloss.NewStyle().
-		Foreground(lipgloss.Color(ColorTextMuted)).
-		Render("[ ]")
+	textStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(ColorText)).Background(lipgloss.Color("#3a3a3a"))
 
-	// Helper to choose checkbox
 	checkbox := func(on bool) string {
 		if on {
-			return checkOn
+			return "[✓]"
 		}
-		return checkOff
+		return "[ ]"
 	}
 
-	// Build content lines
 	lines := []string{}
 
-	// Title
 	title := "Filter CVEs"
 	titleStyle := lipgloss.NewStyle().
 		Bold(true).
@@ -2356,30 +2336,27 @@ func (m *Model) renderCVEFilterModalBox() string {
 	lines = append(lines, titleStyle.Render(title))
 	lines = append(lines, "")
 
-	// Severity filter options
 	severities := []string{"CRITICAL", "HIGH", "MODERATE", "LOW"}
 	for i, severity := range severities {
 		severityLine := checkbox(m.CVESelectedSeverities[severity]) + " " + severity + " only"
 		if m.CVEFilterMenuCursor == i {
 			lines = append(lines, RowSelectedStyle.Render("› "+severityLine))
 		} else {
-			lines = append(lines, "  "+severityLine)
+			lines = append(lines, textStyle.Render("  "+severityLine))
 		}
 	}
 
 	lines = append(lines, "")
 
-	// Direct-only filter
 	directLine := checkbox(m.CVEShowOnlyDirect) + " Direct only"
 	if m.CVEFilterMenuCursor == 4 {
 		lines = append(lines, RowSelectedStyle.Render("› "+directLine))
 	} else {
-		lines = append(lines, "  "+directLine)
+		lines = append(lines, textStyle.Render("  "+directLine))
 	}
 
 	lines = append(lines, "")
 
-	// Acknowledgment filter options
 	ackStates := []struct {
 		key   string
 		label string
@@ -2393,15 +2370,15 @@ func (m *Model) renderCVEFilterModalBox() string {
 		if m.CVEFilterMenuCursor == 5+i {
 			lines = append(lines, RowSelectedStyle.Render("› "+ackLine))
 		} else {
-			lines = append(lines, "  "+ackLine)
+			lines = append(lines, textStyle.Render("  "+ackLine))
 		}
 	}
 
-	// Footer hint
 	lines = append(lines, "")
 	hintStyle := lipgloss.NewStyle().
 		Foreground(lipgloss.Color(ColorTextMuted)).
-		Italic(true)
+		Italic(true).
+		Background(lipgloss.Color("#3a3a3a"))
 	lines = append(lines, hintStyle.Render("↑↓ navigate  space toggle  enter/esc close"))
 
 	// Create the modal box with border
@@ -2420,7 +2397,7 @@ func (m *Model) renderCVEFilterModalBox() string {
 	boxStyle := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color(ColorBorderActive)).
-		Background(lipgloss.Color(ColorSurface)).
+		Background(lipgloss.Color("#3a3a3a")).
 		Padding(1, 2)
 
 	return boxStyle.Width(modalWidth).Render(content)
@@ -2457,6 +2434,9 @@ func (m *Model) viewCVEInfo() string {
 }
 
 func (m *Model) renderCVEInfoModalBox() string {
+	textStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(ColorText))
+	mutedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(ColorTextMuted))
+
 	vuln := m.CVEVulnerabilities[m.CVECursor]
 
 	// Check if we have cached content for this CVE and width hasn't changed
@@ -2483,8 +2463,8 @@ func (m *Model) renderCVEInfoModalBox() string {
 
 	// Remediation section
 	if vuln.FixedVersion != "" {
-		lines = append(lines, "Remediation:")
-		lines = append(lines, fmt.Sprintf("  Upgrade %s to version %s or later", vuln.GemName, vuln.FixedVersion))
+		lines = append(lines, mutedStyle.Render("Remediation:"))
+		lines = append(lines, textStyle.Render(fmt.Sprintf("  Upgrade %s to version %s or later", vuln.GemName, vuln.FixedVersion)))
 		lines = append(lines, "")
 	}
 
@@ -2498,15 +2478,15 @@ func (m *Model) renderCVEInfoModalBox() string {
 	// OSV link
 	if vuln.OSVId != "" {
 		osvLink := fmt.Sprintf("https://osv.dev/vulnerability/%s", vuln.OSVId)
-		lines = append(lines, fmt.Sprintf("Link:      %s", osvLink))
+		lines = append(lines, textStyle.Render(fmt.Sprintf("Link:      %s", osvLink)))
 		lines = append(lines, "")
 	}
 
 	// Affected versions
 	if len(vuln.AffectedVersions) > 0 {
-		lines = append(lines, "Affected versions:")
+		lines = append(lines, mutedStyle.Render("Affected versions:"))
 		for _, version := range vuln.AffectedVersions {
-			lines = append(lines, fmt.Sprintf("  • %s", version))
+			lines = append(lines, textStyle.Render(fmt.Sprintf("  • %s", version)))
 		}
 		lines = append(lines, "")
 	}
@@ -2532,10 +2512,12 @@ func (m *Model) isCVECacheValid(vuln *gemfile.Vulnerability) bool {
 
 // buildCVEBasicInfoLines builds the basic CVE information section.
 func (m *Model) buildCVEBasicInfoLines(vuln *gemfile.Vulnerability, gemType, group string) []string {
+	textStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(ColorText))
+
 	var lines []string
 
 	// CVE ID
-	lines = append(lines, fmt.Sprintf("ID:       %s", vuln.CVE))
+	lines = append(lines, textStyle.Render(fmt.Sprintf("ID:       %s", vuln.CVE)))
 
 	// Gem name and type
 	gemLine := vuln.GemName
@@ -2543,7 +2525,7 @@ func (m *Model) buildCVEBasicInfoLines(vuln *gemfile.Vulnerability, gemType, gro
 		gemLine += " [fw]"
 	}
 	gemLine += fmt.Sprintf(" — %s", gemType)
-	lines = append(lines, fmt.Sprintf("Gem:      %s", gemLine))
+	lines = append(lines, textStyle.Render(fmt.Sprintf("Gem:      %s", gemLine)))
 
 	// Severity with badge
 	severityBadge := ""
@@ -2561,15 +2543,15 @@ func (m *Model) buildCVEBasicInfoLines(vuln *gemfile.Vulnerability, gemType, gro
 	if vuln.CVSS > 0 {
 		severityLine += fmt.Sprintf(" (CVSS: %.1f)", vuln.CVSS)
 	}
-	lines = append(lines, severityLine)
+	lines = append(lines, textStyle.Render(severityLine))
 
 	// Published date
 	if !vuln.PublishedDate.IsZero() {
-		lines = append(lines, fmt.Sprintf("Published: %s", vuln.PublishedDate.Format("2006-01-02")))
+		lines = append(lines, textStyle.Render(fmt.Sprintf("Published: %s", vuln.PublishedDate.Format("2006-01-02"))))
 	}
 
 	// Group
-	lines = append(lines, fmt.Sprintf("Group:    %s", group))
+	lines = append(lines, textStyle.Render(fmt.Sprintf("Group:    %s", group)))
 	lines = append(lines, "")
 
 	return lines
@@ -2577,6 +2559,9 @@ func (m *Model) buildCVEBasicInfoLines(vuln *gemfile.Vulnerability, gemType, gro
 
 // renderCVEWorkaroundLines renders the workarounds section with glamour markdown rendering.
 func (m *Model) renderCVEWorkaroundLines(workarounds, cveID string) []string {
+	textStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(ColorText))
+	mutedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(ColorTextMuted))
+
 	var lines []string
 
 	estimatedWidth := 60
@@ -2588,15 +2573,14 @@ func (m *Model) renderCVEWorkaroundLines(workarounds, cveID string) []string {
 	renderedWorkarounds, err := renderer.Render(workarounds)
 	if err != nil {
 		logger.Warn("Glamour rendering failed for %s: %v, using fallback", cveID, err)
-		// Fallback to plain text if rendering fails
-		lines = append(lines, "Remediation:")
+		lines = append(lines, mutedStyle.Render("Remediation:"))
 		workaroundLines := strings.Split(workarounds, "\n")
 		for _, wLine := range workaroundLines {
 			trimmed := strings.TrimSpace(wLine)
 			if trimmed != "" {
 				wrapped := wrapText(trimmed, 60)
 				for _, wrappedLine := range wrapped {
-					lines = append(lines, fmt.Sprintf("  %s", wrappedLine))
+					lines = append(lines, textStyle.Render(fmt.Sprintf("  %s", wrappedLine)))
 				}
 			}
 		}
@@ -2611,13 +2595,16 @@ func (m *Model) renderCVEWorkaroundLines(workarounds, cveID string) []string {
 
 // buildCVETransitiveParentLines builds the section showing parents of transitive gems.
 func (m *Model) buildCVETransitiveParentLines(gemName string) []string {
+	textStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(ColorText))
+	mutedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(ColorTextMuted))
+
 	var lines []string
 
 	parentGems := m.findParentGems(gemName)
 	if len(parentGems) > 0 {
-		lines = append(lines, "Pulled in by:")
+		lines = append(lines, mutedStyle.Render("Pulled in by:"))
 		for _, parent := range parentGems {
-			lines = append(lines, fmt.Sprintf("  › %s", parent))
+			lines = append(lines, textStyle.Render(fmt.Sprintf("  › %s", parent)))
 		}
 		lines = append(lines, "")
 	}
@@ -2805,6 +2792,9 @@ func (m *Model) viewCVEComment() string {
 }
 
 func (m *Model) renderCVECommentModalBox() string {
+	textStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(ColorText))
+	mutedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(ColorTextMuted))
+
 	vuln := m.CVEVulnerabilities[m.CVECursor]
 	_, group := m.getCVEGemInfo(vuln.GemName)
 
@@ -2842,11 +2832,11 @@ func (m *Model) renderCVECommentModalBox() string {
 		ignLabel = "● Ignored"
 	}
 	decisionLine := fmt.Sprintf("Decision:  %s    %s  (Tab to toggle)", ackLabel, ignLabel)
-	lines = append(lines, decisionLine)
+	lines = append(lines, textStyle.Render(decisionLine))
 	lines = append(lines, "")
 
 	// Comment label
-	lines = append(lines, "Comment:")
+	lines = append(lines, mutedStyle.Render("Comment:"))
 	lines = append(lines, "")
 
 	// Text input
@@ -2882,12 +2872,14 @@ func (m *Model) renderCVECommentModalBox() string {
 func (m *Model) viewError() string {
 	errorBox := ErrorBoxStyle.Render("ERROR\n\n" + m.ErrorMessage)
 
+	hintStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(ColorTextMuted))
+
 	content := lipgloss.JoinVertical(
 		lipgloss.Center,
 		"",
 		errorBox,
 		"",
-		"Press Enter or Esc to continue",
+		hintStyle.Render("Press Enter or Esc to continue"),
 	)
 
 	return m.assembleViewWithChrome(content)
