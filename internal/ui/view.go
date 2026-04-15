@@ -315,9 +315,12 @@ func (m *Model) assembleViewWithChrome(contentString string) string {
 		allLines = allLines[:m.Height]
 	}
 
-	result := lipgloss.JoinVertical(lipgloss.Left, allLines...)
-	// Apply background to entire result to ensure uniform color across all empty space
-	return AppBackgroundStyle.Width(m.Width).Render(result)
+	// Pad each line to full terminal width with background color
+	for i := range allLines {
+		allLines[i] = AppBackgroundStyle.Width(m.Width).Render(allLines[i])
+	}
+
+	return lipgloss.JoinVertical(lipgloss.Left, allLines...)
 }
 
 func (m *Model) renderAppHeader() string {
