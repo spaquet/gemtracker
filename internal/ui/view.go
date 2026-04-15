@@ -2055,7 +2055,8 @@ func (m *Model) renderProjectInfo(height int) string {
 	title := "Project Information"
 	titleStyle := lipgloss.NewStyle().
 		Bold(true).
-		Foreground(lipgloss.Color(ColorPrimary))
+		Foreground(lipgloss.Color(ColorPrimary)).
+		Background(lipgloss.Color("#262626"))
 
 	// Build info sections
 	var sections []string
@@ -2097,6 +2098,7 @@ func (m *Model) renderProjectInfo(height int) string {
 	sections = append(sections, lipgloss.NewStyle().
 		Bold(true).
 		Foreground(lipgloss.Color(ColorPrimary)).
+		Background(lipgloss.Color("#262626")).
 		Render("Statistics"))
 	sections = append(sections, "")
 
@@ -2110,7 +2112,8 @@ func (m *Model) renderProjectInfo(height int) string {
 		insecureLabel := fmt.Sprintf("🔓 Insecure Gem Sources (%d)", len(m.InsecureSourceGems))
 		insecureStyle := lipgloss.NewStyle().
 			Bold(true).
-			Foreground(lipgloss.Color(ColorWarning))
+			Foreground(lipgloss.Color(ColorWarning)).
+			Background(lipgloss.Color("#262626"))
 		sections = append(sections, insecureStyle.Render(insecureLabel))
 		sections = append(sections, "")
 		for _, gem := range m.InsecureSourceGems {
@@ -2134,10 +2137,12 @@ func (m *Model) formatInfoLine(label string, value string) string {
 	}
 
 	labelStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color(ColorTextMuted))
+		Foreground(lipgloss.Color(ColorTextMuted)).
+		Background(lipgloss.Color("#262626"))
 
 	valueStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color(ColorText))
+		Foreground(lipgloss.Color(ColorText)).
+		Background(lipgloss.Color("#262626"))
 
 	return fmt.Sprintf("  %s: %s",
 		labelStyle.Render(label),
