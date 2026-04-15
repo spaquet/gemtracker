@@ -936,7 +936,7 @@ func (m *Model) renderReverseDepsList(height int) string {
 
 	for _, depName := range reverseDeps {
 		// Bold gem name
-		nameLine := "  " + lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#d0d0d0")).Render(depName)
+		nameLine := "  " + lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(ColorTextMuted)).Render(depName)
 		lines = append(lines, nameLine)
 		m.DetailReverseLines = append(m.DetailReverseLines, depName)
 
@@ -1113,7 +1113,7 @@ func (m *Model) viewSearch() string {
 	if searchInputWidth < 10 {
 		searchInputWidth = 10
 	}
-	inputTextStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#808080"))
+	inputTextStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(ColorTextMuted))
 	styledInputView := inputTextStyle.Render(m.SearchInput.View())
 	searchInput := SearchBoxStyle.Width(searchInputWidth).Render(styledInputView)
 	searchLine := lipgloss.JoinHorizontal(lipgloss.Top, searchPrompt, searchInput)
