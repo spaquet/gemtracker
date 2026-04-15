@@ -100,13 +100,15 @@ var KeyHintDescStyle = lipgloss.NewStyle().
 
 var TableHeaderStyle = lipgloss.NewStyle().
 	Foreground(lipgloss.Color(ColorTextMuted)).
+	Background(lipgloss.Color("#262626")).
 	Bold(true).
 	BorderBottom(true).
 	BorderStyle(lipgloss.NormalBorder()).
 	BorderForeground(lipgloss.Color(ColorBorder))
 
 var RowNormalStyle = lipgloss.NewStyle().
-	Foreground(lipgloss.Color(ColorText))
+	Foreground(lipgloss.Color(ColorText)).
+	Background(lipgloss.Color("#262626"))
 
 var RowSelectedStyle = lipgloss.NewStyle().
 	Background(lipgloss.Color(ColorSelected)).
@@ -172,7 +174,7 @@ var PanelBorderActiveStyle = lipgloss.NewStyle().
 // ============================================================================
 
 var SearchPromptStyle = lipgloss.NewStyle().
-	Foreground(lipgloss.Color(ColorPrimary)).
+	Foreground(lipgloss.Color(ColorText)).
 	Bold(true)
 
 var SearchBoxStyle = lipgloss.NewStyle().
@@ -184,6 +186,7 @@ var SearchBoxStyle = lipgloss.NewStyle().
 var InputBoxStyle = lipgloss.NewStyle().
 	Border(lipgloss.RoundedBorder()).
 	BorderForeground(lipgloss.Color(ColorBorder)).
+	Foreground(lipgloss.Color(ColorText)).
 	Background(lipgloss.Color("#262626")).
 	Padding(0, 1)
 
@@ -195,7 +198,7 @@ var TreeConnectorStyle = lipgloss.NewStyle().
 	Foreground(lipgloss.Color(ColorTextSubtle))
 
 var TreeGemNameStyle = lipgloss.NewStyle().
-	Foreground(lipgloss.Color(ColorText))
+	Foreground(lipgloss.Color(ColorTextMuted))
 
 var TreeVersionStyle = lipgloss.NewStyle().
 	Foreground(lipgloss.Color(ColorTextMuted))
