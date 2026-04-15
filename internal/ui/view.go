@@ -1111,7 +1111,7 @@ func (m *Model) viewSearch() string {
 	if searchInputWidth < 10 {
 		searchInputWidth = 10
 	}
-	inputTextStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(ColorText))
+	inputTextStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(ColorTextMuted))
 	styledInputView := inputTextStyle.Render(m.SearchInput.View())
 	searchInput := SearchBoxStyle.Width(searchInputWidth).Render(styledInputView)
 	searchLine := lipgloss.JoinHorizontal(lipgloss.Top, searchPrompt, searchInput)
