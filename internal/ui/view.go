@@ -2843,6 +2843,7 @@ func (m *Model) renderCVECommentModalBox() string {
 	inputStyle := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color(ColorBorder)).
+		Foreground(lipgloss.Color(ColorText)).
 		Padding(0, 1).
 		Width(80)
 	inputView := inputStyle.Render(m.CVECommentInput.View())
