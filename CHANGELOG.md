@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v1.2.7] - 2026-04-14
+
+### Fixed
+- **Platform-Specific Gem Version Detection** - Correct gem version now displayed on Apple Silicon Macs
+  - Parser now detects current system platform (arm64-darwin, x86_64-linux, etc.)
+  - Selects matching platform-specific version from Gemfile.lock instead of last entry
+  - Fixes mismatch where darwin-arm64 Macs saw "x86_64-linux-musl" for gems like pg
+
+- **Gem Info Installed Versions Modal** - Fixed parsing to show all installed versions
+  - Handles current `gem info` output format: `gem (v1, v2)` + `Installed at: /path`
+  - Also supports legacy format: `Installed at (VERSION): /path`
+  - Handles single and multiple installed versions
+  - Sorts versions descending (newest first)
+  - Manager-independent: displays whatever path Ruby reports (frum, rbenv, rvm, system)
+
+### Improved
+- **Dependency Analysis** - Platform-specific gems now analyzed with correct version
+  - Ensures version comparison and outdated checks use correct platform version
+  - Improves accuracy of vulnerability and health reporting for platform-specific gems
+
 ## [v1.2.6] - 2026-04-12
 
 ### Added
