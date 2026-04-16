@@ -32,6 +32,10 @@ type GemStatus struct {
 	Health *GemHealth
 	// OutdatedFailed is true if the outdated version check failed with an error
 	OutdatedFailed bool
+	// Constraint is the version constraint from Gemfile/gems.rb (e.g., "~> 7.2", ">= 1.0")
+	Constraint string
+	// UpdateableVersion is the highest version matching the constraint
+	UpdateableVersion string
 }
 
 // AnalysisResult contains the results of analyzing a Gemfile.lock for vulnerabilities,
@@ -78,9 +82,10 @@ func Analyze(gemfile *Gemfile) *AnalysisResult {
 	// Check each gem for vulnerable and outdated status
 	for _, gem := range allGems {
 		status := &GemStatus{
-			Name:    gem.Name,
-			Version: gem.Version,
-			Groups:  gem.Groups, // Copy group information
+			Name:       gem.Name,
+			Version:    gem.Version,
+			Groups:     gem.Groups, // Copy group information
+			Constraint: gem.Constraint,
 		}
 
 		// Note: Vulnerability checking is deferred to OSV.dev async scan in the UI.

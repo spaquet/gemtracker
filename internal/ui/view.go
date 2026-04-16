@@ -558,8 +558,8 @@ func (m *Model) renderGemListTable(height int) string {
 	}
 
 	// Table header
-	headerRow := fmt.Sprintf("  %-4s %-24s %-11s %-11s %-14s %-3s %s",
-		"#", "Gem Name", "Installed", "Latest", "Groups", "H", "Status ")
+	headerRow := fmt.Sprintf("  %-3s %-16s %-8s %-10s %-11s %-8s %-8s %-3s %s",
+		"#", "Gem Name", "Current", "Constraint", "Updateable", "Latest", "Groups", "H", "CVE")
 	header := TableHeaderStyle.Render(headerRow)
 	lines = append(lines, header)
 
@@ -591,50 +591,98 @@ func (m *Model) renderGemListTable(height int) string {
 	return lipgloss.JoinVertical(lipgloss.Left, lines...)
 }
 
-func (m *Model) gemStatusBadge(gem *gemfile.GemStatus) string {
-	if gem.IsVulnerable {
-		return BadgeVulnerableStyle.Render("⚠ CVE")
+// getUpdateType determines the semantic version change type between two versions.
+// Returns: "major", "minor", "patch", or "" if versions can't be compared
+func (m *Model) getUpdateType(currentVersion, latestVersion string) string {
+	resolver := &gemfile.ConstraintResolver{}
+	currentParts := resolver.ParseVersion(currentVersion)
+	latestParts := resolver.ParseVersion(latestVersion)
+
+	if len(currentParts) == 0 || len(latestParts) == 0 {
+		return ""
 	}
-	if gem.IsOutdated {
-		return BadgeOutdatedStyle.Render("↑ " + gem.LatestVersion)
+
+	// Major version changed
+	if len(latestParts) > 0 && len(currentParts) > 0 && latestParts[0] != currentParts[0] {
+		return "major"
 	}
-	if gem.OutdatedFailed {
-		return BadgeErrorStyle.Render("! err")
+
+	// Minor version changed
+	if len(latestParts) > 1 && len(currentParts) > 1 && latestParts[1] != currentParts[1] {
+		return "minor"
 	}
-	if gem.LatestVersion == "" {
-		return BadgeLoadingStyle.Render("…")
+
+	// Patch version changed
+	return "patch"
+}
+
+// colorizeVersion applies color styling to a version string based on update type.
+func (m *Model) colorizeVersion(version, updateType string) string {
+	switch updateType {
+	case "major":
+		return BadgeVulnerableStyle.Render(version) // Red for major
+	case "minor":
+		return BadgeOutdatedStyle.Render(version) // Orange/yellow for minor
+	case "patch":
+		return BadgeOKStyle.Render(version) // Green for patch
+	default:
+		return version
 	}
-	return BadgeOKStyle.Render("✓")
 }
 
 func (m *Model) formatGemListRow(idx int, gem *gemfile.GemStatus, selected bool) string {
-	// Status indicator
-	status := m.gemStatusBadge(gem)
+	// CVE indicator - only show if vulnerable
+	cveDisplay := ""
+	if gem.IsVulnerable {
+		cveDisplay = BadgeVulnerableStyle.Render("⚠")
+	}
 
-	// Latest version display
+	// Constraint display
+	constraintDisplay := gem.Constraint
+	if constraintDisplay == "" {
+		constraintDisplay = "-"
+	}
+
+	// Updateable version display
+	resolver := &gemfile.ConstraintResolver{}
+	updateableVersion := resolver.ResolveUpdateableVersion(gem.Constraint, gem.LatestVersion, gem.Version)
+	if updateableVersion == "" {
+		// If no updateable version found, show nothing (constraint blocks update)
+		updateableVersion = "-"
+	}
+	if gem.Constraint == "" {
+		// No constraint means all versions are updateable
+		updateableVersion = gem.LatestVersion
+		if updateableVersion == "" {
+			updateableVersion = "…"
+		}
+	}
+
+	// Latest version display with color coding based on update type
 	var latestDisplay string
-	switch {
-	case gem.OutdatedFailed:
+	if gem.OutdatedFailed {
 		latestDisplay = "-"
-	case gem.LatestVersion == "":
+	} else if gem.LatestVersion == "" {
 		latestDisplay = "…"
-	case gem.IsOutdated:
-		latestDisplay = gem.LatestVersion
-	default:
+	} else if gem.IsOutdated {
+		// Determine update type: patch (green), minor (orange), major (red)
+		updateType := m.getUpdateType(gem.Version, gem.LatestVersion)
+		latestDisplay = m.colorizeVersion(gem.LatestVersion, updateType)
+	} else {
 		latestDisplay = "latest"
 	}
 
 	// Groups display
 	groupsDisplay := strings.Join(gem.Groups, ",")
-	if len(groupsDisplay) > 14 {
-		groupsDisplay = groupsDisplay[:11] + "..."
+	if len(groupsDisplay) > 8 {
+		groupsDisplay = groupsDisplay[:5] + "..."
 	}
 
 	// Health indicator (only on wide terminals)
 	healthDisplay := ""
 	if m.Width >= 80 {
 		if gem.Health == nil {
-			healthDisplay = "   " // 3 spaces for loading state
+			healthDisplay = " " // 1 space for loading state
 		} else {
 			switch gem.Health.Score {
 			case gemfile.HealthHealthy:
@@ -647,29 +695,32 @@ func (m *Model) formatGemListRow(idx int, gem *gemfile.GemStatus, selected bool)
 				healthDisplay = BadgeErrorStyle.Render("!")
 			}
 		}
-		healthDisplay = fmt.Sprintf("%-3s", healthDisplay)
 	}
 
 	// Format row with truncated columns
 	var row string
 	if m.Width >= 80 {
-		row = fmt.Sprintf("  %-4d %-24s %-11s %-11s %-14s %s %s",
+		row = fmt.Sprintf("  %-3d %-16s %-8s %-10s %-11s %-8s %-8s %s %s",
 			idx,
-			truncateStr(gem.Name, 24),
-			truncateStr(gem.Version, 11),
-			truncateStr(latestDisplay, 11),
+			truncateStr(gem.Name, 16),
+			truncateStr(gem.Version, 8),
+			truncateStr(constraintDisplay, 10),
+			truncateStr(updateableVersion, 11),
+			latestDisplay,
 			groupsDisplay,
 			healthDisplay,
-			status,
+			cveDisplay,
 		)
 	} else {
-		row = fmt.Sprintf("  %-4d %-24s %-11s %-11s %-14s %s",
+		row = fmt.Sprintf("  %-3d %-16s %-8s %-10s %-11s %-8s %-8s %s",
 			idx,
-			truncateStr(gem.Name, 24),
-			truncateStr(gem.Version, 11),
-			truncateStr(latestDisplay, 11),
+			truncateStr(gem.Name, 16),
+			truncateStr(gem.Version, 8),
+			truncateStr(constraintDisplay, 10),
+			truncateStr(updateableVersion, 11),
+			latestDisplay,
 			groupsDisplay,
-			status,
+			cveDisplay,
 		)
 	}
 

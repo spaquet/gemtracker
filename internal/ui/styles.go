@@ -123,31 +123,40 @@ var RowMutedStyle = lipgloss.NewStyle().
 // ============================================================================
 
 var BadgeOKStyle = lipgloss.NewStyle().
-	Foreground(lipgloss.Color(ColorSuccess))
+	Foreground(lipgloss.Color(ColorSuccess)).
+	Background(lipgloss.Color("#262626"))
 
 var BadgeOutdatedStyle = lipgloss.NewStyle().
-	Foreground(lipgloss.Color(ColorWarning))
+	Foreground(lipgloss.Color(ColorWarning)).
+	Background(lipgloss.Color("#262626"))
 
 var BadgeVulnerableStyle = lipgloss.NewStyle().
-	Foreground(lipgloss.Color(ColorDanger))
+	Foreground(lipgloss.Color(ColorDanger)).
+	Background(lipgloss.Color("#262626"))
 
 var BadgeLoadingStyle = lipgloss.NewStyle().
-	Foreground(lipgloss.Color(ColorTextMuted))
+	Foreground(lipgloss.Color(ColorTextMuted)).
+	Background(lipgloss.Color("#262626"))
 
 var BadgeErrorStyle = lipgloss.NewStyle().
-	Foreground(lipgloss.Color(ColorDanger))
+	Foreground(lipgloss.Color(ColorDanger)).
+	Background(lipgloss.Color("#262626"))
 
 var BadgeHealthyDotStyle = lipgloss.NewStyle().
-	Foreground(lipgloss.Color(ColorSuccess))
+	Foreground(lipgloss.Color(ColorSuccess)).
+	Background(lipgloss.Color("#262626"))
 
 var BadgeWarningDotStyle = lipgloss.NewStyle().
-	Foreground(lipgloss.Color(ColorWarning))
+	Foreground(lipgloss.Color(ColorWarning)).
+	Background(lipgloss.Color("#262626"))
 
 var BadgeCriticalDotStyle = lipgloss.NewStyle().
-	Foreground(lipgloss.Color(ColorDanger))
+	Foreground(lipgloss.Color(ColorDanger)).
+	Background(lipgloss.Color("#262626"))
 
 var BadgeHighDotStyle = lipgloss.NewStyle().
-	Foreground(lipgloss.Color(ColorHigh))
+	Foreground(lipgloss.Color(ColorHigh)).
+	Background(lipgloss.Color("#262626"))
 
 // ============================================================================
 // Panel/Container Styles

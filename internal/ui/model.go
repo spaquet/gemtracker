@@ -571,6 +571,10 @@ func performAnalysis(gemfilePath string, noCache bool) tea.Cmd {
 		if !isGemspec {
 			dir := filepath.Dir(gemfilePath)
 			gf.LoadGroupsFromGemfile(dir)
+			// Load version constraints from Gemfile/gems.rb
+			gf.LoadConstraintsFromGemfile(dir)
+			// Load constraints from gemspec if present
+			gf.LoadConstraintsFromGemspec("")
 		}
 
 		// Create the outdated checker once and reuse it
@@ -620,6 +624,10 @@ func performAnalysisWithProgress(gemfilePath string) tea.Cmd {
 		// Load group information from Gemfile
 		dir := filepath.Dir(gemfilePath)
 		gf.LoadGroupsFromGemfile(dir)
+		// Load version constraints from Gemfile/gems.rb
+		gf.LoadConstraintsFromGemfile(dir)
+		// Load constraints from gemspec if present
+		gf.LoadConstraintsFromGemspec("")
 
 		// Stage 2: Analyze gems (40-70%)
 		result := gemfile.Analyze(gf)
@@ -679,6 +687,10 @@ func performAnalysisWithProgressStages(gemfilePath string) tea.Cmd {
 			// Load group information from Gemfile
 			dir := filepath.Dir(gemfilePath)
 			gf.LoadGroupsFromGemfile(dir)
+			// Load version constraints from Gemfile/gems.rb
+			gf.LoadConstraintsFromGemfile(dir)
+			// Load constraints from gemspec if present
+			gf.LoadConstraintsFromGemspec("")
 
 			// Analyze gems
 			result := gemfile.Analyze(gf)
@@ -712,6 +724,10 @@ func performDependencyAnalysis(gemfilePath string, gemName string) tea.Cmd {
 		if !isGemspec {
 			dir := filepath.Dir(gemfilePath)
 			gf.LoadGroupsFromGemfile(dir)
+			// Load version constraints from Gemfile/gems.rb
+			gf.LoadConstraintsFromGemfile(dir)
+			// Load constraints from gemspec if present
+			gf.LoadConstraintsFromGemspec("")
 		}
 
 		// Enrich gemspec dependencies from RubyGems API
