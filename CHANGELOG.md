@@ -5,6 +5,35 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v1.2.9] - 2026-04-15
+
+### Added
+- **Version Constraint Columns** - Display Gemfile version constraints in gems list
+  - New "Constraint" column shows version restrictions from Gemfile/gems.rb/gemspec (e.g., "~> 7.2", ">= 1.0")
+  - New "Updateable" column shows highest version matching the constraint
+  - Helps identify which updates are available within version bounds
+  - Supports constraint parsing from Gemfile, gems.rb, and .gemspec files
+  - Handles multiple constraints (e.g., ">= 1.0, < 2.0") and all semver operators (~>, >=, >, <=, <, =)
+
+- **Color-Coded Version Updates** - Visual indicator of update severity
+  - Latest version now color-coded by semver change type:
+    - **Green** for patch updates (safe, backward compatible)
+    - **Orange** for minor updates (review changes, likely compatible)
+    - **Red** for major updates (breaking changes, requires review)
+  - Quick visual scanning of update risk level
+
+- **CVE-Only Status Column** - Simplified vulnerability indicator
+  - Status column replaced with CVE-only column showing ⚠ warning only when vulnerabilities exist
+  - Reduces visual clutter, focuses on critical issues
+
+### Improved
+- **Constraint Parsing** - Support for all Ruby dependency declaration formats
+  - Parses constraints from Gemfile (gem declarations)
+  - Parses constraints from gems.rb (gem declarations with same syntax)
+  - Parses constraints from .gemspec (add_runtime_dependency, add_development_dependency)
+  - Parses constraints from gems.locked (same as Gemfile.lock)
+  - Correctly filters option keys (git, path, platforms) from constraints
+
 ## [v1.2.7] - 2026-04-14
 
 ### Fixed

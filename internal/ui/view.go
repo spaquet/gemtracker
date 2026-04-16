@@ -659,15 +659,17 @@ func (m *Model) formatGemListRow(idx int, gem *gemfile.GemStatus, selected bool)
 	}
 
 	// Latest version display with color coding based on update type
+	// Truncate BEFORE coloring so padding works correctly
 	var latestDisplay string
 	if gem.OutdatedFailed {
 		latestDisplay = "-"
 	} else if gem.LatestVersion == "" {
 		latestDisplay = "…"
 	} else if gem.IsOutdated {
+		latestTrunc := truncateStr(gem.LatestVersion, 8)
 		// Determine update type: patch (green), minor (orange), major (red)
 		updateType := m.getUpdateType(gem.Version, gem.LatestVersion)
-		latestDisplay = m.colorizeVersion(gem.LatestVersion, updateType)
+		latestDisplay = m.colorizeVersion(latestTrunc, updateType)
 	} else {
 		latestDisplay = "latest"
 	}
@@ -697,30 +699,46 @@ func (m *Model) formatGemListRow(idx int, gem *gemfile.GemStatus, selected bool)
 		}
 	}
 
+	// Ensure CVE display always has content (empty string or icon)
+	// The row styling will be applied during cell formatting
+	if cveDisplay == "" {
+		cveDisplay = " " // Empty space (will get background in cell formatting)
+	}
+
 	// Format row with truncated columns
+	// Build cells with proper padding, using lipgloss for styled strings (ANSI-aware)
 	var row string
 	if m.Width >= 80 {
-		row = fmt.Sprintf("  %-3d %-16s %-8s %-10s %-11s %-8s %-8s %s %s",
-			idx,
-			truncateStr(gem.Name, 16),
-			truncateStr(gem.Version, 8),
-			truncateStr(constraintDisplay, 10),
-			truncateStr(updateableVersion, 11),
-			latestDisplay,
-			groupsDisplay,
-			healthDisplay,
-			cveDisplay,
+		// Build padded cells separately
+		idCell := fmt.Sprintf("%-3d", idx)
+		nameCell := fmt.Sprintf("%-16s", truncateStr(gem.Name, 16))
+		versionCell := fmt.Sprintf("%-8s", truncateStr(gem.Version, 8))
+		constraintCell := fmt.Sprintf("%-10s", truncateStr(constraintDisplay, 10))
+		updateableCell := fmt.Sprintf("%-11s", truncateStr(updateableVersion, 11))
+		// Use lipgloss.PlaceHorizontal for styled strings (handles ANSI codes in width calculation)
+		// Wrap with RowNormalStyle to ensure padding has correct background
+		latestCell := RowNormalStyle.Render(lipgloss.PlaceHorizontal(8, lipgloss.Left, latestDisplay))
+		groupsCell := RowNormalStyle.Render(fmt.Sprintf("%-8s", groupsDisplay))
+		healthCell := RowNormalStyle.Render(lipgloss.PlaceHorizontal(3, lipgloss.Left, healthDisplay))
+		cveCell := RowNormalStyle.Render(lipgloss.PlaceHorizontal(2, lipgloss.Left, cveDisplay))
+
+		row = fmt.Sprintf("  %s %s %s %s %s %s %s %s %s",
+			idCell, nameCell, versionCell, constraintCell, updateableCell,
+			latestCell, groupsCell, healthCell, cveCell,
 		)
 	} else {
-		row = fmt.Sprintf("  %-3d %-16s %-8s %-10s %-11s %-8s %-8s %s",
-			idx,
-			truncateStr(gem.Name, 16),
-			truncateStr(gem.Version, 8),
-			truncateStr(constraintDisplay, 10),
-			truncateStr(updateableVersion, 11),
-			latestDisplay,
-			groupsDisplay,
-			cveDisplay,
+		idCell := fmt.Sprintf("%-3d", idx)
+		nameCell := fmt.Sprintf("%-16s", truncateStr(gem.Name, 16))
+		versionCell := fmt.Sprintf("%-8s", truncateStr(gem.Version, 8))
+		constraintCell := fmt.Sprintf("%-10s", truncateStr(constraintDisplay, 10))
+		updateableCell := fmt.Sprintf("%-11s", truncateStr(updateableVersion, 11))
+		latestCell := RowNormalStyle.Render(lipgloss.PlaceHorizontal(8, lipgloss.Left, latestDisplay))
+		groupsCell := RowNormalStyle.Render(fmt.Sprintf("%-8s", groupsDisplay))
+		cveCell := RowNormalStyle.Render(lipgloss.PlaceHorizontal(2, lipgloss.Left, cveDisplay))
+
+		row = fmt.Sprintf("  %s %s %s %s %s %s %s %s",
+			idCell, nameCell, versionCell, constraintCell, updateableCell,
+			latestCell, groupsCell, cveCell,
 		)
 	}
 
