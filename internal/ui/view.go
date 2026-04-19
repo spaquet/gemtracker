@@ -666,22 +666,9 @@ func (m *Model) formatGemListRow(idx int, gem *gemfile.GemStatus, selected bool)
 		constraintDisplay = "-"
 	}
 
-	// Updateable version display
-	resolver := &gemfile.ConstraintResolver{}
-	updateableVersion := resolver.ResolveUpdateableVersion(gem.Constraint, gem.LatestVersion, gem.Version, gem.Name)
+	// Updateable version display (computed async, just display cached value)
+	updateableVersion := gem.UpdateableVersion
 	if updateableVersion == "" {
-		// If no updateable version found, show nothing (constraint blocks update)
-		updateableVersion = "-"
-	}
-	if gem.Constraint == "" {
-		// No constraint means all versions are updateable
-		updateableVersion = gem.LatestVersion
-		if updateableVersion == "" {
-			updateableVersion = "…"
-		}
-	}
-	// If already on latest version, don't show it in Updateable column
-	if updateableVersion == gem.Version {
 		updateableVersion = "-"
 	}
 
@@ -1420,16 +1407,10 @@ func (m *Model) renderUpgradeableGemRow(gem *gemfile.GemStatus, selected, cursor
 		constraintDisplay = "-"
 	}
 
-	resolver := &gemfile.ConstraintResolver{}
-	updateableVersion := resolver.ResolveUpdateableVersion(gem.Constraint, gem.LatestVersion, gem.Version, gem.Name)
+	// Updateable version display (computed async, just display cached value)
+	updateableVersion := gem.UpdateableVersion
 	if updateableVersion == "" {
 		updateableVersion = "-"
-	}
-	if gem.Constraint == "" {
-		updateableVersion = gem.LatestVersion
-		if updateableVersion == "" {
-			updateableVersion = "…"
-		}
 	}
 
 	groupsDisplay := strings.Join(gem.Groups, ",")

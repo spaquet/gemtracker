@@ -114,6 +114,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case OutdatedItemMsg, OutdatedCompleteMsg:
 		return m.dispatchOutdatedMessages(msg)
 
+	case UpdateableItemMsg, UpdateableCompleteMsg:
+		return m.dispatchUpdateableMessages(msg)
+
 	case CVEScanStartedMsg, CVEProgressMsg, CVECompleteMsg, CVELoadFromCacheMsg, CVECommentsLoadedMsg, CVEEnrichmentCompleteMsg:
 		return m.dispatchCVEMessages(msg)
 
@@ -147,6 +150,10 @@ func (m *Model) dispatchOutdatedMessages(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.handleOutdatedItem(msg)
 	case OutdatedCompleteMsg:
 		return m.handleOutdatedComplete()
+	case UpdateableItemMsg:
+		return m.handleUpdateableItem(msg)
+	case UpdateableCompleteMsg:
+		return m.handleUpdateableComplete()
 	case UpgradeResultMsg:
 		return m.handleUpgradeResult(msg)
 	}
@@ -1267,6 +1274,7 @@ func (m *Model) handleAnalysisComplete(msg AnalysisCompleteMsg) (tea.Model, tea.
 	m.updateAnalysisState(msg)
 	m.setupOutdatedChecking(msg.Result)
 	m.setupHealthChecking()
+	m.setupUpdateableChecking(msg.Result)
 
 	// Compute gems signature for later refresh detection
 	if len(msg.Result.AllGems) > 0 {
@@ -1278,6 +1286,7 @@ func (m *Model) handleAnalysisComplete(msg AnalysisCompleteMsg) (tea.Model, tea.
 	// Batch outdated checking, CVE scanning, Sanity data loading, and load CVE comments
 	return m, tea.Batch(
 		fetchNextOutdatedItem(m.OutdatedPending, m.OutdatedChecker),
+		fetchNextUpdateableItem(m.UpdateablePending, m.ConstraintResolver),
 		performCVEScan(msg.Result.AllGems),
 		loadSanityData(msg.Result.AllGems),
 		m.loadCVECommentsCmd(),
@@ -1392,6 +1401,24 @@ func (m *Model) setupHealthChecking() {
 	// Try to load health data from cache first
 	if healthCache, err := cache.ReadHealth(m.GemfileLockPath); err == nil {
 		m.applyHealthCache(healthCache)
+	}
+}
+
+// setupUpdateableChecking initializes the updateable version checking queue for gems with constraints.
+func (m *Model) setupUpdateableChecking(result *gemfile.AnalysisResult) {
+	// Only fetch updateable versions for gems with constraints
+	m.UpdateableLoading = true
+	for _, gem := range result.GemStatuses {
+		if gem.Constraint != "" {
+			m.UpdateablePending = append(m.UpdateablePending, gem)
+		} else {
+			// No constraint: updateable = latest
+			gem.UpdateableVersion = gem.LatestVersion
+		}
+		// If already on latest matching version, clear UpdateableVersion
+		if gem.UpdateableVersion == gem.Version {
+			gem.UpdateableVersion = ""
+		}
 	}
 }
 
@@ -1597,6 +1624,41 @@ func (m *Model) handleOutdatedComplete() (tea.Model, tea.Cmd) {
 		return m, fetchGitHubBatchHealth(m.AnalysisResult.GemStatuses, m.OutdatedChecker, m.HealthChecker)
 	}
 
+	return m, nil
+}
+
+func (m *Model) dispatchUpdateableMessages(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case UpdateableItemMsg:
+		return m.handleUpdateableItem(msg)
+	case UpdateableCompleteMsg:
+		return m.handleUpdateableComplete()
+	}
+	return m, nil
+}
+
+func (m *Model) handleUpdateableItem(msg UpdateableItemMsg) (tea.Model, tea.Cmd) {
+	// Update the gem's cached UpdateableVersion
+	for _, gem := range m.AnalysisResult.GemStatuses {
+		if gem.Name == msg.GemName {
+			gem.UpdateableVersion = msg.UpdateableVersion
+			break
+		}
+	}
+
+	// Continue with next pending gem if any
+	if len(m.UpdateablePending) > 0 {
+		nextGem := m.UpdateablePending[0]
+		m.UpdateablePending = m.UpdateablePending[1:]
+		return m, fetchUpdateableVersion(nextGem, m.ConstraintResolver)
+	}
+
+	// All done
+	return m, func() tea.Msg { return UpdateableCompleteMsg{} }
+}
+
+func (m *Model) handleUpdateableComplete() (tea.Model, tea.Cmd) {
+	m.UpdateableLoading = false
 	return m, nil
 }
 
