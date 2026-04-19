@@ -147,6 +147,8 @@ func (m *Model) dispatchOutdatedMessages(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.handleOutdatedItem(msg)
 	case OutdatedCompleteMsg:
 		return m.handleOutdatedComplete()
+	case UpgradeResultMsg:
+		return m.handleUpgradeResult(msg)
 	}
 	return m, nil
 }
@@ -544,6 +546,11 @@ func (m *Model) handleSearchKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m *Model) handleUpgradeableKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	// Handle modal close for any key
+	if m.UpgradeResultModalOpen {
+		return m.closeUpgradeResultModal()
+	}
+
 	switch msg.String() {
 	case "tab":
 		m.CurrentView = ViewCVE
@@ -586,6 +593,25 @@ func (m *Model) handleUpgradeableKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) 
 			)
 		}
 		return m, nil
+
+	case " ":
+		m.ToggleSelectionAtCursor()
+		return m, nil
+
+	case "space":
+		m.ToggleSelectionAtCursor()
+		return m, nil
+
+	case "ctrl+a":
+		m.SelectAllUpgradeable()
+		return m, nil
+
+	case "ctrl+d":
+		m.DeselectAllUpgradeable()
+		return m, nil
+
+	case "u":
+		return m.startUpgrade()
 	}
 
 	return m, nil
@@ -1569,6 +1595,49 @@ func (m *Model) handleOutdatedComplete() (tea.Model, tea.Cmd) {
 		return m, fetchGitHubBatchHealth(m.AnalysisResult.GemStatuses, m.OutdatedChecker, m.HealthChecker)
 	}
 
+	return m, nil
+}
+
+func (m *Model) startUpgrade() (tea.Model, tea.Cmd) {
+	selectedGems := m.GetSelectedGemNames()
+	if len(selectedGems) == 0 {
+		return m, nil
+	}
+
+	m.UpgradeInProgress = true
+	m.UpgradeSuccessCount = 0
+	m.UpgradeErrors = nil
+
+	return m, func() tea.Msg {
+		results, _ := gemfile.UpgradeGems(selectedGems, m.GemfileLockPath)
+		return UpgradeResultMsg{Results: results}
+	}
+}
+
+func (m *Model) handleUpgradeResult(msg UpgradeResultMsg) (tea.Model, tea.Cmd) {
+	m.UpgradeInProgress = false
+	m.UpgradeResultModalOpen = true
+
+	successCount := 0
+	var errors []string
+
+	for _, result := range msg.Results {
+		if result.Success {
+			successCount++
+		} else {
+			errors = append(errors, fmt.Sprintf("%s: %s", result.GemName, result.Error))
+		}
+	}
+
+	m.UpgradeSuccessCount = successCount
+	m.UpgradeErrors = errors
+
+	return m, nil
+}
+
+func (m *Model) closeUpgradeResultModal() (tea.Model, tea.Cmd) {
+	m.UpgradeResultModalOpen = false
+	m.DeselectAllUpgradeable()
 	return m, nil
 }
 

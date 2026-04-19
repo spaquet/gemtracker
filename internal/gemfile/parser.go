@@ -36,6 +36,8 @@ type Gem struct {
 	Source string
 	// InsecureSource is true if the gem is sourced from an insecure protocol (http://, git://)
 	InsecureSource bool
+	// Constraint is the version constraint from Gemfile/gems.rb/gemspec (e.g., "~> 7.2", ">= 1.0")
+	Constraint string
 }
 
 // Gemfile represents the parsed contents of a Gemfile.lock file.
@@ -573,4 +575,152 @@ func (g *Gemfile) GetInsecureSourceGems() []*Gem {
 		}
 	}
 	return insecureGems
+}
+
+// LoadConstraintsFromGemfile parses the Gemfile (or gems.rb) to extract version constraints for gems.
+// It processes gem declarations with version constraints (e.g., "gem 'rails', '~> 7.2'").
+// Handles multiple constraints: gem 'pg', '>= 1.1', '< 2.0' -> '>= 1.1, < 2.0'
+// Returns an error if the Gemfile cannot be read; returns nil if the Gemfile is not found (graceful degradation).
+func (g *Gemfile) LoadConstraintsFromGemfile(gemfilePath string) error {
+	gemfilePath = resolvePath(gemfilePath, FindGemfile)
+	if gemfilePath == "" {
+		return nil
+	}
+
+	file, err := os.Open(gemfilePath)
+	if err != nil {
+		return nil
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	// Matches: gem 'name' or gem 'name', ...
+	gemLineRegex := regexp.MustCompile(`^\s*gem\s+["']([a-z0-9_-]+)["'](.*)$`)
+	// Extracts all quoted strings from the remainder of the line
+	quotedRegex := regexp.MustCompile(`["']([^"']+)["']`)
+
+	for scanner.Scan() {
+		line := scanner.Text()
+
+		matches := gemLineRegex.FindStringSubmatch(line)
+		if len(matches) < 2 {
+			continue
+		}
+
+		gemName := matches[1]
+		remainder := matches[2]
+
+		// Extract all quoted strings after gem name (these are constraints and options)
+		quotedMatches := quotedRegex.FindAllStringSubmatch(remainder, -1)
+		var constraints []string
+
+		for _, qm := range quotedMatches {
+			if len(qm) > 1 {
+				quoted := qm[1]
+				// Skip option keys like "git", "path", "platforms", etc.
+				// Version constraints start with operators: ~>, >=, >, <=, <, =
+				if isVersionConstraint(quoted) {
+					constraints = append(constraints, quoted)
+				}
+			}
+		}
+
+		constraint := strings.Join(constraints, ", ")
+
+		// Store constraint only for first-level gems (those in DEPENDENCIES section of lock file)
+		if gem, ok := g.Gems[gemName]; ok && gem.IsFirstLevel {
+			gem.Constraint = constraint
+		}
+	}
+
+	return nil
+}
+
+// LoadConstraintsFromGemspec parses .gemspec files to extract version constraints for gem dependencies.
+// It looks for add_runtime_dependency and add_development_dependency declarations.
+// Handles multiple constraints: spec.add_runtime_dependency "pg", ">= 1.1", "< 2.0" -> ">= 1.1, < 2.0"
+// Returns an error if the gemspec cannot be read; returns nil if not found (graceful degradation).
+func (g *Gemfile) LoadConstraintsFromGemspec(gemspecPath string) error {
+	// Try to find gemspec file in same directory as lock file
+	if gemspecPath == "" {
+		lockDir := filepath.Dir(g.Path)
+		entries, err := os.ReadDir(lockDir)
+		if err != nil {
+			return nil
+		}
+		for _, entry := range entries {
+			if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".gemspec") {
+				gemspecPath = filepath.Join(lockDir, entry.Name())
+				break
+			}
+		}
+	}
+
+	if gemspecPath == "" {
+		return nil
+	}
+
+	file, err := os.Open(gemspecPath)
+	if err != nil {
+		return nil
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	// Matches: add_runtime_dependency "name", ... or add_development_dependency "name", ...
+	gemspecDepRegex := regexp.MustCompile(`^\s*(?:add_runtime_dependency|add_development_dependency)\s+["']([a-z0-9_-]+)["'](.*)$`)
+	// Extracts all quoted strings
+	quotedRegex := regexp.MustCompile(`["']([^"']+)["']`)
+
+	for scanner.Scan() {
+		line := scanner.Text()
+
+		matches := gemspecDepRegex.FindStringSubmatch(line)
+		if len(matches) < 2 {
+			continue
+		}
+
+		gemName := matches[1]
+		remainder := matches[2]
+
+		// Extract all quoted strings after gem name (these are constraints)
+		quotedMatches := quotedRegex.FindAllStringSubmatch(remainder, -1)
+		var constraints []string
+
+		for _, qm := range quotedMatches {
+			if len(qm) > 1 {
+				quoted := qm[1]
+				if isVersionConstraint(quoted) {
+					constraints = append(constraints, quoted)
+				}
+			}
+		}
+
+		constraint := strings.Join(constraints, ", ")
+
+		// For gemspec, add constraint only if not already set by Gemfile (Gemfile takes precedence)
+		if gem, ok := g.Gems[gemName]; ok && gem.Constraint == "" {
+			gem.Constraint = constraint
+		}
+	}
+
+	return nil
+}
+
+// isVersionConstraint checks if a string is a version constraint (starts with operator).
+// Returns true for: ~>, >=, >, <=, <, =
+func isVersionConstraint(s string) bool {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return false
+	}
+	// Check for version constraint operators
+	return strings.HasPrefix(s, "~>") ||
+		strings.HasPrefix(s, ">=") ||
+		strings.HasPrefix(s, ">") ||
+		strings.HasPrefix(s, "<=") ||
+		strings.HasPrefix(s, "<") ||
+		strings.HasPrefix(s, "=") ||
+		// Also match plain version numbers (e.g., "1.2.3")
+		(s[0] >= '0' && s[0] <= '9')
 }
