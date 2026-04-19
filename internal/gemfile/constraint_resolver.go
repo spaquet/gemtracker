@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/spaquet/gemtracker/internal/logger"
 )
 
 // ConstraintResolver resolves version constraints and finds compatible versions.
@@ -239,9 +241,11 @@ func (cr *ConstraintResolver) FindHighestMatchingVersion(gemName, constraint str
 }
 
 // fetchAvailableVersions queries rubygems.org API for all available versions of a gem.
+// Uses the /api/v1/versions endpoint which returns array of version objects.
 // Returns a slice of version strings or an error.
 func (cr *ConstraintResolver) fetchAvailableVersions(gemName string) ([]string, error) {
-	url := fmt.Sprintf("https://rubygems.org/api/v1/gems/%s.json", gemName)
+	// Use /api/v1/versions/{name}.json which returns array of version objects
+	url := fmt.Sprintf("https://rubygems.org/api/v1/versions/%s.json", gemName)
 
 	client := &http.Client{
 		Timeout: 5 * time.Second,
@@ -249,28 +253,40 @@ func (cr *ConstraintResolver) fetchAvailableVersions(gemName string) ([]string, 
 
 	resp, err := client.Get(url)
 	if err != nil {
+		logger.Error("Failed to fetch versions for %s: %v", gemName, err)
 		return nil, err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
+		logger.Error("RubyGems API error for %s: status %d", gemName, resp.StatusCode)
 		return nil, fmt.Errorf("rubygems API returned status %d", resp.StatusCode)
 	}
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
+		logger.Error("Failed to read response body for %s: %v", gemName, err)
 		return nil, err
 	}
 
-	var gem struct {
-		Versions []string `json:"versions"`
+	// Response is array of version objects: [{number, platform, prerelease, ...}, ...]
+	var versions []struct {
+		Number string `json:"number"`
 	}
 
-	if err := json.Unmarshal(body, &gem); err != nil {
+	if err := json.Unmarshal(body, &versions); err != nil {
+		logger.Error("Failed to parse JSON for %s: %v", gemName, err)
 		return nil, err
 	}
 
-	return gem.Versions, nil
+	// Extract just the version numbers
+	result := make([]string, len(versions))
+	for i, v := range versions {
+		result[i] = v.Number
+	}
+
+	logger.Info("Fetched %d versions for %s", len(result), gemName)
+	return result, nil
 }
 
 // sortVersionStringsDescending sorts versions in descending order (highest first).
