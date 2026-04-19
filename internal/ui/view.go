@@ -668,7 +668,7 @@ func (m *Model) formatGemListRow(idx int, gem *gemfile.GemStatus, selected bool)
 
 	// Updateable version display
 	resolver := &gemfile.ConstraintResolver{}
-	updateableVersion := resolver.ResolveUpdateableVersion(gem.Constraint, gem.LatestVersion, gem.Version)
+	updateableVersion := resolver.ResolveUpdateableVersion(gem.Constraint, gem.LatestVersion, gem.Version, gem.Name)
 	if updateableVersion == "" {
 		// If no updateable version found, show nothing (constraint blocks update)
 		updateableVersion = "-"
@@ -1421,7 +1421,7 @@ func (m *Model) renderUpgradeableGemRow(gem *gemfile.GemStatus, selected, cursor
 	}
 
 	resolver := &gemfile.ConstraintResolver{}
-	updateableVersion := resolver.ResolveUpdateableVersion(gem.Constraint, gem.LatestVersion, gem.Version)
+	updateableVersion := resolver.ResolveUpdateableVersion(gem.Constraint, gem.LatestVersion, gem.Version, gem.Name)
 	if updateableVersion == "" {
 		updateableVersion = "-"
 	}
