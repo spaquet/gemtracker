@@ -1269,6 +1269,8 @@ func fetchNextOutdatedItem(gems []*gemfile.GemStatus, checker *gemfile.OutdatedC
 // and returns the result via UpdateableItemMsg
 func fetchUpdateableVersion(gem *gemfile.GemStatus, resolver *gemfile.ConstraintResolver) tea.Cmd {
 	return func() tea.Msg {
+		logger.Info("Fetching updateable version for %s (constraint: %s)", gem.Name, gem.Constraint)
+
 		// Skip if no constraint (UpdateableVersion should be set to LatestVersion in analysis)
 		if gem.Constraint == "" {
 			return UpdateableItemMsg{GemName: gem.Name, UpdateableVersion: gem.LatestVersion}
@@ -1276,6 +1278,7 @@ func fetchUpdateableVersion(gem *gemfile.GemStatus, resolver *gemfile.Constraint
 
 		// Find highest version matching constraint
 		updateableVersion := resolver.FindHighestMatchingVersion(gem.Name, gem.Constraint)
+		logger.Info("  Result: %s", updateableVersion)
 		if updateableVersion == gem.Version {
 			// Already on latest matching version, show nothing
 			updateableVersion = ""

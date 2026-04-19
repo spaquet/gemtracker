@@ -1413,12 +1413,16 @@ func (m *Model) setupUpdateableChecking(result *gemfile.AnalysisResult) {
 	// Queue gems with constraints, set no-constraint gems directly
 	for _, gem := range result.GemStatuses {
 		if gem.Constraint != "" {
+			// Initialize to "..." (loading indicator) so we can see if async task updates it
+			gem.UpdateableVersion = "…"
 			m.UpdateablePending = append(m.UpdateablePending, gem)
 		} else if gem.LatestVersion != "" {
 			// No constraint: updateable = latest (only if we have latest version)
 			gem.UpdateableVersion = gem.LatestVersion
 		}
 	}
+
+	logger.Info("Updateable checking: queued %d gems with constraints", len(m.UpdateablePending))
 }
 
 // applyHealthCache applies cached health data to gems.
@@ -1637,6 +1641,8 @@ func (m *Model) dispatchUpdateableMessages(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m *Model) handleUpdateableItem(msg UpdateableItemMsg) (tea.Model, tea.Cmd) {
+	logger.Info("Updateable version resolved: %s -> %s", msg.GemName, msg.UpdateableVersion)
+
 	// Update the gem's cached UpdateableVersion in GemStatuses
 	for _, gem := range m.AnalysisResult.GemStatuses {
 		if gem.Name == msg.GemName {
@@ -1671,6 +1677,7 @@ func (m *Model) handleUpdateableItem(msg UpdateableItemMsg) (tea.Model, tea.Cmd)
 
 func (m *Model) handleUpdateableComplete() (tea.Model, tea.Cmd) {
 	m.UpdateableLoading = false
+	logger.Info("Updateable version checking complete")
 	return m, nil
 }
 

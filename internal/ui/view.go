@@ -667,6 +667,7 @@ func (m *Model) formatGemListRow(idx int, gem *gemfile.GemStatus, selected bool)
 	}
 
 	// Updateable version display (computed async, just display cached value)
+	// "…" = loading, empty = no constraint or already on latest, version = match found, "-" = no match
 	updateableVersion := gem.UpdateableVersion
 	if updateableVersion == "" {
 		updateableVersion = "-"
@@ -1408,6 +1409,7 @@ func (m *Model) renderUpgradeableGemRow(gem *gemfile.GemStatus, selected, cursor
 	}
 
 	// Updateable version display (computed async, just display cached value)
+	// "…" = loading, empty = no constraint or already on latest, version = match found, "-" = no match
 	updateableVersion := gem.UpdateableVersion
 	if updateableVersion == "" {
 		updateableVersion = "-"
