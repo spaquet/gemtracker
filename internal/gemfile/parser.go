@@ -584,8 +584,11 @@ func (g *Gemfile) GetInsecureSourceGems() []*Gem {
 func (g *Gemfile) LoadConstraintsFromGemfile(gemfilePath string) error {
 	gemfilePath = resolvePath(gemfilePath, FindGemfile)
 	if gemfilePath == "" {
+		logger.Info("Gemfile not found, skipping constraint loading")
 		return nil
 	}
+
+	logger.Info("Loading constraints from Gemfile: %s", gemfilePath)
 
 	file, err := os.Open(gemfilePath)
 	if err != nil {
@@ -630,6 +633,9 @@ func (g *Gemfile) LoadConstraintsFromGemfile(gemfilePath string) error {
 		// Store constraint only for first-level gems (those in DEPENDENCIES section of lock file)
 		if gem, ok := g.Gems[gemName]; ok && gem.IsFirstLevel {
 			gem.Constraint = constraint
+			if constraint != "" {
+				logger.Info("Loaded constraint for %s: %s", gemName, constraint)
+			}
 		}
 	}
 

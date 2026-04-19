@@ -655,9 +655,23 @@ func (m *Model) colorizeVersion(version, updateType string) string {
 
 func (m *Model) formatGemListRow(idx int, gem *gemfile.GemStatus, selected bool) string {
 	// CVE indicator - only show if vulnerable
-	cveDisplay := ""
+	cveSymbol := ""
 	if gem.IsVulnerable {
-		cveDisplay = BadgeVulnerableStyle.Render("⚠")
+		cveSymbol = "⚠"
+	} else {
+		cveSymbol = " "
+	}
+
+	// Apply CVE styling only if row is not selected (selected row gets uniform background)
+	var cveDisplay string
+	if selected {
+		cveDisplay = cveSymbol
+	} else {
+		if gem.IsVulnerable {
+			cveDisplay = BadgeVulnerableStyle.Render(cveSymbol)
+		} else {
+			cveDisplay = cveSymbol
+		}
 	}
 
 	// Constraint display
@@ -666,22 +680,10 @@ func (m *Model) formatGemListRow(idx int, gem *gemfile.GemStatus, selected bool)
 		constraintDisplay = "-"
 	}
 
-	// Updateable version display
-	resolver := &gemfile.ConstraintResolver{}
-	updateableVersion := resolver.ResolveUpdateableVersion(gem.Constraint, gem.LatestVersion, gem.Version)
+	// Updateable version display (computed async, just display cached value)
+	// "…" = loading, empty = no constraint or already on latest, version = match found, "-" = no match
+	updateableVersion := gem.UpdateableVersion
 	if updateableVersion == "" {
-		// If no updateable version found, show nothing (constraint blocks update)
-		updateableVersion = "-"
-	}
-	if gem.Constraint == "" {
-		// No constraint means all versions are updateable
-		updateableVersion = gem.LatestVersion
-		if updateableVersion == "" {
-			updateableVersion = "…"
-		}
-	}
-	// If already on latest version, don't show it in Updateable column
-	if updateableVersion == gem.Version {
 		updateableVersion = "-"
 	}
 
@@ -696,7 +698,12 @@ func (m *Model) formatGemListRow(idx int, gem *gemfile.GemStatus, selected bool)
 		latestTrunc := truncateStr(gem.LatestVersion, 8)
 		// Determine update type: patch (green), minor (orange), major (red)
 		updateType := m.getUpdateType(gem.Version, gem.LatestVersion)
-		latestDisplay = m.colorizeVersion(latestTrunc, updateType)
+		// Apply color only if row is not selected
+		if selected {
+			latestDisplay = latestTrunc
+		} else {
+			latestDisplay = m.colorizeVersion(latestTrunc, updateType)
+		}
 	} else {
 		latestDisplay = "latest"
 	}
@@ -713,23 +720,34 @@ func (m *Model) formatGemListRow(idx int, gem *gemfile.GemStatus, selected bool)
 		if gem.Health == nil {
 			healthDisplay = " " // 1 space for loading state
 		} else {
+			// Get the symbol first
+			var healthSymbol string
 			switch gem.Health.Score {
 			case gemfile.HealthHealthy:
-				healthDisplay = BadgeHealthyDotStyle.Render("●")
+				healthSymbol = "●"
 			case gemfile.HealthWarning:
-				healthDisplay = BadgeWarningDotStyle.Render("●")
+				healthSymbol = "●"
 			case gemfile.HealthCritical:
-				healthDisplay = BadgeCriticalDotStyle.Render("●")
+				healthSymbol = "●"
 			default:
-				healthDisplay = BadgeErrorStyle.Render("!")
+				healthSymbol = "!"
+			}
+			// Apply style only if row is not selected
+			if selected {
+				healthDisplay = healthSymbol
+			} else {
+				switch gem.Health.Score {
+				case gemfile.HealthHealthy:
+					healthDisplay = BadgeHealthyDotStyle.Render(healthSymbol)
+				case gemfile.HealthWarning:
+					healthDisplay = BadgeWarningDotStyle.Render(healthSymbol)
+				case gemfile.HealthCritical:
+					healthDisplay = BadgeCriticalDotStyle.Render(healthSymbol)
+				default:
+					healthDisplay = BadgeErrorStyle.Render(healthSymbol)
+				}
 			}
 		}
-	}
-
-	// Ensure CVE display always has content (empty string or icon)
-	// The row styling will be applied during cell formatting
-	if cveDisplay == "" {
-		cveDisplay = " " // Empty space (will get background in cell formatting)
 	}
 
 	// Build the row as a single styled string to avoid transparent gaps between cells.
@@ -1420,16 +1438,11 @@ func (m *Model) renderUpgradeableGemRow(gem *gemfile.GemStatus, selected, cursor
 		constraintDisplay = "-"
 	}
 
-	resolver := &gemfile.ConstraintResolver{}
-	updateableVersion := resolver.ResolveUpdateableVersion(gem.Constraint, gem.LatestVersion, gem.Version)
+	// Updateable version display (computed async, just display cached value)
+	// "…" = loading, empty = no constraint or already on latest, version = match found, "-" = no match
+	updateableVersion := gem.UpdateableVersion
 	if updateableVersion == "" {
 		updateableVersion = "-"
-	}
-	if gem.Constraint == "" {
-		updateableVersion = gem.LatestVersion
-		if updateableVersion == "" {
-			updateableVersion = "…"
-		}
 	}
 
 	groupsDisplay := strings.Join(gem.Groups, ",")

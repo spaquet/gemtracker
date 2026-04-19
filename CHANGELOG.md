@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v1.2.10] - 2026-04-19
+
+### Fixed
+- **Updateable Version Resolution** - Properly fetch and display highest matching versions
+  - Fixed RubyGems API endpoint from `/api/v1/gems/{name}` to `/api/v1/versions/{name}` which returns actual version objects
+  - Set UpdateableVersion to Latest automatically when gem has no constraint
+  - Added comprehensive logging for version fetching diagnostics
+
+- **Selected Row Background Continuity** - Remove badge styling from selected rows
+  - When a gem row is selected, Latest/Health/CVE indicators now render without their individual badge colors
+  - Selected row background (#005f87) now extends continuously across all columns
+  - Maintains badge colors for unselected rows (red for major, orange for minor, green for patch updates)
+
 ## [v1.2.9] - 2026-04-18
 
 ### Added

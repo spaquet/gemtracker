@@ -1,0 +1,40 @@
+source "https://rubygems.org"
+git_source(:github) { |repo| "https://github.com/#{repo}.git" }
+
+ruby "3.2.0"
+
+gem "rails", "~> 7.0.0"
+gem "pg", "~> 1.1"
+gem "puma", ">= 4.0.1", "< 7"
+gem "sass-rails", "~> 6.0"
+gem "webpacker", "~> 5.0"
+gem "turbolinks-rails"
+gem "jbuilder", "~> 2.11"
+gem "devise"
+gem "knock", "~> 3.0"
+gem "jwt", "~> 2.6"
+gem "jsonapi-serializer", "~> 2.2"
+gem "mini_magick", "~> 4.12"
+gem "redis", "~> 5.0"
+gem "kaminari", "~> 1.2"
+gem "ldclient-rb", "~> 7.2"
+gem "acts-as-taggable-on", github: "mbleigh/acts-as-taggable-on"
+gem "mysql2", "~> 0.5"
+gem "rest-client", "~> 2.1"
+gem "rubocop", "~> 1.48"
+gem "rubocop-rails", "~> 2.17"
+
+group :development, :test do
+  gem "rspec-rails", "~> 5.1"
+  gem "factory_bot_rails"
+  gem "mocha", "~> 2.1"
+  gem "pry"
+end
+
+group :development do
+  gem "web-console", ">= 4.1.0"
+end
+
+group :test do
+  gem "simplecov"
+end
