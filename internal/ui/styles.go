@@ -52,15 +52,17 @@ var AppBackgroundStyle = lipgloss.NewStyle().
 var AppHeaderStyle = lipgloss.NewStyle().
 	Foreground(lipgloss.Color(ColorPrimary)).
 	Bold(true).
-	Background(lipgloss.Color("#262626")).
+	Background(lipgloss.Color("#3a3a3a")).
 	Padding(0, 2)
 
 var ProjectPathStyle = lipgloss.NewStyle().
 	Foreground(lipgloss.Color(ColorTextMuted)).
+	Background(lipgloss.Color("#262626")).
 	Padding(0, 2)
 
 var AppVersionStyle = lipgloss.NewStyle().
-	Foreground(lipgloss.Color(ColorTextMuted))
+	Foreground(lipgloss.Color(ColorTextMuted)).
+	Background(lipgloss.Color("#262626"))
 
 // ============================================================================
 // Tab Bar Styles
@@ -89,10 +91,12 @@ var StatusBarStyle = lipgloss.NewStyle().
 
 var KeyHintKeyStyle = lipgloss.NewStyle().
 	Foreground(lipgloss.Color(ColorPrimary)).
+	Background(lipgloss.Color("#3a3a3a")).
 	Bold(true)
 
 var KeyHintDescStyle = lipgloss.NewStyle().
-	Foreground(lipgloss.Color(ColorTextMuted))
+	Foreground(lipgloss.Color(ColorTextMuted)).
+	Background(lipgloss.Color("#3a3a3a"))
 
 // ============================================================================
 // Table / List Row Styles
@@ -116,7 +120,8 @@ var RowSelectedStyle = lipgloss.NewStyle().
 	Bold(true)
 
 var RowMutedStyle = lipgloss.NewStyle().
-	Foreground(lipgloss.Color(ColorTextMuted))
+	Foreground(lipgloss.Color(ColorTextMuted)).
+	Background(lipgloss.Color("#262626"))
 
 // ============================================================================
 // Badge/Status Indicator Styles
@@ -172,6 +177,7 @@ var BadgeHighDotStyle = lipgloss.NewStyle().
 
 var PanelTitleStyle = lipgloss.NewStyle().
 	Foreground(lipgloss.Color(ColorPrimary)).
+	Background(lipgloss.Color("#262626")).
 	Bold(true)
 
 var PanelBorderStyle = lipgloss.NewStyle().
@@ -192,6 +198,7 @@ var PanelBorderActiveStyle = lipgloss.NewStyle().
 
 var SearchPromptStyle = lipgloss.NewStyle().
 	Foreground(lipgloss.Color(ColorText)).
+	Background(lipgloss.Color("#262626")).
 	Bold(true)
 
 var SearchBoxStyle = lipgloss.NewStyle().
@@ -212,7 +219,8 @@ var InputBoxStyle = lipgloss.NewStyle().
 // ============================================================================
 
 var TreeConnectorStyle = lipgloss.NewStyle().
-	Foreground(lipgloss.Color(ColorTextSubtle))
+	Foreground(lipgloss.Color(ColorTextSubtle)).
+	Background(lipgloss.Color("#262626"))
 
 var TreeGemNameStyle = lipgloss.NewStyle().
 	Foreground(lipgloss.Color(ColorTextMuted)).
@@ -228,10 +236,12 @@ var TreeVersionStyle = lipgloss.NewStyle().
 
 var SpinnerStyle = lipgloss.NewStyle().
 	Foreground(lipgloss.Color(ColorPrimary)).
+	Background(lipgloss.Color("#262626")).
 	Bold(true)
 
 var LoadingMessageStyle = lipgloss.NewStyle().
-	Foreground(lipgloss.Color(ColorTextMuted))
+	Foreground(lipgloss.Color(ColorTextMuted)).
+	Background(lipgloss.Color("#262626"))
 
 // ============================================================================
 // Error Styles
@@ -247,10 +257,12 @@ var ErrorBoxStyle = lipgloss.NewStyle().
 
 var ErrorTitleStyle = lipgloss.NewStyle().
 	Foreground(lipgloss.Color(ColorDanger)).
+	Background(lipgloss.Color("#262626")).
 	Bold(true)
 
 var ErrorMessageStyle = lipgloss.NewStyle().
-	Foreground(lipgloss.Color(ColorText))
+	Foreground(lipgloss.Color(ColorText)).
+	Background(lipgloss.Color("#262626"))
 
 // ============================================================================
 // Update Notification Styles

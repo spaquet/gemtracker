@@ -21,6 +21,19 @@ import (
 // Helper Methods
 // ============================================================================
 
+// ensureOpaqueBackground processes rendered output and ensures every ANSI reset
+// sequence is followed by a background color re-application. This prevents
+// transparent patches when the terminal switches between light/dark mode or
+// when individual styled segments reset to the terminal default background.
+func ensureOpaqueBackground(s string) string {
+	// lipgloss v2 uses \x1b[m (SGR reset) at the end of each styled segment.
+	// Replace it with reset + re-apply background so no gap is ever transparent.
+	return strings.ReplaceAll(s, "\x1b[m", "\x1b[m"+bgANSIRGB)
+}
+
+// bgANSIRGB is the ANSI escape to set background to #262626 using 24-bit RGB (matching lipgloss v2 output)
+const bgANSIRGB = "\x1b[48;2;38;38;38m"
+
 // minInt returns the minimum of two integers
 func minInt(a, b int) int {
 	if a < b {
@@ -110,10 +123,22 @@ func placeOverlay(startRow, startCol int, fg, bg string) string {
 			continue
 		}
 
-		// Use ANSI-aware truncation to get the left portion of the background
-		left := ansi.Truncate(bgLines[row], startCol, "")
-		// Replace the line with left background + foreground content
-		bgLines[row] = left + fgLine
+		bgLine := bgLines[row]
+		bgWidth := ansi.StringWidth(bgLine)
+		fgWidth := ansi.StringWidth(fgLine)
+
+		// Left portion of background (before modal)
+		left := ansi.Truncate(bgLine, startCol, "")
+
+		// Right portion of background (after modal ends)
+		rightStart := startCol + fgWidth
+		right := ""
+		if rightStart < bgWidth {
+			right = ansi.TruncateLeft(bgLine, rightStart, "")
+		}
+
+		// Compose: left bg + foreground modal + right bg
+		bgLines[row] = left + fgLine + right
 	}
 
 	return strings.Join(bgLines, "\n")
@@ -263,7 +288,7 @@ func (m *Model) renderHintLine(hints []string) string {
 		}
 	}
 	hintContent := strings.Join(rendered, "  ")
-	return StatusBarStyle.Width(m.Width - 4).Render(hintContent)
+	return StatusBarStyle.Width(m.Width).ColorWhitespace(true).Render(hintContent)
 }
 
 func (m *Model) assembleViewWithChrome(contentString string) string {
@@ -317,29 +342,22 @@ func (m *Model) assembleViewWithChrome(contentString string) string {
 
 	// Pad each line to full terminal width with background color
 	for i := range allLines {
-		allLines[i] = AppBackgroundStyle.Width(m.Width).Render(allLines[i])
+		allLines[i] = AppBackgroundStyle.Width(m.Width).ColorWhitespace(true).Render(allLines[i])
 	}
 
-	return lipgloss.JoinVertical(lipgloss.Left, allLines...)
+	result := lipgloss.JoinVertical(lipgloss.Left, allLines...)
+
+	// Post-process: ensure every ANSI reset re-applies our background color.
+	// This prevents transparent patches when terminal switches light/dark mode.
+	result = ensureOpaqueBackground(result)
+
+	return result
 }
 
 func (m *Model) renderAppHeader() string {
 	appName := fmt.Sprintf("gemtracker %s", m.Version)
-
-	left := AppHeaderStyle.Render(appName)
-
-	// Calculate spacing to fill full width
-	spacerCount := m.Width - lipgloss.Width(left)
-	if spacerCount < 0 {
-		spacerCount = 0
-	}
-	spacer := strings.Repeat(" ", spacerCount)
-
-	// Apply background to spacer to fill full width
-	headerStyle := lipgloss.NewStyle().Background(lipgloss.Color("#3a3a3a"))
-	headerSpaceFill := headerStyle.Render(spacer)
-
-	return left + headerSpaceFill
+	// Render header filling full width with opaque background
+	return AppHeaderStyle.Width(m.Width).ColorWhitespace(true).Render(appName)
 }
 
 func (m *Model) renderTabBar() string {
@@ -366,17 +384,13 @@ func (m *Model) renderTabBar() string {
 	}
 
 	tabContent := strings.Join(tabs, "  ")
-	tabWidth := lipgloss.Width(tabContent)
 
-	// Fill remaining width with background
-	if tabWidth < m.Width {
-		fillStyle := lipgloss.NewStyle().Background(lipgloss.Color("#3a3a3a"))
-		fillWidth := m.Width - tabWidth
-		fill := fillStyle.Render(strings.Repeat(" ", fillWidth))
-		tabContent = tabContent + fill
-	}
-
-	return tabContent
+	// Wrap entire tab bar in surface background to fill full width with no transparent gaps
+	tabBarStyle := lipgloss.NewStyle().
+		Background(lipgloss.Color("#3a3a3a")).
+		Width(m.Width).
+		ColorWhitespace(true)
+	return tabBarStyle.Render(tabContent)
 }
 
 func (m *Model) renderStatusBar() string {
@@ -430,7 +444,7 @@ func (m *Model) renderStatusBar() string {
 
 	if len(statusParts) > 0 {
 		statusContent := strings.Join(statusParts, "  ")
-		statusLine := StatusBarStyle.Width(m.Width - 4).Render(statusContent)
+		statusLine := StatusBarStyle.Width(m.Width).ColorWhitespace(true).Render(statusContent)
 		lines = append(lines, statusLine)
 	}
 
@@ -452,7 +466,7 @@ func (m *Model) renderUpdateBar() string {
 		updateMsg = fmt.Sprintf("  ↑ New version available (%s) — https://github.com/spaquet/gemtracker/releases", m.NewVersionAvailable)
 	}
 
-	return UpdateBarStyle.Width(m.Width - 4).Render(updateMsg)
+	return UpdateBarStyle.Width(m.Width).ColorWhitespace(true).Render(updateMsg)
 }
 
 // ============================================================================
@@ -560,15 +574,16 @@ func (m *Model) renderGemListTable(height int) string {
 		filterStatus := fmt.Sprintf("  Filters: %s  (c to clear)", strings.Join(filterParts, " | "))
 		filterStatusStyle := lipgloss.NewStyle().
 			Foreground(lipgloss.Color(ColorWarning)).
+			Background(lipgloss.Color("#262626")).
 			Italic(true)
-		lines = append(lines, filterStatusStyle.Render(filterStatus))
+		lines = append(lines, filterStatusStyle.Width(m.Width).ColorWhitespace(true).Render(filterStatus))
 		lines = append(lines, "")
 	}
 
 	// Table header
 	headerRow := fmt.Sprintf("  %-3s %-16s %-8s %-10s %-11s %-8s %-8s %-3s %s",
 		"#", "Gem Name", "Current", "Constraint", "Updateable", "Latest", "Groups", "H", "CVE")
-	header := TableHeaderStyle.Render(headerRow)
+	header := TableHeaderStyle.Width(m.Width).ColorWhitespace(true).Render(headerRow)
 	lines = append(lines, header)
 
 	// Table rows - don't reserve space for padding, show as many gems as will fit
@@ -713,9 +728,9 @@ func (m *Model) formatGemListRow(idx int, gem *gemfile.GemStatus, selected bool)
 		cveDisplay = " " // Empty space (will get background in cell formatting)
 	}
 
-	// Format row with truncated columns
-	// Build cells with proper padding, using lipgloss for styled strings (ANSI-aware)
-	// All cells must have background color applied to prevent transparent patches
+	// Build the row as a single styled string to avoid transparent gaps between cells.
+	// Pre-colored cells (latest, health, CVE) use lipgloss.PlaceHorizontal for padding,
+	// then the entire row is wrapped with the row style + Width to fill the terminal.
 	var rowStyle lipgloss.Style
 	if selected {
 		rowStyle = RowSelectedStyle
@@ -723,41 +738,40 @@ func (m *Model) formatGemListRow(idx int, gem *gemfile.GemStatus, selected bool)
 		rowStyle = RowNormalStyle
 	}
 
-	var row string
-	if m.Width >= 80 {
-		// Build padded cells separately, all wrapped with row style for consistent background
-		idCell := rowStyle.Render(fmt.Sprintf("%-3d", idx))
-		nameCell := rowStyle.Render(fmt.Sprintf("%-16s", truncateStr(gem.Name, 16)))
-		versionCell := rowStyle.Render(fmt.Sprintf("%-8s", truncateStr(gem.Version, 8)))
-		constraintCell := rowStyle.Render(fmt.Sprintf("%-10s", truncateStr(constraintDisplay, 10)))
-		updateableCell := rowStyle.Render(fmt.Sprintf("%-11s", truncateStr(updateableVersion, 11)))
-		// Use lipgloss.PlaceHorizontal for styled strings (handles ANSI codes in width calculation)
-		latestCell := rowStyle.Render(lipgloss.PlaceHorizontal(8, lipgloss.Left, latestDisplay))
-		groupsCell := rowStyle.Render(fmt.Sprintf("%-8s", groupsDisplay))
-		healthCell := rowStyle.Render(lipgloss.PlaceHorizontal(3, lipgloss.Left, healthDisplay))
-		cveCell := rowStyle.Render(lipgloss.PlaceHorizontal(2, lipgloss.Left, cveDisplay))
+	// Pad colored cells to fixed widths (ANSI-aware)
+	latestPadded := lipgloss.PlaceHorizontal(8, lipgloss.Left, latestDisplay)
+	cvePadded := lipgloss.PlaceHorizontal(2, lipgloss.Left, cveDisplay)
 
-		row = fmt.Sprintf("  %s %s %s %s %s %s %s %s %s",
-			idCell, nameCell, versionCell, constraintCell, updateableCell,
-			latestCell, groupsCell, healthCell, cveCell,
+	var rowContent string
+	if m.Width >= 80 {
+		healthPadded := lipgloss.PlaceHorizontal(3, lipgloss.Left, healthDisplay)
+		rowContent = fmt.Sprintf("  %-3d %-16s %-8s %-10s %-11s %s %-8s %s %s",
+			idx,
+			truncateStr(gem.Name, 16),
+			truncateStr(gem.Version, 8),
+			truncateStr(constraintDisplay, 10),
+			truncateStr(updateableVersion, 11),
+			latestPadded,
+			groupsDisplay,
+			healthPadded,
+			cvePadded,
 		)
 	} else {
-		idCell := rowStyle.Render(fmt.Sprintf("%-3d", idx))
-		nameCell := rowStyle.Render(fmt.Sprintf("%-16s", truncateStr(gem.Name, 16)))
-		versionCell := rowStyle.Render(fmt.Sprintf("%-8s", truncateStr(gem.Version, 8)))
-		constraintCell := rowStyle.Render(fmt.Sprintf("%-10s", truncateStr(constraintDisplay, 10)))
-		updateableCell := rowStyle.Render(fmt.Sprintf("%-11s", truncateStr(updateableVersion, 11)))
-		latestCell := rowStyle.Render(lipgloss.PlaceHorizontal(8, lipgloss.Left, latestDisplay))
-		groupsCell := rowStyle.Render(fmt.Sprintf("%-8s", groupsDisplay))
-		cveCell := rowStyle.Render(lipgloss.PlaceHorizontal(2, lipgloss.Left, cveDisplay))
-
-		row = fmt.Sprintf("  %s %s %s %s %s %s %s %s",
-			idCell, nameCell, versionCell, constraintCell, updateableCell,
-			latestCell, groupsCell, cveCell,
+		rowContent = fmt.Sprintf("  %-3d %-16s %-8s %-10s %-11s %s %-8s %s",
+			idx,
+			truncateStr(gem.Name, 16),
+			truncateStr(gem.Version, 8),
+			truncateStr(constraintDisplay, 10),
+			truncateStr(updateableVersion, 11),
+			latestPadded,
+			groupsDisplay,
+			cvePadded,
 		)
 	}
 
-	return row
+	// Apply row style to the entire row at once — Width fills to terminal edge,
+	// ColorWhitespace ensures padding gets the background color too
+	return rowStyle.Width(m.Width).ColorWhitespace(true).Render(rowContent)
 }
 
 // buildGemInfoLines builds the header, description, and health info lines for gem detail view
@@ -2023,9 +2037,11 @@ func (m *Model) renderGemInfoModalBox() string {
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color(ColorBorderActive)).
 		Background(lipgloss.Color("#3a3a3a")).
+		ColorWhitespace(true).
 		Padding(1, 2)
 
-	return boxStyle.Width(modalWidth).Render(content)
+	rendered := boxStyle.Width(modalWidth).Render(content)
+	return strings.ReplaceAll(rendered, "\x1b[m", "\x1b[m\x1b[48;2;58;58;58m")
 }
 
 // buildGemInfoContentLines builds all content lines for gem info modal.
@@ -2354,7 +2370,8 @@ func (m *Model) renderFilterModalBox() string {
 	title := "Filter Gems"
 	titleStyle := lipgloss.NewStyle().
 		Bold(true).
-		Foreground(lipgloss.Color(ColorPrimary))
+		Foreground(lipgloss.Color(ColorPrimary)).
+		Background(lipgloss.Color("#3a3a3a"))
 	lines = append(lines, titleStyle.Render(title))
 	lines = append(lines, "")
 
@@ -2421,14 +2438,17 @@ func (m *Model) renderFilterModalBox() string {
 		modalWidth = m.Width - 4
 	}
 
-	// Apply border and styling
+	// Apply border and styling — ColorWhitespace ensures background fills padding
 	boxStyle := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color(ColorBorderActive)).
 		Background(lipgloss.Color("#3a3a3a")).
+		ColorWhitespace(true).
 		Padding(1, 2)
 
-	return boxStyle.Width(modalWidth).Render(content)
+	// Post-process: ensure surface background after all ANSI resets within modal
+	rendered := boxStyle.Width(modalWidth).Render(content)
+	return strings.ReplaceAll(rendered, "\x1b[m", "\x1b[m\x1b[48;2;58;58;58m")
 }
 
 func (m *Model) viewCVEFilterMenu() string {
@@ -2472,7 +2492,8 @@ func (m *Model) renderCVEFilterModalBox() string {
 	title := "Filter CVEs"
 	titleStyle := lipgloss.NewStyle().
 		Bold(true).
-		Foreground(lipgloss.Color(ColorPrimary))
+		Foreground(lipgloss.Color(ColorPrimary)).
+		Background(lipgloss.Color("#3a3a3a"))
 	lines = append(lines, titleStyle.Render(title))
 	lines = append(lines, "")
 
@@ -2533,14 +2554,17 @@ func (m *Model) renderCVEFilterModalBox() string {
 		modalWidth = m.Width - 4
 	}
 
-	// Apply border and styling
+	// Apply border and styling — ColorWhitespace ensures background fills padding
 	boxStyle := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color(ColorBorderActive)).
 		Background(lipgloss.Color("#3a3a3a")).
+		ColorWhitespace(true).
 		Padding(1, 2)
 
-	return boxStyle.Width(modalWidth).Render(content)
+	// Post-process: ensure surface background after all ANSI resets within modal
+	rendered := boxStyle.Width(modalWidth).Render(content)
+	return strings.ReplaceAll(rendered, "\x1b[m", "\x1b[m\x1b[48;2;58;58;58m")
 }
 
 func (m *Model) viewCVEInfo() string {
@@ -2770,14 +2794,17 @@ func (m *Model) renderCVEInfoModalWithLines(lines []string) string {
 	// Build scroll hint
 	scrollHint := m.buildScrollHint(m.CVEInfoScroll, availableHeight, len(lines))
 
-	// Apply border and styling with height constraint
+	// Apply border and styling with height constraint — ColorWhitespace fills padding
 	boxStyle := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color(ColorBorderActive)).
 		Background(lipgloss.Color(ColorSurface)).
+		ColorWhitespace(true).
 		Padding(1, 2)
 
 	rendered := boxStyle.Width(modalWidth).Height(availableHeight + 2).Render(clippedContent)
+	// Post-process: ensure surface background after all ANSI resets within modal
+	rendered = strings.ReplaceAll(rendered, "\x1b[m", "\x1b[m\x1b[48;2;58;58;58m")
 
 	// Inject scroll hint into border if needed
 	if scrollHint != "" {
@@ -3001,9 +3028,11 @@ func (m *Model) renderCVECommentModalBox() string {
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color(ColorBorderActive)).
 		Background(lipgloss.Color(ColorSurface)).
+		ColorWhitespace(true).
 		Padding(1, 2)
 
-	return modalStyle.Render(content)
+	rendered := modalStyle.Render(content)
+	return strings.ReplaceAll(rendered, "\x1b[m", "\x1b[m\x1b[48;2;58;58;58m")
 }
 
 // ============================================================================
@@ -3148,9 +3177,11 @@ func (m *Model) renderUpgradeResultModalBox() string {
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color(ColorPrimary)).
 		Background(lipgloss.Color("#262626")).
+		ColorWhitespace(true).
 		Padding(0)
 
-	return modalStyle.Render(modalContent)
+	rendered := modalStyle.Render(modalContent)
+	return strings.ReplaceAll(rendered, "\x1b[m", "\x1b[m\x1b[48;2;38;38;38m")
 }
 
 // ============================================================================
