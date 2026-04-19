@@ -715,34 +715,41 @@ func (m *Model) formatGemListRow(idx int, gem *gemfile.GemStatus, selected bool)
 
 	// Format row with truncated columns
 	// Build cells with proper padding, using lipgloss for styled strings (ANSI-aware)
+	// All cells must have background color applied to prevent transparent patches
+	var rowStyle lipgloss.Style
+	if selected {
+		rowStyle = RowSelectedStyle
+	} else {
+		rowStyle = RowNormalStyle
+	}
+
 	var row string
 	if m.Width >= 80 {
-		// Build padded cells separately
-		idCell := fmt.Sprintf("%-3d", idx)
-		nameCell := fmt.Sprintf("%-16s", truncateStr(gem.Name, 16))
-		versionCell := fmt.Sprintf("%-8s", truncateStr(gem.Version, 8))
-		constraintCell := fmt.Sprintf("%-10s", truncateStr(constraintDisplay, 10))
-		updateableCell := fmt.Sprintf("%-11s", truncateStr(updateableVersion, 11))
+		// Build padded cells separately, all wrapped with row style for consistent background
+		idCell := rowStyle.Render(fmt.Sprintf("%-3d", idx))
+		nameCell := rowStyle.Render(fmt.Sprintf("%-16s", truncateStr(gem.Name, 16)))
+		versionCell := rowStyle.Render(fmt.Sprintf("%-8s", truncateStr(gem.Version, 8)))
+		constraintCell := rowStyle.Render(fmt.Sprintf("%-10s", truncateStr(constraintDisplay, 10)))
+		updateableCell := rowStyle.Render(fmt.Sprintf("%-11s", truncateStr(updateableVersion, 11)))
 		// Use lipgloss.PlaceHorizontal for styled strings (handles ANSI codes in width calculation)
-		// Wrap with RowNormalStyle to ensure padding has correct background
-		latestCell := RowNormalStyle.Render(lipgloss.PlaceHorizontal(8, lipgloss.Left, latestDisplay))
-		groupsCell := RowNormalStyle.Render(fmt.Sprintf("%-8s", groupsDisplay))
-		healthCell := RowNormalStyle.Render(lipgloss.PlaceHorizontal(3, lipgloss.Left, healthDisplay))
-		cveCell := RowNormalStyle.Render(lipgloss.PlaceHorizontal(2, lipgloss.Left, cveDisplay))
+		latestCell := rowStyle.Render(lipgloss.PlaceHorizontal(8, lipgloss.Left, latestDisplay))
+		groupsCell := rowStyle.Render(fmt.Sprintf("%-8s", groupsDisplay))
+		healthCell := rowStyle.Render(lipgloss.PlaceHorizontal(3, lipgloss.Left, healthDisplay))
+		cveCell := rowStyle.Render(lipgloss.PlaceHorizontal(2, lipgloss.Left, cveDisplay))
 
 		row = fmt.Sprintf("  %s %s %s %s %s %s %s %s %s",
 			idCell, nameCell, versionCell, constraintCell, updateableCell,
 			latestCell, groupsCell, healthCell, cveCell,
 		)
 	} else {
-		idCell := fmt.Sprintf("%-3d", idx)
-		nameCell := fmt.Sprintf("%-16s", truncateStr(gem.Name, 16))
-		versionCell := fmt.Sprintf("%-8s", truncateStr(gem.Version, 8))
-		constraintCell := fmt.Sprintf("%-10s", truncateStr(constraintDisplay, 10))
-		updateableCell := fmt.Sprintf("%-11s", truncateStr(updateableVersion, 11))
-		latestCell := RowNormalStyle.Render(lipgloss.PlaceHorizontal(8, lipgloss.Left, latestDisplay))
-		groupsCell := RowNormalStyle.Render(fmt.Sprintf("%-8s", groupsDisplay))
-		cveCell := RowNormalStyle.Render(lipgloss.PlaceHorizontal(2, lipgloss.Left, cveDisplay))
+		idCell := rowStyle.Render(fmt.Sprintf("%-3d", idx))
+		nameCell := rowStyle.Render(fmt.Sprintf("%-16s", truncateStr(gem.Name, 16)))
+		versionCell := rowStyle.Render(fmt.Sprintf("%-8s", truncateStr(gem.Version, 8)))
+		constraintCell := rowStyle.Render(fmt.Sprintf("%-10s", truncateStr(constraintDisplay, 10)))
+		updateableCell := rowStyle.Render(fmt.Sprintf("%-11s", truncateStr(updateableVersion, 11)))
+		latestCell := rowStyle.Render(lipgloss.PlaceHorizontal(8, lipgloss.Left, latestDisplay))
+		groupsCell := rowStyle.Render(fmt.Sprintf("%-8s", groupsDisplay))
+		cveCell := rowStyle.Render(lipgloss.PlaceHorizontal(2, lipgloss.Left, cveDisplay))
 
 		row = fmt.Sprintf("  %s %s %s %s %s %s %s %s",
 			idCell, nameCell, versionCell, constraintCell, updateableCell,
@@ -750,11 +757,7 @@ func (m *Model) formatGemListRow(idx int, gem *gemfile.GemStatus, selected bool)
 		)
 	}
 
-	// Apply selection styling
-	if selected {
-		return RowSelectedStyle.Render(row)
-	}
-	return RowNormalStyle.Render(row)
+	return row
 }
 
 // buildGemInfoLines builds the header, description, and health info lines for gem detail view
@@ -785,13 +788,13 @@ func (m *Model) buildGemInfoLines(descMaxLen int) []string {
 	if m.SelectedGem.Description != "" {
 		descLine := truncateStr(m.SelectedGem.Description, descMaxLen)
 		descLine = "  " + descLine
-		descLine = lipgloss.NewStyle().Foreground(lipgloss.Color(ColorTextMuted)).Render(descLine)
+		descLine = OpaqueMutedStyle.Italic(true).Render(descLine)
 		gemInfoLines = append(gemInfoLines, descLine)
 	}
 
 	// URL line
 	urlLine := "  " + truncateStr(m.SelectedGem.HomepageURL, descMaxLen)
-	urlLine = lipgloss.NewStyle().Foreground(lipgloss.Color(ColorTextMuted)).Italic(true).Render(urlLine)
+	urlLine = OpaqueMutedStyle.Italic(true).Render(urlLine)
 	gemInfoLines = append(gemInfoLines, urlLine)
 
 	// Health section
@@ -799,10 +802,10 @@ func (m *Model) buildGemInfoLines(descMaxLen int) []string {
 		healthLines := m.renderHealthSection(m.SelectedGem.Health, descMaxLen)
 		gemInfoLines = append(gemInfoLines, healthLines...)
 	} else if m.HealthLoading {
-		healthLine := lipgloss.NewStyle().Foreground(lipgloss.Color(ColorTextMuted)).Render("  Health: ⠙ fetching...")
+		healthLine := OpaqueMutedStyle.Render("  Health: ⠙ fetching...")
 		gemInfoLines = append(gemInfoLines, healthLine)
 	} else if m.HealthRateLimited {
-		healthLine := lipgloss.NewStyle().Foreground(lipgloss.Color(ColorWarning)).Render("  Health: — GitHub rate limited")
+		healthLine := OpaqueTextStyle.Foreground(lipgloss.Color(ColorWarning)).Render("  Health: — GitHub rate limited")
 		gemInfoLines = append(gemInfoLines, healthLine)
 	}
 
@@ -868,7 +871,7 @@ func (m *Model) viewGemDetail() string {
 	}
 
 	// Format titles with width constraint and apply text styling
-	titleStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(ColorText))
+	titleStyle := OpaqueTextStyle
 	forwardTitleFormatted := titleStyle.Render(truncateStr(forwardTitle, panelWidth-2))
 	reverseTitleFormatted := titleStyle.Render(truncateStr(reverseTitle, panelWidth-2))
 
@@ -982,7 +985,7 @@ func (m *Model) renderReverseDepsList(height int) string {
 
 	if len(reverseDeps) == 0 {
 		noMatch := "  No gems depend on this gem"
-		noMatchStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(ColorTextMuted))
+		noMatchStyle := OpaqueMutedStyle
 		return noMatchStyle.Render(noMatch)
 	}
 
@@ -990,7 +993,7 @@ func (m *Model) renderReverseDepsList(height int) string {
 
 	for _, depName := range reverseDeps {
 		// Bold gem name
-		nameLine := "  " + lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(ColorTextMuted)).Render(depName)
+		nameLine := "  " + OpaqueMutedStyle.Bold(true).Render(depName)
 		lines = append(lines, nameLine)
 		m.DetailReverseLines = append(m.DetailReverseLines, depName)
 
@@ -1006,7 +1009,7 @@ func (m *Model) renderReverseDepsList(height int) string {
 		}
 		if desc != "" {
 			descLine := "    " + truncateStr(desc, 50)
-			descStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(ColorTextMuted))
+			descStyle := OpaqueMutedStyle
 			lines = append(lines, descStyle.Render(descLine))
 			// Repeat gem name in DetailReverseLines for description line
 			m.DetailReverseLines = append(m.DetailReverseLines, depName)
@@ -1054,10 +1057,11 @@ func (m *Model) renderTreeNode(node *gemfile.DependencyNode, depth int, lines *[
 
 	var line string
 	if isSelected {
-		// Highlight selected line
-		line = indent + connector + RowSelectedStyle.Render(displayName)
+		// Highlight selected line - apply style to entire line including indent and connector
+		line = RowSelectedStyle.Render(indent + connector + displayName)
 	} else {
-		line = indent + connector + TreeGemNameStyle.Render(displayName)
+		// Apply style to entire line including indent and connector
+		line = TreeGemNameStyle.Render(indent + connector + displayName)
 	}
 
 	*lines = append(*lines, line)
@@ -1099,7 +1103,7 @@ func (m *Model) renderHealthSection(health *gemfile.GemHealth, maxLen int) []str
 		scoreStr = "? UNKNOWN"
 	}
 
-	healthHeaderText := lipgloss.NewStyle().Foreground(lipgloss.Color(ColorText)).Render("  Health: ")
+	healthHeaderText := OpaqueTextStyle.Render("  Health: ")
 	healthHeader := healthHeaderText + scoreStyle.Render(scoreStr)
 	lines = append(lines, healthHeader)
 
@@ -1147,7 +1151,7 @@ func (m *Model) renderHealthSection(health *gemfile.GemHealth, maxLen int) []str
 
 	if len(details) > 0 {
 		detailsStr := "    " + strings.Join(details, "    ")
-		detailsFormatted := lipgloss.NewStyle().Foreground(lipgloss.Color(ColorTextMuted)).Render(detailsStr)
+		detailsFormatted := OpaqueMutedStyle.Render(detailsStr)
 		lines = append(lines, detailsFormatted)
 	}
 

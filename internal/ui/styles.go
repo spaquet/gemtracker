@@ -154,6 +154,14 @@ var BadgeCriticalDotStyle = lipgloss.NewStyle().
 	Foreground(lipgloss.Color(ColorDanger)).
 	Background(lipgloss.Color("#262626"))
 
+var OpaqueTextStyle = lipgloss.NewStyle().
+	Foreground(lipgloss.Color(ColorText)).
+	Background(lipgloss.Color("#262626"))
+
+var OpaqueMutedStyle = lipgloss.NewStyle().
+	Foreground(lipgloss.Color(ColorTextMuted)).
+	Background(lipgloss.Color("#262626"))
+
 var BadgeHighDotStyle = lipgloss.NewStyle().
 	Foreground(lipgloss.Color(ColorHigh)).
 	Background(lipgloss.Color("#262626"))
@@ -207,10 +215,12 @@ var TreeConnectorStyle = lipgloss.NewStyle().
 	Foreground(lipgloss.Color(ColorTextSubtle))
 
 var TreeGemNameStyle = lipgloss.NewStyle().
-	Foreground(lipgloss.Color(ColorTextMuted))
+	Foreground(lipgloss.Color(ColorTextMuted)).
+	Background(lipgloss.Color("#262626"))
 
 var TreeVersionStyle = lipgloss.NewStyle().
-	Foreground(lipgloss.Color(ColorTextMuted))
+	Foreground(lipgloss.Color(ColorTextMuted)).
+	Background(lipgloss.Color("#262626"))
 
 // ============================================================================
 // Loading/Spinner Styles
