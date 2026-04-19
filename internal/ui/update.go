@@ -1406,18 +1406,17 @@ func (m *Model) setupHealthChecking() {
 
 // setupUpdateableChecking initializes the updateable version checking queue for gems with constraints.
 func (m *Model) setupUpdateableChecking(result *gemfile.AnalysisResult) {
-	// Only fetch updateable versions for gems with constraints
+	// Reset the queue (same as outdated checking)
 	m.UpdateableLoading = true
+	m.UpdateablePending = make([]*gemfile.GemStatus, 0, len(result.GemStatuses))
+
+	// Queue gems with constraints, set no-constraint gems directly
 	for _, gem := range result.GemStatuses {
 		if gem.Constraint != "" {
 			m.UpdateablePending = append(m.UpdateablePending, gem)
-		} else {
-			// No constraint: updateable = latest
+		} else if gem.LatestVersion != "" {
+			// No constraint: updateable = latest (only if we have latest version)
 			gem.UpdateableVersion = gem.LatestVersion
-		}
-		// If already on latest matching version, clear UpdateableVersion
-		if gem.UpdateableVersion == gem.Version {
-			gem.UpdateableVersion = ""
 		}
 	}
 }
@@ -1638,10 +1637,23 @@ func (m *Model) dispatchUpdateableMessages(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m *Model) handleUpdateableItem(msg UpdateableItemMsg) (tea.Model, tea.Cmd) {
-	// Update the gem's cached UpdateableVersion
+	// Update the gem's cached UpdateableVersion in GemStatuses
 	for _, gem := range m.AnalysisResult.GemStatuses {
 		if gem.Name == msg.GemName {
 			gem.UpdateableVersion = msg.UpdateableVersion
+			// Also ensure it's set in FirstLevelGems and UnfilteredGems for consistency
+			for _, fg := range m.FirstLevelGems {
+				if fg.Name == msg.GemName {
+					fg.UpdateableVersion = msg.UpdateableVersion
+					break
+				}
+			}
+			for _, ug := range m.UnfilteredGems {
+				if ug.Name == msg.GemName {
+					ug.UpdateableVersion = msg.UpdateableVersion
+					break
+				}
+			}
 			break
 		}
 	}
