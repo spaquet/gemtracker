@@ -252,8 +252,10 @@ func (m *Model) isLoadingOtherData() bool {
 }
 
 func (m *Model) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
-	// Handle global keys
-	if isQuitKey(msg) {
+	// Handle global keys — skip "q" quit when Search view is active (user typing search query)
+	// Don't quit on "q" when user is typing in a text input
+	textInputViews := m.CurrentView == ViewSearch || m.CurrentView == ViewCVEComment || m.CurrentView == ViewSelectPath
+	if isQuitKey(msg) && !(msg.String() == "q" && textInputViews) {
 		m.Quitting = true
 		return m, tea.Quit
 	}
