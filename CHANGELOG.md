@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [v1.2.9] - 2026-04-15
+## [v1.2.9] - 2026-04-18
 
 ### Added
 - **Version Constraint Columns** - Display Gemfile version constraints in gems list
@@ -22,9 +22,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     - **Red** for major updates (breaking changes, requires review)
   - Quick visual scanning of update risk level
 
+- **Multi-Gem Upgrade Selection (Beta)** - Select and upgrade multiple gems from the Updates tab
+  - Use `space` to toggle individual gems, `ctrl+a` to select all, `ctrl+d` to deselect all
+  - Press `u` to run `bundle update` on selected gems
+  - Shows upgrade result modal with success/error status per gem
+
 - **CVE-Only Status Column** - Simplified vulnerability indicator
   - Status column replaced with CVE-only column showing ⚠ warning only when vulnerabilities exist
   - Reduces visual clutter, focuses on critical issues
+
+### Fixed
+- **Opaque Background** - Eliminate transparent patches across all UI views
+  - Fix ANSI reset handling: lipgloss v2 uses `\x1b[m` not `\x1b[0m`, causing background resets to terminal default
+  - Render gem list rows as single styled strings instead of per-cell to prevent transparent gaps between columns
+  - Add `ColorWhitespace(true)` to all modal boxes, tab bar, header, and status bar
+  - Add explicit background color to 12 styles that were missing it
+  - Restore right side of background lines in modal overlay rendering (`placeOverlay`)
+  - Post-process all rendered output to re-apply background after ANSI resets
+  - UI now maintains consistent dark background regardless of terminal light/dark mode
+
+- **Search Tab 'q' Key** - Allow typing 'q' in text input views without quitting
+  - Global quit key 'q' was intercepting input before Search, CVE Comment, and Path Select views could process it
+  - Now skips quit for views with active text inputs; `ctrl+c` still quits everywhere
 
 ### Improved
 - **Constraint Parsing** - Support for all Ruby dependency declaration formats
