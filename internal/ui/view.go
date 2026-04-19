@@ -680,6 +680,10 @@ func (m *Model) formatGemListRow(idx int, gem *gemfile.GemStatus, selected bool)
 			updateableVersion = "…"
 		}
 	}
+	// If already on latest version, don't show it in Updateable column
+	if updateableVersion == gem.Version {
+		updateableVersion = "-"
+	}
 
 	// Latest version display with color coding based on update type
 	// Truncate BEFORE coloring so padding works correctly
