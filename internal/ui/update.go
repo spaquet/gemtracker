@@ -1597,6 +1597,10 @@ func (m *Model) handleOutdatedItem(msg OutdatedItemMsg) (tea.Model, tea.Cmd) {
 				gem.LatestVersion = msg.LatestVersion
 				gem.HomepageURL = msg.HomepageURL
 				gem.Description = msg.Description
+				// If gem has no constraint, updateable version = latest version
+				if gem.Constraint == "" {
+					gem.UpdateableVersion = msg.LatestVersion
+				}
 				break
 			}
 		}
