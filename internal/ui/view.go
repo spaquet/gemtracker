@@ -235,7 +235,7 @@ var viewHints = map[ViewMode][]string{
 	ViewGemList:       {"↑↓ navigate", "enter select", "f filter", "u upgradable", "c clear", "r refresh", "tab next", "q quit"},
 	ViewGemDetail:     {"esc back", "tab section", "↑↓ navigate", "enter select", "o open url", "q quit"},
 	ViewSearch:        {"type search", "↑↓ navigate", "enter select", "esc clear"},
-	ViewUpgradeable:   {"↑↓ navigate", "enter select", "tab next", "q quit"},
+	ViewUpgradeable:   {"↑↓ navigate", "space toggle", "ctrl+a all", "ctrl+d none", "u upgrade", "tab next", "q quit"},
 	ViewCVE:           {"↑↓ navigate", "enter select", "f filter", "i info", "c comment", "tab next", "q quit"},
 	ViewSanity:        {"↑↓ navigate", "enter select", "i info", "tab next", "q quit"},
 	ViewProjectInfo:   {"tab next", "shift+tab prev", "q quit"},
@@ -396,6 +396,14 @@ func (m *Model) renderStatusBar() string {
 			Foreground(lipgloss.Color(ColorWarning)).
 			Background(lipgloss.Color("#262626"))
 		statusParts = append(statusParts, statusStyle.Render(outdatedStatus))
+	}
+
+	if m.CurrentView == ViewUpgradeable && m.SelectedCount() > 0 {
+		selectedStatus := fmt.Sprintf("Selected: %d gems", m.SelectedCount())
+		selectedStyle := lipgloss.NewStyle().
+			Foreground(lipgloss.Color(ColorPrimary)).
+			Background(lipgloss.Color("#262626"))
+		statusParts = append(statusParts, selectedStyle.Render(selectedStatus))
 	}
 
 	if m.HealthLoading {
@@ -1247,6 +1255,11 @@ func (m *Model) renderSearchResults(height int) string {
 // ============================================================================
 
 func (m *Model) viewUpgradeable() string {
+	// Show upgrade result modal if open
+	if m.UpgradeResultModalOpen {
+		return m.viewUpgradeResultModal()
+	}
+
 	statusbarLines := m.statusBarTotalHeight()
 	contentHeight := m.Height - 2 - statusbarLines
 	if contentHeight < 1 {
@@ -1295,8 +1308,8 @@ func (m *Model) renderUpgradeableTable(height int) string {
 		}
 
 		gem := allUpgradeable[gemIdx]
-		isSelected := gemIdx == m.UpgradeableCursor
-		row := m.renderUpgradeableGemRow(gem, isSelected)
+		isCursor := gemIdx == m.UpgradeableCursor
+		row := m.renderUpgradeableGemRow(gem, false, isCursor)
 		lines = append(lines, row)
 	}
 
@@ -1357,8 +1370,8 @@ func (m *Model) appendUpgradeableSectionHeader(lines []string, section string, h
 	}
 
 	if len(lines) < height {
-		headerRow := fmt.Sprintf("  %-24s %-11s %-11s %s",
-			"Gem Name", "Installed", "Latest", "")
+		headerRow := fmt.Sprintf("  %-3s %-3s %-16s %-8s %-10s %-11s %-8s %-8s",
+			"", "☑", "Gem Name", "Current", "Constraint", "Updateable", "Latest", "Groups")
 		header := TableHeaderStyle.Render(headerRow)
 		lines = append(lines, header)
 	}
@@ -1367,15 +1380,57 @@ func (m *Model) appendUpgradeableSectionHeader(lines []string, section string, h
 }
 
 // renderUpgradeableGemRow renders a single gem row with selection styling.
-func (m *Model) renderUpgradeableGemRow(gem *gemfile.GemStatus, selected bool) string {
-	row := fmt.Sprintf("  %-24s %-11s %-11s %s",
-		truncateStr(gem.Name, 24),
-		gem.Version,
-		gem.LatestVersion,
-		BadgeOutdatedStyle.Render("↑"),
+func (m *Model) renderUpgradeableGemRow(gem *gemfile.GemStatus, selected, cursor bool) string {
+	isSelectable := m.IsGemSelectable(gem)
+	isChecked := m.SelectedUpgradeableGems != nil && m.SelectedUpgradeableGems[gem.Name]
+
+	var checkbox string
+	if !isSelectable {
+		checkbox = "[·]"
+	} else if isChecked {
+		checkbox = "[x]"
+	} else {
+		checkbox = "[ ]"
+	}
+
+	constraintDisplay := gem.Constraint
+	if constraintDisplay == "" {
+		constraintDisplay = "-"
+	}
+
+	resolver := &gemfile.ConstraintResolver{}
+	updateableVersion := resolver.ResolveUpdateableVersion(gem.Constraint, gem.LatestVersion, gem.Version)
+	if updateableVersion == "" {
+		updateableVersion = "-"
+	}
+	if gem.Constraint == "" {
+		updateableVersion = gem.LatestVersion
+		if updateableVersion == "" {
+			updateableVersion = "…"
+		}
+	}
+
+	groupsDisplay := strings.Join(gem.Groups, ",")
+	if len(groupsDisplay) > 8 {
+		groupsDisplay = groupsDisplay[:5] + "..."
+	}
+
+	row := fmt.Sprintf("  %-3s %-3s %-16s %-8s %-10s %-11s %-8s %-8s",
+		"", // index placeholder
+		checkbox,
+		truncateStr(gem.Name, 16),
+		truncateStr(gem.Version, 8),
+		truncateStr(constraintDisplay, 10),
+		truncateStr(updateableVersion, 11),
+		truncateStr(gem.LatestVersion, 8),
+		truncateStr(groupsDisplay, 8),
 	)
-	if selected {
+
+	if cursor && isSelectable {
 		return RowSelectedStyle.Render(row)
+	}
+	if !isSelectable {
+		return RowNormalStyle.Foreground(lipgloss.Color("242")).Render(row)
 	}
 	return RowNormalStyle.Render(row)
 }
@@ -2965,6 +3020,133 @@ func (m *Model) viewError() string {
 	)
 
 	return m.assembleViewWithChrome(content)
+}
+
+// ============================================================================
+// View: Upgrade Result Modal
+// ============================================================================
+
+func (m *Model) viewUpgradeResultModal() string {
+	// Render upgrade list as background
+	statusbarLines := m.statusBarTotalHeight()
+	contentHeight := m.Height - 2 - statusbarLines
+	if contentHeight < 1 {
+		contentHeight = 1
+	}
+	upgradeContent := m.renderUpgradeableTable(contentHeight)
+	background := m.assembleViewWithChrome(upgradeContent)
+
+	// Create result modal
+	modal := m.renderUpgradeResultModalBox()
+
+	// Safety checks for invalid terminal size
+	if m.Height <= 0 || m.Width <= 0 {
+		return background
+	}
+
+	// Calculate centered position
+	modalLines := strings.Split(modal, "\n")
+	modalH := len(modalLines)
+
+	modalW := lipgloss.Width(modal)
+	if modalW <= 0 {
+		modalW = 60
+	}
+
+	maxModalH := m.Height - 4
+	if maxModalH < 10 {
+		maxModalH = 10
+	}
+	if modalH > maxModalH {
+		modalH = maxModalH
+	}
+
+	if modalH <= 0 || modalW <= 0 {
+		return background
+	}
+
+	startRow := (m.Height - modalH) / 2
+	startCol := (m.Width - modalW) / 2
+
+	if startRow < 2 {
+		startRow = 2
+	}
+	if startCol < 0 {
+		startCol = 0
+	}
+
+	return placeOverlay(startRow, startCol, modal, background)
+}
+
+func (m *Model) renderUpgradeResultModalBox() string {
+	var lines []string
+
+	// Header
+	header := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color(ColorPrimary)).
+		Padding(1, 2).
+		Width(50).
+		Align(lipgloss.Center).
+		Render("Upgrade Complete")
+	lines = append(lines, header)
+
+	// Results
+	successCount := m.UpgradeSuccessCount
+	errorCount := len(m.UpgradeErrors)
+
+	if successCount > 0 {
+		successLine := lipgloss.NewStyle().
+			Foreground(lipgloss.Color(ColorSuccess)).
+			Padding(0, 2).
+			Render(fmt.Sprintf("✓ Upgraded %d %s", successCount, pluralizeGem(successCount)))
+		lines = append(lines, successLine)
+	}
+
+	if errorCount > 0 {
+		errorLine := lipgloss.NewStyle().
+			Foreground(lipgloss.Color(ColorDanger)).
+			Padding(0, 2).
+			Render(fmt.Sprintf("✗ Failed: %d %s", errorCount, pluralizeGem(errorCount)))
+		lines = append(lines, errorLine)
+
+		// Error details
+		for _, err := range m.UpgradeErrors {
+			errTruncated := truncateStr(err, 46)
+			errLine := lipgloss.NewStyle().
+				Foreground(lipgloss.Color(ColorTextMuted)).
+				Padding(0, 2).
+				Render(errTruncated)
+			lines = append(lines, errLine)
+		}
+	}
+
+	if successCount == 0 && errorCount == 0 {
+		noChangeLine := lipgloss.NewStyle().
+			Foreground(lipgloss.Color(ColorTextMuted)).
+			Padding(0, 2).
+			Render("No changes made")
+		lines = append(lines, noChangeLine)
+	}
+
+	// Footer hint
+	hintLine := lipgloss.NewStyle().
+		Foreground(lipgloss.Color(ColorTextMuted)).
+		Padding(1, 2).
+		Width(50).
+		Align(lipgloss.Center).
+		Render("Press any key to continue")
+	lines = append(lines, hintLine)
+
+	modalContent := lipgloss.JoinVertical(lipgloss.Left, lines...)
+
+	modalStyle := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color(ColorPrimary)).
+		Background(lipgloss.Color("#262626")).
+		Padding(0)
+
+	return modalStyle.Render(modalContent)
 }
 
 // ============================================================================

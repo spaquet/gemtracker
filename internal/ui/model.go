@@ -162,6 +162,15 @@ type OutdatedItemMsg struct {
 
 type OutdatedCompleteMsg struct{}
 
+type UpgradeGemsMsg struct {
+	GemNames    []string
+	ProjectPath string
+}
+
+type UpgradeResultMsg struct {
+	Results []gemfile.UpgradeResult
+}
+
 type CVEScanStartedMsg struct{}
 
 type CVEProgressMsg struct {
@@ -263,6 +272,13 @@ type Model struct {
 	UpgradeableTransitiveDeps []*gemfile.GemStatus // Transitive dependency gems that can be upgraded
 	UpgradeableCursor         int
 	UpgradeableOffset         int
+
+	// Multi-select upgrade state
+	SelectedUpgradeableGems map[string]bool // gem name → selected
+	UpgradeInProgress       bool            // Loading state during upgrade
+	UpgradeSuccessCount     int             // Count of successful upgrades
+	UpgradeErrors           []string        // Errors from failed upgrades
+	UpgradeResultModalOpen  bool            // Show post-upgrade results modal
 
 	// CVE screen state
 	VulnerableGems           []*gemfile.GemStatus
@@ -1038,6 +1054,92 @@ func (m *Model) buildUpgradeableList() {
 func (m *Model) allUpgradeableGems() []*gemfile.GemStatus {
 	all := append(m.UpgradeableGems, m.UpgradeableFrameworkGems...)
 	return append(all, m.UpgradeableTransitiveDeps...)
+}
+
+// SelectableUpgradeableGems returns only Direct + Framework gems (selectable)
+func (m *Model) SelectableUpgradeableGems() []*gemfile.GemStatus {
+	all := append(m.UpgradeableGems, m.UpgradeableFrameworkGems...)
+	return all
+}
+
+// IsGemSelectable checks if a gem is in the selectable category (Direct + Framework)
+func (m *Model) IsGemSelectable(gem *gemfile.GemStatus) bool {
+	for _, g := range m.UpgradeableGems {
+		if g.Name == gem.Name {
+			return true
+		}
+	}
+	for _, g := range m.UpgradeableFrameworkGems {
+		if g.Name == gem.Name {
+			return true
+		}
+	}
+	return false
+}
+
+// SelectableGemAtCursor returns the gem at cursor if it's selectable
+func (m *Model) SelectableGemAtCursor() *gemfile.GemStatus {
+	all := m.allUpgradeableGems()
+	if m.UpgradeableCursor < 0 || m.UpgradeableCursor >= len(all) {
+		return nil
+	}
+	gem := all[m.UpgradeableCursor]
+	if m.IsGemSelectable(gem) {
+		return gem
+	}
+	return nil
+}
+
+// SelectedCount returns the number of selected gems
+func (m *Model) SelectedCount() int {
+	if m.SelectedUpgradeableGems == nil {
+		return 0
+	}
+	count := 0
+	for _, selected := range m.SelectedUpgradeableGems {
+		if selected {
+			count++
+		}
+	}
+	return count
+}
+
+// ToggleSelectionAtCursor toggles selection on the current gem if selectable
+func (m *Model) ToggleSelectionAtCursor() {
+	gem := m.SelectableGemAtCursor()
+	if gem == nil {
+		return
+	}
+	if m.SelectedUpgradeableGems == nil {
+		m.SelectedUpgradeableGems = make(map[string]bool)
+	}
+	m.SelectedUpgradeableGems[gem.Name] = !m.SelectedUpgradeableGems[gem.Name]
+}
+
+// SelectAllUpgradeable selects all selectable gems
+func (m *Model) SelectAllUpgradeable() {
+	if m.SelectedUpgradeableGems == nil {
+		m.SelectedUpgradeableGems = make(map[string]bool)
+	}
+	for _, gem := range m.SelectableUpgradeableGems() {
+		m.SelectedUpgradeableGems[gem.Name] = true
+	}
+}
+
+// DeselectAllUpgradeable deselects all gems
+func (m *Model) DeselectAllUpgradeable() {
+	m.SelectedUpgradeableGems = make(map[string]bool)
+}
+
+// GetSelectedGemNames returns list of selected gem names
+func (m *Model) GetSelectedGemNames() []string {
+	var names []string
+	for gemName, selected := range m.SelectedUpgradeableGems {
+		if selected {
+			names = append(names, gemName)
+		}
+	}
+	return names
 }
 
 // ============================================================================
