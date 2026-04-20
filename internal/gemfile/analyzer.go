@@ -36,6 +36,10 @@ type GemStatus struct {
 	Constraint string
 	// UpdateableVersion is the highest version matching the constraint
 	UpdateableVersion string
+	// GitHubSource is the GitHub source from Gemfile (e.g., "owner/repo")
+	GitHubSource string
+	// GitHubRef is the git ref from Gemfile (commit SHA, branch, tag)
+	GitHubRef string
 }
 
 // AnalysisResult contains the results of analyzing a Gemfile.lock for vulnerabilities,
@@ -82,10 +86,12 @@ func Analyze(gemfile *Gemfile) *AnalysisResult {
 	// Check each gem for vulnerable and outdated status
 	for _, gem := range allGems {
 		status := &GemStatus{
-			Name:       gem.Name,
-			Version:    gem.Version,
-			Groups:     gem.Groups, // Copy group information
-			Constraint: gem.Constraint,
+			Name:         gem.Name,
+			Version:      gem.Version,
+			Groups:       gem.Groups, // Copy group information
+			Constraint:   gem.Constraint,
+			GitHubSource: gem.GitHubSource,
+			GitHubRef:    gem.GitHubRef,
 		}
 
 		// Note: Vulnerability checking is deferred to OSV.dev async scan in the UI.

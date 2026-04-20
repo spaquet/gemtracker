@@ -38,6 +38,10 @@ type Gem struct {
 	InsecureSource bool
 	// Constraint is the version constraint from Gemfile/gems.rb/gemspec (e.g., "~> 7.2", ">= 1.0")
 	Constraint string
+	// GitHubSource stores the GitHub source from Gemfile (e.g., "owner/repo" for github: option)
+	GitHubSource string
+	// GitHubRef stores the git ref from Gemfile (commit SHA, branch, tag)
+	GitHubRef string
 }
 
 // Gemfile represents the parsed contents of a Gemfile.lock file.
@@ -729,4 +733,52 @@ func isVersionConstraint(s string) bool {
 		strings.HasPrefix(s, "=") ||
 		// Also match plain version numbers (e.g., "1.2.3")
 		(s[0] >= '0' && s[0] <= '9')
+}
+
+// LoadGitHubSourcesFromGemfile parses the Gemfile to extract GitHub sources specified via the github: option.
+// This allows gemtracker to display the correct reference URL when users use a fork/custom repo.
+// Example: gem "gemname", github: "owner/repo", ref: "abc123"
+func (g *Gemfile) LoadGitHubSourcesFromGemfile(gemfilePath string) error {
+	gemfilePath = resolvePath(gemfilePath, FindGemfile)
+	if gemfilePath == "" {
+		return nil
+	}
+
+	logger.Info("Loading GitHub sources from Gemfile: %s", gemfilePath)
+
+	file, err := os.Open(gemfilePath)
+	if err != nil {
+		return nil
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	githubLineRegex := regexp.MustCompile(`^\s*gem\s+["']([a-z0-9_-]+)["'].*github:\s+["']([^"']+)["']`)
+	refLineRegex := regexp.MustCompile(`ref:\s+["']([^"']+)["']`)
+
+	for scanner.Scan() {
+		line := scanner.Text()
+
+		matches := githubLineRegex.FindStringSubmatch(line)
+		if len(matches) < 3 {
+			continue
+		}
+
+		gemName := matches[1]
+		githubSource := matches[2]
+
+		refMatch := refLineRegex.FindStringSubmatch(line)
+		var ref string
+		if len(refMatch) > 1 {
+			ref = refMatch[1]
+		}
+
+		if gem, ok := g.Gems[gemName]; ok {
+			gem.GitHubSource = githubSource
+			gem.GitHubRef = ref
+			logger.Info("Loaded GitHub source for %s: %s (ref: %s)", gemName, githubSource, ref)
+		}
+	}
+
+	return nil
 }

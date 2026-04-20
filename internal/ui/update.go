@@ -1272,6 +1272,16 @@ func (m *Model) handleAnalysisComplete(msg AnalysisCompleteMsg) (tea.Model, tea.
 	m.processAnalysisGems(msg.Result)
 	m.populateProjectInfo(msg.Result)
 	m.updateAnalysisState(msg)
+
+	// Transfer GitHub sources from GemStatus to OutdatedChecker
+	if msg.Result != nil && msg.Result.GemStatuses != nil && m.OutdatedChecker != nil {
+		for _, gem := range msg.Result.GemStatuses {
+			if gem.GitHubSource != "" {
+				m.OutdatedChecker.SetGitHubSource(gem.Name, gem.GitHubSource, gem.GitHubRef)
+			}
+		}
+	}
+
 	m.setupOutdatedChecking(msg.Result)
 	m.setupHealthChecking()
 	m.setupUpdateableChecking(msg.Result)
@@ -1595,8 +1605,20 @@ func (m *Model) handleOutdatedItem(msg OutdatedItemMsg) (tea.Model, tea.Cmd) {
 			if gem.Name == msg.GemName {
 				gem.IsOutdated = msg.IsOutdated
 				gem.LatestVersion = msg.LatestVersion
-				gem.HomepageURL = msg.HomepageURL
 				gem.Description = msg.Description
+
+				// Prefer GitHub source from Gemfile over rubygems.org homepage
+				if gem.GitHubSource != "" && m.OutdatedChecker != nil {
+					githubURL := m.OutdatedChecker.GetGitHubURL(gem.Name)
+					if githubURL != "" {
+						gem.HomepageURL = githubURL
+					} else {
+						gem.HomepageURL = msg.HomepageURL
+					}
+				} else {
+					gem.HomepageURL = msg.HomepageURL
+				}
+
 				// If gem has no constraint, updateable version = latest version
 				if gem.Constraint == "" {
 					gem.UpdateableVersion = msg.LatestVersion

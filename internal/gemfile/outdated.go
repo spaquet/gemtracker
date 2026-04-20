@@ -71,6 +71,10 @@ type OutdatedChecker struct {
 	versionCreatedAts map[string]string
 	// dependencies maps gem names to their dependency lists (for gemspec enrichment)
 	dependencies map[string][]string
+	// gemfileGitHubSources maps gem names to their GitHub source from Gemfile (owner/repo format)
+	gemfileGitHubSources map[string]string
+	// gemfileGitHubRefs maps gem names to their git ref from Gemfile
+	gemfileGitHubRefs map[string]string
 }
 
 // NewOutdatedChecker creates a new OutdatedChecker with a 10-second HTTP timeout
@@ -80,12 +84,14 @@ func NewOutdatedChecker() *OutdatedChecker {
 		client: &http.Client{
 			Timeout: 10 * time.Second,
 		},
-		cache:             make(map[string]string),
-		homepages:         make(map[string]string),
-		descriptions:      make(map[string]string),
-		sourceCodeURIs:    make(map[string]string),
-		versionCreatedAts: make(map[string]string),
-		dependencies:      make(map[string][]string),
+		cache:                make(map[string]string),
+		homepages:            make(map[string]string),
+		descriptions:         make(map[string]string),
+		sourceCodeURIs:       make(map[string]string),
+		versionCreatedAts:    make(map[string]string),
+		dependencies:         make(map[string][]string),
+		gemfileGitHubSources: make(map[string]string),
+		gemfileGitHubRefs:    make(map[string]string),
 	}
 }
 
@@ -513,4 +519,46 @@ func isVersionLess(v1, v2 string) bool {
 	}
 
 	return false
+}
+
+// SetGitHubSource stores the GitHub source from the Gemfile for a gem.
+// This allows us to display the correct reference URL when users specify a custom fork.
+func (oc *OutdatedChecker) SetGitHubSource(gemName, githubSource, ref string) {
+	oc.mu.Lock()
+	defer oc.mu.Unlock()
+	oc.gemfileGitHubSources[gemName] = githubSource
+	oc.gemfileGitHubRefs[gemName] = ref
+}
+
+// GetGitHubURL returns the GitHub URL for a gem.
+// It prefers the Gemfile-specified source over the rubygems.org source.
+// Returns empty string if no GitHub source is available.
+func (oc *OutdatedChecker) GetGitHubURL(gemName string) string {
+	oc.mu.Lock()
+	defer oc.mu.Unlock()
+
+	// First check if there's a Gemfile-specified GitHub source
+	if source, ok := oc.gemfileGitHubSources[gemName]; ok && source != "" {
+		return fmt.Sprintf("https://github.com/%s", source)
+	}
+
+	// Fall back to rubygems.org source code URI
+	if sourceURI, ok := oc.sourceCodeURIs[gemName]; ok && sourceURI != "" {
+		// Extract owner/repo from source_code_uri (e.g., https://github.com/owner/repo)
+		if idx := strings.Index(sourceURI, "github.com/"); idx >= 0 {
+			path := sourceURI[idx+len("github.com/"):]
+			// Remove .git suffix if present
+			path = strings.TrimSuffix(path, ".git")
+			return fmt.Sprintf("https://github.com/%s", path)
+		}
+	}
+
+	return ""
+}
+
+// GetGitHubRef returns the git ref (commit SHA, branch, or tag) from the Gemfile.
+func (oc *OutdatedChecker) GetGitHubRef(gemName string) string {
+	oc.mu.Lock()
+	defer oc.mu.Unlock()
+	return oc.gemfileGitHubRefs[gemName]
 }
