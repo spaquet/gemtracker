@@ -604,6 +604,8 @@ func performAnalysis(gemfilePath string, noCache bool) tea.Cmd {
 			gf.LoadGroupsFromGemfile(dir)
 			// Load version constraints from Gemfile/gems.rb
 			gf.LoadConstraintsFromGemfile(dir)
+			// Load GitHub sources from Gemfile (custom forks)
+			gf.LoadGitHubSourcesFromGemfile(dir)
 			// Load constraints from gemspec if present
 			gf.LoadConstraintsFromGemspec("")
 		}
@@ -657,6 +659,8 @@ func performAnalysisWithProgress(gemfilePath string) tea.Cmd {
 		gf.LoadGroupsFromGemfile(dir)
 		// Load version constraints from Gemfile/gems.rb
 		gf.LoadConstraintsFromGemfile(dir)
+		// Load GitHub sources from Gemfile (custom forks)
+		gf.LoadGitHubSourcesFromGemfile(dir)
 		// Load constraints from gemspec if present
 		gf.LoadConstraintsFromGemspec("")
 
@@ -720,6 +724,8 @@ func performAnalysisWithProgressStages(gemfilePath string) tea.Cmd {
 			gf.LoadGroupsFromGemfile(dir)
 			// Load version constraints from Gemfile/gems.rb
 			gf.LoadConstraintsFromGemfile(dir)
+			// Load GitHub sources from Gemfile (custom forks)
+			gf.LoadGitHubSourcesFromGemfile(dir)
 			// Load constraints from gemspec if present
 			gf.LoadConstraintsFromGemspec("")
 
@@ -757,6 +763,8 @@ func performDependencyAnalysis(gemfilePath string, gemName string) tea.Cmd {
 			gf.LoadGroupsFromGemfile(dir)
 			// Load version constraints from Gemfile/gems.rb
 			gf.LoadConstraintsFromGemfile(dir)
+			// Load GitHub sources from Gemfile (custom forks)
+			gf.LoadGitHubSourcesFromGemfile(dir)
 			// Load constraints from gemspec if present
 			gf.LoadConstraintsFromGemspec("")
 		}

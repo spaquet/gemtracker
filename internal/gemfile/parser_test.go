@@ -633,3 +633,123 @@ DEPENDENCIES
 		t.Errorf("expected 2 insecure gems, got %d", len(insecureGems))
 	}
 }
+
+func TestLoadGitHubSourcesFromGemfile(t *testing.T) {
+	// Create a temporary directory with both Gemfile and Gemfile.lock
+	dir := t.TempDir()
+
+	lockContent := `GIT
+  remote: https://github.com/BranchIntl/advanced-sneakers-activejob.git
+  revision: 70aae88422b7ceadc48641d93fffe7b9abc73137
+  branch: master
+  specs:
+    advanced-sneakers-activejob (0.0.1)
+
+GEM
+  remote: https://rubygems.org/
+  specs:
+    rails (7.0.0)
+
+PLATFORMS
+  ruby
+`
+
+	gemfileContent := `source "https://rubygems.org"
+
+gem "advanced-sneakers-activejob", github: "BranchIntl/advanced-sneakers-activejob", ref: "70aae88422b7ceadc48641d93fffe7b9abc73137"
+gem "rails"
+`
+
+	lockPath := filepath.Join(dir, "Gemfile.lock")
+	gemfilePath := filepath.Join(dir, "Gemfile")
+
+	if err := os.WriteFile(lockPath, []byte(lockContent), 0644); err != nil {
+		t.Fatalf("failed to write Gemfile.lock: %v", err)
+	}
+
+	if err := os.WriteFile(gemfilePath, []byte(gemfileContent), 0644); err != nil {
+		t.Fatalf("failed to write Gemfile: %v", err)
+	}
+
+	gf, err := Parse(lockPath)
+	if err != nil {
+		t.Fatalf("Parse failed: %v", err)
+	}
+
+	// Load GitHub sources
+	err = gf.LoadGitHubSourcesFromGemfile(dir)
+	if err != nil {
+		t.Fatalf("LoadGitHubSourcesFromGemfile failed: %v", err)
+	}
+
+	// Check that GitHub source was loaded for custom gem
+	customGem := gf.Gems["advanced-sneakers-activejob"]
+	if customGem == nil {
+		t.Fatal("expected advanced-sneakers-activejob gem to be parsed")
+	}
+	if customGem.GitHubSource != "BranchIntl/advanced-sneakers-activejob" {
+		t.Errorf("expected GitHub source 'BranchIntl/advanced-sneakers-activejob', got %s", customGem.GitHubSource)
+	}
+	if customGem.GitHubRef != "70aae88422b7ceadc48641d93fffe7b9abc73137" {
+		t.Errorf("expected GitHub ref '70aae88422b7ceadc48641d93fffe7b9abc73137', got %s", customGem.GitHubRef)
+	}
+
+	// Check that rails (without github:) has no GitHub source
+	rails := gf.Gems["rails"]
+	if rails == nil {
+		t.Fatal("expected rails gem to be parsed")
+	}
+	if rails.GitHubSource != "" {
+		t.Errorf("expected no GitHub source for rails, got %s", rails.GitHubSource)
+	}
+}
+
+func TestLoadGitHubSourcesFromGemfile_NoRef(t *testing.T) {
+	// Test GitHub source without ref
+	dir := t.TempDir()
+
+	lockContent := `GEM
+  remote: https://rubygems.org/
+  specs:
+    mygem (1.0.0)
+
+PLATFORMS
+  ruby
+`
+
+	gemfileContent := `source "https://rubygems.org"
+
+gem "mygem", github: "customfork/mygem"
+`
+
+	lockPath := filepath.Join(dir, "Gemfile.lock")
+	gemfilePath := filepath.Join(dir, "Gemfile")
+
+	if err := os.WriteFile(lockPath, []byte(lockContent), 0644); err != nil {
+		t.Fatalf("failed to write Gemfile.lock: %v", err)
+	}
+	if err := os.WriteFile(gemfilePath, []byte(gemfileContent), 0644); err != nil {
+		t.Fatalf("failed to write Gemfile: %v", err)
+	}
+
+	gf, err := Parse(lockPath)
+	if err != nil {
+		t.Fatalf("Parse failed: %v", err)
+	}
+
+	err = gf.LoadGitHubSourcesFromGemfile(dir)
+	if err != nil {
+		t.Fatalf("LoadGitHubSourcesFromGemfile failed: %v", err)
+	}
+
+	mygem := gf.Gems["mygem"]
+	if mygem == nil {
+		t.Fatal("expected mygem gem to be parsed")
+	}
+	if mygem.GitHubSource != "customfork/mygem" {
+		t.Errorf("expected GitHub source 'customfork/mygem', got %s", mygem.GitHubSource)
+	}
+	if mygem.GitHubRef != "" {
+		t.Errorf("expected no GitHub ref, got %s", mygem.GitHubRef)
+	}
+}
