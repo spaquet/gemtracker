@@ -8,7 +8,7 @@ require (
 	charm.land/glamour/v2 v2.0.0
 	charm.land/lipgloss/v2 v2.0.3
 	github.com/charmbracelet/x/ansi v0.11.7
-	github.com/getsentry/sentry-go v0.45.1
+	github.com/getsentry/sentry-go v0.46.1
 	github.com/lucasb-eyer/go-colorful v1.4.0
 	golang.org/x/term v0.42.0
 	golang.org/x/time v0.15.0
