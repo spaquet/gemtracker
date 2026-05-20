@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v1.2.12] - 2026-05-20
+
+### Fixed
+- **Release Process** - Fixed GoReleaser configuration to properly upload assets to GitHub releases
+  - Changed release mode from `append` to `replace` to avoid immutable release conflicts
+  - Ensures all platform binaries are successfully uploaded on release
+
 ## [v1.2.11] - 2026-05-20
 
 ### Changed
