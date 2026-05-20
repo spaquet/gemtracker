@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v1.2.11] - 2026-05-20
+
+### Changed
+- **Dependencies** - Update indirect Go dependencies to latest versions
+  - alecthomas/chroma v2.14.0 → v2.24.1
+  - charmbracelet/ultraviolet updated
+  - charmbracelet/x/exp/slice updated
+  - dlclark/regexp2 v1.11.0 → v1.12.0
+  - yuin/goldmark v1.7.8 → v1.8.2
+  - yuin/goldmark-emoji v1.0.5 → v1.0.6
+  - golang.org/x/net v0.39.0 → v0.54.0
+  - golang.org/x/text v0.35.0 → v0.37.0
+
 ## [v1.2.10] - 2026-04-19
 
 ### Fixed
