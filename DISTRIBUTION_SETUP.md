@@ -25,6 +25,20 @@ The tap URL will be: `https://github.com/spaquet/homebrew-gemtracker`
 **Installation command for users**: `brew tap spaquet/gemtracker && brew install gemtracker`
 (Homebrew automatically strips the `homebrew-` prefix)
 
+If users have Homebrew tap trust enabled with `HOMEBREW_REQUIRE_TAP_TRUST`, they must explicitly trust the tap:
+
+```bash
+brew trust --tap spaquet/gemtracker
+brew install gemtracker
+```
+
+In a Brewfile:
+
+```ruby
+tap "spaquet/gemtracker", trusted: true
+brew "gemtracker"
+```
+
 ## Step 2: Create a GitHub Personal Access Token (PAT)
 
 This token allows the release workflow to push the updated Homebrew formula automatically.
@@ -151,6 +165,13 @@ After ~2-5 minutes, check:
    gemtracker --version
    ```
 
+   If `HOMEBREW_REQUIRE_TAP_TRUST` is enabled:
+   ```bash
+   brew trust --tap spaquet/gemtracker
+   brew install gemtracker
+   gemtracker --version
+   ```
+
 If any of these steps fail, check the GitHub Actions tab for workflow errors.
 
 ## Troubleshooting
@@ -201,7 +222,7 @@ Once the project has a few stable releases (~v1.2.0+) and reasonable traction, y
 **Why not do it now?**
 - Homebrew Core has review requirements
 - Better to have a few releases first
-- Current tap (`brew tap spaquet/gemtracker && brew install gemtracker`) is already user-friendly
+- Current tap (`brew tap spaquet/gemtracker && brew install gemtracker`) is already user-friendly, with an extra `brew trust --tap spaquet/gemtracker` step for users who enable Homebrew tap trust
 
 For now, the custom tap is sufficient and gives you full control.
 
