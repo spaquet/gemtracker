@@ -103,6 +103,11 @@ open https://github.com/spaquet/homebrew-gemtracker
 brew tap spaquet/gemtracker
 brew install gemtracker
 gemtracker --version
+
+# If HOMEBREW_REQUIRE_TAP_TRUST is enabled locally:
+brew trust --tap spaquet/gemtracker
+brew install gemtracker
+gemtracker --version
 ```
 
 ---
@@ -178,7 +183,7 @@ Once the project has ~5-10 stable releases and reasonable traction, you can subm
 4. Homebrew maintainers review and merge
 5. Users can then just `brew install gemtracker` (no tap needed)
 
-**Current setup** (`brew tap spaquet/gemtracker && brew install gemtracker`) is already user-friendly.
+**Current setup** (`brew tap spaquet/gemtracker && brew install gemtracker`) is already user-friendly. Users who enable Homebrew tap trust must also run `brew trust --tap spaquet/gemtracker`, or use `tap "spaquet/gemtracker", trusted: true` in a Brewfile.
 **Future setup** (`brew install gemtracker`) will be even simpler once accepted into Homebrew Core.
 
 ---
