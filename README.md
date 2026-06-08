@@ -68,6 +68,12 @@ brew tap spaquet/gemtracker
 brew install gemtracker
 ```
 
+If your Homebrew setup requires trusted taps and shows `tap formula is not trusted`, trust the gemtracker tap once and rerun the install:
+```bash
+brew trust --tap spaquet/gemtracker
+brew install gemtracker
+```
+
 To upgrade:
 ```bash
 brew upgrade gemtracker
@@ -618,7 +624,7 @@ gemtracker --version
 
 ### Future: Official Homebrew
 
-Once gemtracker has stable releases, we plan to submit it to [homebrew/homebrew-core](https://github.com/Homebrew/homebrew-core), allowing installation with just `brew install gemtracker` (no tap needed).
+Once gemtracker has more stable releases and adoption, we may submit it to [homebrew/homebrew-core](https://github.com/Homebrew/homebrew-core), allowing installation with just `brew install gemtracker` (no tap needed). For now, the `spaquet/gemtracker` tap is the supported Homebrew install path.
 
 ## Known Limitations
 
