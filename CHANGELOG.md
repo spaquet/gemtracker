@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+- **Dependencies** - Updated Go module dependencies
+  - charm.land/bubbletea/v2 v2.0.6 → v2.0.7
+  - github.com/alecthomas/chroma/v2 v2.24.1 → v2.26.1
+  - github.com/mattn/go-runewidth v0.0.23 → v0.0.24
+  - github.com/stretchr/testify v1.8.4 → v1.11.1
+  - golang.org/x/net v0.54.0 → v0.55.0
+  - golang.org/x/sync v0.20.0 → v0.21.0
+  - golang.org/x/sys v0.44.0 → v0.46.0
+  - Verified with `go test ./...` and `go build ./cmd/gemtracker`
+
 ## [v1.2.12] - 2026-05-20
 
 ### Fixed
