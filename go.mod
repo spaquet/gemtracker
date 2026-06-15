@@ -10,7 +10,7 @@ require (
 	github.com/charmbracelet/x/ansi v0.11.7
 	github.com/getsentry/sentry-go v0.46.2
 	github.com/lucasb-eyer/go-colorful v1.4.0
-	golang.org/x/term v0.43.0
+	golang.org/x/term v0.44.0
 	golang.org/x/time v0.15.0
 )
 
