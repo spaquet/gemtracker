@@ -286,6 +286,147 @@ func TestGenerateJSONReport(t *testing.T) {
 	}
 }
 
+// TestGenerateJSONReportWithVulnerabilities tests JSON report with enhanced vulnerability structure
+func TestGenerateJSONReportWithVulnerabilities(t *testing.T) {
+	tmpFile, err := os.CreateTemp("", "test-report-*.json")
+	if err != nil {
+		t.Fatalf("failed to create temp file: %v", err)
+	}
+	defer os.Remove(tmpFile.Name())
+	tmpFile.Close()
+
+	rg := NewReportGenerator("/test", false, false)
+
+	reportData := &ReportData{
+		GeneratedAt:            "2026-04-06T10:00:00Z",
+		ProjectPath:            "/test/project",
+		TotalGems:              2,
+		FirstLevelGems:         2,
+		TransitiveDependencies: 0,
+		OutdatedCount:          1,
+		VulnerableCount:        1,
+		InsecureSourceCount:    1,
+		AllGems: []*GemReport{
+			{
+				Name:             "devise",
+				Version:          "4.8.0",
+				IsFirstLevel:     true,
+				IsVulnerable:     true,
+				IsInsecureSource: false,
+				Vulnerabilities: []*VulnerabilityReport{
+					{
+						CVE:      "CVE-2021-41113",
+						OSVID:    "GHSA-xxx-yyy-zzz",
+						Severity: "HIGH",
+						CVSS:     7.5,
+						Summary:  "Authentication bypass vulnerability",
+					},
+				},
+				HealthStatus: "WARNING",
+			},
+			{
+				Name:             "insecure-gem",
+				Version:          "1.0.0",
+				IsFirstLevel:     true,
+				IsInsecureSource: true,
+				IsVulnerable:     false,
+				Source:           "http://insecure.example.com",
+			},
+		},
+		OutdatedGems:       []*GemReport{},
+		VulnerableGems:     []*GemReport{},
+		InsecureSourceGems: []*GemReport{},
+		Summary:            "Test summary",
+	}
+
+	err = rg.generateJSONReport(reportData, tmpFile.Name())
+	if err != nil {
+		t.Errorf("generateJSONReport returned unexpected error: %v", err)
+	}
+
+	content, err := os.ReadFile(tmpFile.Name())
+	if err != nil {
+		t.Fatalf("failed to read JSON file: %v", err)
+	}
+
+	var jsonData map[string]interface{}
+	err = json.Unmarshal(content, &jsonData)
+	if err != nil {
+		t.Errorf("JSON file contains invalid JSON: %v", err)
+	}
+
+	// Verify enhanced summary fields
+	summary, ok := jsonData["summary"].(map[string]interface{})
+	if !ok {
+		t.Errorf("summary field is not a map")
+	}
+	if insecureCount, ok := summary["insecure_source_count"].(float64); !ok || insecureCount != 1 {
+		t.Errorf("expected insecure_source_count to be 1, got %v", summary["insecure_source_count"])
+	}
+
+	// Verify gems structure
+	gems, ok := jsonData["gems"].([]interface{})
+	if !ok {
+		t.Errorf("gems field is not an array")
+		return
+	}
+
+	// Find devise gem and verify vulnerability structure
+	var deviseGem map[string]interface{}
+	for _, g := range gems {
+		gem, ok := g.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		if name, ok := gem["Name"].(string); ok && name == "devise" {
+			deviseGem = gem
+			break
+		}
+	}
+
+	if deviseGem == nil {
+		t.Errorf("devise gem not found in JSON output")
+		return
+	}
+
+	// Verify vulnerabilities array structure
+	vulns, ok := deviseGem["vulnerabilities"].([]interface{})
+	if !ok {
+		t.Errorf("vulnerabilities field is not an array, got %T", deviseGem["vulnerabilities"])
+		return
+	}
+
+	if len(vulns) != 1 {
+		t.Errorf("expected 1 vulnerability, got %d", len(vulns))
+		return
+	}
+
+	vuln, ok := vulns[0].(map[string]interface{})
+	if !ok {
+		t.Errorf("vulnerability item is not a map")
+		return
+	}
+
+	// Verify vulnerability fields
+	if cve, ok := vuln["cve"].(string); !ok || cve != "CVE-2021-41113" {
+		t.Errorf("expected CVE-2021-41113, got %v", vuln["cve"])
+	}
+	if osvId, ok := vuln["osv_id"].(string); !ok || osvId != "GHSA-xxx-yyy-zzz" {
+		t.Errorf("expected GHSA-xxx-yyy-zzz, got %v", vuln["osv_id"])
+	}
+	if severity, ok := vuln["severity"].(string); !ok || severity != "HIGH" {
+		t.Errorf("expected severity HIGH, got %v", vuln["severity"])
+	}
+	if cvss, ok := vuln["cvss"].(float64); !ok || cvss != 7.5 {
+		t.Errorf("expected CVSS 7.5, got %v", vuln["cvss"])
+	}
+
+	// Verify health_status field
+	if health, ok := deviseGem["health_status"].(string); !ok || health != "WARNING" {
+		t.Errorf("expected health_status WARNING, got %v", deviseGem["health_status"])
+	}
+}
+
 // TestWriteOutputToFile tests writing output to a file
 func TestWriteOutputToFile(t *testing.T) {
 	tmpFile, err := os.CreateTemp("", "test-output-*.txt")
