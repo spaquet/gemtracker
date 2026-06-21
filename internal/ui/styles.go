@@ -52,7 +52,7 @@ var AppBackgroundStyle = lipgloss.NewStyle().
 var AppHeaderStyle = lipgloss.NewStyle().
 	Foreground(lipgloss.Color(ColorPrimary)).
 	Bold(true).
-	Background(lipgloss.Color("#3a3a3a")).
+	Background(lipgloss.Color("#262626")).
 	Padding(0, 2)
 
 var ProjectPathStyle = lipgloss.NewStyle().
@@ -71,13 +71,13 @@ var AppVersionStyle = lipgloss.NewStyle().
 var TabStyle = lipgloss.NewStyle().
 	Foreground(lipgloss.Color(ColorTabInactive)).
 	Padding(0, 2).
-	Background(lipgloss.Color("#3a3a3a"))
+	Background(lipgloss.Color("#262626"))
 
 var TabActiveStyle = lipgloss.NewStyle().
 	Foreground(lipgloss.Color(ColorTabActive)).
 	Bold(true).
 	Padding(0, 2).
-	Background(lipgloss.Color("#3a3a3a")).
+	Background(lipgloss.Color("#262626")).
 	Underline(true)
 
 // ============================================================================
@@ -85,18 +85,18 @@ var TabActiveStyle = lipgloss.NewStyle().
 // ============================================================================
 
 var StatusBarStyle = lipgloss.NewStyle().
-	Background(lipgloss.Color("#3a3a3a")).
+	Background(lipgloss.Color("#262626")).
 	Foreground(lipgloss.Color(ColorTextMuted)).
 	Padding(0, 2)
 
 var KeyHintKeyStyle = lipgloss.NewStyle().
 	Foreground(lipgloss.Color(ColorPrimary)).
-	Background(lipgloss.Color("#3a3a3a")).
+	Background(lipgloss.Color("#262626")).
 	Bold(true)
 
 var KeyHintDescStyle = lipgloss.NewStyle().
 	Foreground(lipgloss.Color(ColorTextMuted)).
-	Background(lipgloss.Color("#3a3a3a"))
+	Background(lipgloss.Color("#262626"))
 
 // ============================================================================
 // Table / List Row Styles
@@ -269,7 +269,7 @@ var ErrorMessageStyle = lipgloss.NewStyle().
 // ============================================================================
 
 var UpdateBarStyle = lipgloss.NewStyle().
-	Background(lipgloss.Color("#3a3a3a")).
+	Background(lipgloss.Color("#262626")).
 	Foreground(lipgloss.Color(ColorWarning)).
 	Padding(0, 2)
 

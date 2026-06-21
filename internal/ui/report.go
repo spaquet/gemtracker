@@ -11,8 +11,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/getsentry/sentry-go"
 	"github.com/spaquet/gemtracker/internal/gemfile"
 	"github.com/spaquet/gemtracker/internal/logger"
+	"github.com/spaquet/gemtracker/internal/telemetry"
 	"golang.org/x/term"
 )
 
@@ -57,6 +59,15 @@ type ReportData struct {
 	InsecureSourceCount int
 }
 
+// VulnerabilityReport represents a single vulnerability in structured format
+type VulnerabilityReport struct {
+	CVE      string  `json:"cve"`
+	OSVID    string  `json:"osv_id"`
+	Severity string  `json:"severity"`
+	CVSS     float64 `json:"cvss,omitempty"`
+	Summary  string  `json:"summary"`
+}
+
 // GemReport represents a gem's details in the generated report, including status and metadata.
 type GemReport struct {
 	// Name is the gem name
@@ -73,10 +84,12 @@ type GemReport struct {
 	LatestVersion string
 	// IsVulnerable indicates whether known CVEs affect this version
 	IsVulnerable bool
-	// VulnerabilityInfo contains CVE ID and description (if IsVulnerable is true)
-	VulnerabilityInfo string
-	// VulnerabilityURL is the canonical OSV advisory URL (if IsVulnerable is true)
-	VulnerabilityURL string
+	// Vulnerabilities contains structured CVE data
+	Vulnerabilities []*VulnerabilityReport `json:"vulnerabilities,omitempty"`
+	// VulnerabilityInfo contains CVE ID and description (legacy, for text reports)
+	VulnerabilityInfo string `json:"-"`
+	// VulnerabilityURL is the canonical OSV advisory URL (legacy)
+	VulnerabilityURL string `json:"-"`
 	// HomepageURL is the gem's homepage or source code URL
 	HomepageURL string
 	// Description is the gem description from rubygems.org
@@ -87,6 +100,8 @@ type GemReport struct {
 	Source string
 	// IsInsecureSource indicates whether the gem comes from an insecure protocol
 	IsInsecureSource bool
+	// HealthStatus is the gem health indicator (HEALTHY, WARNING, CRITICAL, or empty if not checked)
+	HealthStatus string `json:"health_status,omitempty"`
 }
 
 // NewReportGenerator creates a new ReportGenerator for the given project path.
@@ -272,6 +287,7 @@ func (rg *ReportGenerator) Generate(format, outputPath string) error {
 		isOutdated, latestVersion, err := outdatedChecker.IsOutdated(gem.Name, gem.Version)
 		if err != nil {
 			logger.Warn("Failed to check if %s is outdated: %v", gem.Name, err)
+			telemetry.CaptureException(err, sentry.LevelWarning)
 			status.OutdatedFailed = true
 			continue
 		}
@@ -289,12 +305,15 @@ func (rg *ReportGenerator) Generate(format, outputPath string) error {
 	// Check for vulnerabilities using OSV.dev
 	printProgress("Scanning for vulnerabilities...")
 	logger.Info("Scanning for vulnerabilities...")
-	vulns, err := rg.scanVulnerabilities(analysis.AllGems)
+	vulns := make([]*gemfile.Vulnerability, 0)
+	vulnsData, err := rg.scanVulnerabilities(analysis.AllGems)
 	if err != nil {
 		logger.Warn("Failed to scan vulnerabilities: %v", err)
+		telemetry.CaptureException(err, sentry.LevelWarning)
 		printProgressDone("⚠ Vulnerability scan failed, continuing without CVE data")
 		// Continue with report generation, just without CVE data
 	} else {
+		vulns = vulnsData
 		// Merge vulnerability data into gem statuses
 		rg.mergeVulnerabilitiesIntoGems(analysis.GemStatuses, vulns)
 		printProgressDone("✓ Found %d vulnerabilities", len(vulns))
@@ -302,7 +321,7 @@ func (rg *ReportGenerator) Generate(format, outputPath string) error {
 
 	// Build report data
 	printProgress("Building %s report...", strings.ToUpper(format))
-	reportData := rg.buildReportData(analysis, gemStatusMap, gf)
+	reportData := rg.buildReportData(analysis, gemStatusMap, gf, vulns)
 	printProgressDone("✓ Report generated")
 
 	// Generate report based on format
@@ -331,7 +350,7 @@ func (rg *ReportGenerator) Generate(format, outputPath string) error {
 }
 
 // buildReportData builds structured report data from analysis results
-func (rg *ReportGenerator) buildReportData(analysis *gemfile.AnalysisResult, gemStatusMap map[string]*gemfile.GemStatus, gf *gemfile.Gemfile) *ReportData {
+func (rg *ReportGenerator) buildReportData(analysis *gemfile.AnalysisResult, gemStatusMap map[string]*gemfile.GemStatus, gf *gemfile.Gemfile, vulnerabilities []*gemfile.Vulnerability) *ReportData {
 	// Build first-level gem map
 	firstLevelMap := make(map[string]bool)
 	for _, name := range gf.FirstLevelGems {
@@ -348,6 +367,12 @@ func (rg *ReportGenerator) buildReportData(analysis *gemfile.AnalysisResult, gem
 	// Sort reverse deps for consistent output
 	for _, deps := range reverseDepMap {
 		sort.Strings(deps)
+	}
+
+	// Build vulnerability map by gem name
+	vulnByGem := make(map[string][]*gemfile.Vulnerability)
+	for _, vuln := range vulnerabilities {
+		vulnByGem[vuln.GemName] = append(vulnByGem[vuln.GemName], vuln)
 	}
 
 	// Convert gem statuses to reports
@@ -371,6 +396,20 @@ func (rg *ReportGenerator) buildReportData(analysis *gemfile.AnalysisResult, gem
 			isInsecureSource = gem.InsecureSource
 		}
 
+		// Build vulnerabilities array for this gem
+		var vulnReports []*VulnerabilityReport
+		if gemVulns, ok := vulnByGem[status.Name]; ok {
+			for _, vuln := range gemVulns {
+				vulnReports = append(vulnReports, &VulnerabilityReport{
+					CVE:      vuln.CVE,
+					OSVID:    vuln.OSVId,
+					Severity: vuln.Severity,
+					CVSS:     vuln.CVSS,
+					Summary:  vuln.Description,
+				})
+			}
+		}
+
 		report := &GemReport{
 			Name:              status.Name,
 			Version:           status.Version,
@@ -379,6 +418,7 @@ func (rg *ReportGenerator) buildReportData(analysis *gemfile.AnalysisResult, gem
 			IsOutdated:        status.IsOutdated,
 			LatestVersion:     status.LatestVersion,
 			IsVulnerable:      status.IsVulnerable,
+			Vulnerabilities:   vulnReports,
 			VulnerabilityInfo: status.VulnerabilityInfo,
 			VulnerabilityURL:  status.VulnerabilityURL,
 			HomepageURL:       status.HomepageURL,
@@ -706,6 +746,7 @@ func (rg *ReportGenerator) generateJSONReport(data *ReportData, outputPath strin
 			"transitive_dependencies": data.TransitiveDependencies,
 			"outdated_count":          data.OutdatedCount,
 			"vulnerable_count":        data.VulnerableCount,
+			"insecure_source_count":   data.InsecureSourceCount,
 		},
 		"gems": data.AllGems,
 	}
@@ -794,6 +835,7 @@ func (rg *ReportGenerator) scanVulnerabilities(gems []*gemfile.Gem) ([]*gemfile.
 	vulns, err := osv.QueryBatch(ctx, gems)
 	if err != nil {
 		logger.Warn("Failed to query OSV.dev: %v", err)
+		telemetry.CaptureException(err, sentry.LevelWarning)
 		return nil, err
 	}
 
@@ -810,6 +852,7 @@ func (rg *ReportGenerator) scanVulnerabilities(gems []*gemfile.Gem) ([]*gemfile.
 
 	if err := gemfile.SaveVulnerabilityCache(gemsSignature, cacheEntry); err != nil {
 		logger.Warn("Failed to save CVE cache: %v", err)
+		telemetry.CaptureException(err, sentry.LevelWarning)
 	}
 
 	// Convert to pointers for return
@@ -833,7 +876,7 @@ func (rg *ReportGenerator) mergeVulnerabilitiesIntoGems(gemStatuses []*gemfile.G
 	for _, gemStatus := range gemStatuses {
 		if vulns, hasVulns := vulnByGem[gemStatus.Name]; hasVulns && len(vulns) > 0 {
 			gemStatus.IsVulnerable = true
-			// Use the first vulnerability for the summary info
+			// Use the first vulnerability for the summary info (for text reports)
 			vuln := vulns[0]
 			// Include severity in the vulnerability info, matching UI display (no trailing colon)
 			info := fmt.Sprintf("%s [%s] %s", vuln.CVE, vuln.Severity, vuln.Description)

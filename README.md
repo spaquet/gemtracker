@@ -60,6 +60,36 @@ For complete documentation, see the [gem-check skill guide](.claude/skills/gem-c
 "Create a prioritized upgrade plan"
 ```
 
+### Gemtracker Claude Code Skill
+
+Use the `gemtracker` skill for direct CLI analysis in Claude Code:
+
+```bash
+/gemtracker
+```
+
+This skill:
+- Runs `gemtracker --report json` directly in your project
+- Parses structured output for automation
+- Shows vulnerability count, severity, and CVSS scores
+- Flags outdated gems and insecure sources
+- Perfect for CI/CD integration and automated workflows
+
+**Installation & Usage:**
+
+See [Gemtracker Skill Installation Guide](ai-skill-and-hook-installation.md) for:
+- Installing gemtracker CLI
+- Setting up the Claude Code skill
+- Configuring pre-commit hooks
+- Troubleshooting guide
+
+**Quick Start:**
+```
+/gemtracker                      # Analyze current project
+/gemtracker /path/to/project    # Analyze specific project
+/gemtracker . --report json     # Get JSON output for automation
+```
+
 ## Installation
 
 ### macOS (Homebrew) — Recommended
@@ -647,6 +677,8 @@ Once gemtracker has more stable releases and adoption, we may submit it to [home
 
 ## Documentation
 
+- **[ai-skill-and-hook-installation.md](ai-skill-and-hook-installation.md)** - Installing gemtracker CLI and Claude/Codex skill setup
+- **[ai-skill-and-hook-implementation.md](ai-skill-and-hook-implementation.md)** - Claude/Codex skill and shared hook implementation
 - **[CONTRIBUTING.md](CONTRIBUTING.md)** — How to contribute and code quality requirements
 - **[CHANGELOG.md](CHANGELOG.md)** — Version history and what's new in each release
 - **[RELEASE_GUIDE.md](RELEASE_GUIDE.md)** — How to make releases and manage the distribution pipeline
