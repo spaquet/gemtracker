@@ -70,7 +70,8 @@ install_git_hook() {
 
 # gemtracker pre-commit
 if command -v gemtracker >/dev/null 2>&1; then
-  gemtracker . --report text || true
+  mkdir -p "$(git rev-parse --git-dir)/gemtracker"
+  gemtracker . --report json > "$(git rev-parse --git-dir)/gemtracker/latest.json" || true
 fi
 HOOK
 

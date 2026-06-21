@@ -21,7 +21,7 @@ The installer copies the same skill to:
 ~/.codex/skills/gemtracker
 ```
 
-When run inside a Git repo, it also adds a normal `.git/hooks/pre-commit` block. That hook is shared by Claude, Codex, and terminal commits.
+When run inside a Git repo, it also adds a normal `.git/hooks/pre-commit` block. That hook is shared by Claude, Codex, and terminal commits, and writes `.git/gemtracker/latest.json`.
 
 ## Usage
 

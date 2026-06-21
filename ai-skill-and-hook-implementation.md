@@ -28,13 +28,20 @@ The hook is a normal Git hook:
 
 This is intentionally not a Claude hook or Codex hook. Git runs it regardless of whether the commit is started from Claude, Codex, an IDE, or a terminal.
 
-The hook block is non-blocking:
+The hook block is non-blocking and writes JSON for AI agents:
 
 ```bash
 # gemtracker pre-commit
 if command -v gemtracker >/dev/null 2>&1; then
-  gemtracker . --report text || true
+  mkdir -p "$(git rev-parse --git-dir)/gemtracker"
+  gemtracker . --report json > "$(git rev-parse --git-dir)/gemtracker/latest.json" || true
 fi
+```
+
+Agents can inspect the latest report at:
+
+```text
+.git/gemtracker/latest.json
 ```
 
 ## Installer

@@ -23,6 +23,12 @@ If run inside a Git repo, it also appends a gemtracker block to:
 
 That hook is shared by Claude, Codex, and normal terminal commits because Git runs it directly.
 
+The hook writes the latest AI-friendly JSON report to:
+
+```text
+.git/gemtracker/latest.json
+```
+
 ## Prerequisites
 
 - `gemtracker` CLI in `PATH`
@@ -81,6 +87,12 @@ Direct CLI:
 gemtracker . --report text
 gemtracker . --report json
 gemtracker . --report csv
+```
+
+After a commit attempt, Claude or Codex can inspect:
+
+```text
+.git/gemtracker/latest.json
 ```
 
 ## Uninstall

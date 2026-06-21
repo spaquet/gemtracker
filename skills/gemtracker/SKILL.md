@@ -45,6 +45,7 @@ Run gemtracker on /path/to/ruby-project and summarize the result.
    gemtracker . --report json
    ```
 5. Summarize vulnerabilities first, then outdated gems, insecure sources, and maintenance risks.
+6. If a Git pre-commit hook has run, inspect `.git/gemtracker/latest.json` before rerunning gemtracker.
 
 ## Output Formats
 
@@ -56,4 +57,4 @@ Run gemtracker on /path/to/ruby-project and summarize the result.
 
 - Dependency files: `Gemfile.lock`, `gems.locked`, or `.gemspec`.
 - Cache: `~/.cache/gemtracker/`.
-- The shared install script can also add a normal Git `pre-commit` hook. That hook is editor/agent agnostic, so it works whether commits are made from Claude, Codex, or a terminal.
+- The shared install script can also add a normal Git `pre-commit` hook. That hook writes `.git/gemtracker/latest.json` for Claude, Codex, IDEs, and terminal workflows to inspect.
