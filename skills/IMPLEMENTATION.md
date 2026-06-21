@@ -39,7 +39,7 @@ curl -fsSL https://raw.githubusercontent.com/spaquet/gemtracker/main/skills/inst
 ### 2. Detect Gemtracker CLI
 ```
 Check: which gemtracker
-├─ Found (v1.2.16) → Continue
+├─ Found (v1.3.8) → Continue
 └─ Not found → Offer install
     ├─ macOS + Homebrew → brew tap && brew install
     ├─ Linux → Download binary from releases

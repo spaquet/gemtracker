@@ -5,13 +5,37 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [v1.2.16] - 2026-06-21
+## [v1.3.8] - 2026-06-21
+
+### Added
+- **Claude Code Skill** - Native integration with Claude Code editor
+  - `/gemtracker` command for interactive gem analysis in Claude Code
+  - Structured JSON output for automation and CI/CD integration
+  - Pre-commit hook support (configurable, non-blocking)
+  - Multi-scope installation: Global / Project / Personal
+  - One-command installation script with OS detection
+  - Automatic gemtracker CLI installation (macOS Homebrew, Linux, Windows)
+  - Intelligent upgrade and uninstall scripts
+
+- **Enhanced JSON Report Structure** - Machine-readable output for automation
+  - Vulnerabilities array with individual CVE records
+  - Structured fields: cve, osv_id, severity, cvss, summary
+  - Support for multiple vulnerabilities per gem
+  - Health status indicator per gem (future use)
+  - Insecure source count in summary
 
 ### Changed
+- **Telemetry** - Non-critical errors now reported to Sentry
+  - Failed vulnerability scans logged for monitoring
+  - Failed API calls tracked (RubyGems, GitHub, OSV.dev)
+  - Graceful degradation with informative error messages
+  - All errors at LevelWarning to preserve UX
+
 - **UI Background** - Unified TUI background color to prevent terminal transparency from showing through
   - All chrome elements (header, tabs, status bar) now use consistent #262626 background
   - Improved ANSI reset handling to re-apply background color after styled segments
   - Entire viewport now rendered with opaque background for clean, cohesive appearance
+
 - **Dependencies** - Updated Go module dependencies to latest versions
   - charm.land/glamour/v2 v2.0.0 → v2.0.1
   - charm.land/lipgloss/v2 v2.0.3 → v2.0.4
