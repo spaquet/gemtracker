@@ -1,137 +1,82 @@
 ---
 name: gemtracker
 description: Analyze Ruby gem dependencies, vulnerabilities, and outdated packages
-version: 1.0.0
-author: Stephane Paquet
-license: MIT
 ---
 
 # Gemtracker Skill
 
-Analyze Ruby gem dependencies directly in Claude Code using the gemtracker CLI.
+Analyze Ruby gem dependencies and security risks using the gemtracker CLI.
 
 ## Features
 
-- **Vulnerability Scanning** - Detect CVEs in gem dependencies via OSV.dev
-- **Outdated Detection** - Find gems with available updates
-- **Health Status** - Monitor gem maintenance and activity
-- **Insecure Sources** - Flag gems from unencrypted sources
-- **Structured Output** - Machine-readable JSON for automation
+- Detect CVEs in gem dependencies
+- Find outdated packages with available updates
+- Monitor gem maintenance health
+- Identify insecure gem sources
+- Output in text, JSON, or CSV formats
 
 ## Requirements
 
-- `gemtracker` CLI installed and in PATH
-- Ruby project with `Gemfile.lock`, `gems.locked`, or `.gemspec`
-
-## Installation
+Install the `gemtracker` CLI first:
 
 ```bash
-# Install gemtracker (requires Go 1.24+)
 brew install spaquet/gemtracker/gemtracker
-
-# Or build from source
-git clone https://github.com/spaquet/gemtracker
-cd gemtracker
-make build-release
 ```
+
+See [Installation Guide](https://github.com/spaquet/gemtracker/blob/main/INSTALLATION.md) for detailed setup.
 
 ## Usage
 
-### Basic Analysis
-
-Analyze current directory's Ruby dependencies:
-
+Analyze current directory:
 ```
 /gemtracker
 ```
 
 Analyze specific project:
-
 ```
 /gemtracker /path/to/ruby-project
 ```
 
-### Output Formats
-
-**JSON** (recommended for automation):
+Output formats:
 ```
-/gemtracker . --report json
-```
-
-**Text** (human-readable):
-```
-/gemtracker . --report text
-```
-
-**CSV** (spreadsheet import):
-```
-/gemtracker . --report csv
+/gemtracker . --json      # Machine-readable output
+/gemtracker . --csv       # Spreadsheet import
 ```
 
 ## Examples
 
-### Check for vulnerabilities
-
-Analyze the current project and report any CVEs found:
-
+**Find vulnerabilities:**
 ```
 /gemtracker
 ```
+Shows CVEs found, severity levels, and advisory links.
 
-Claude will parse the results and show:
-- Count of vulnerable gems
-- Severity levels (HIGH, MODERATE, LOW, CRITICAL)
-- CVSS scores
-- Links to advisories
-
-### Find outdated dependencies
-
+**Check outdated gems:**
 ```
-/gemtracker . --report json
+/gemtracker . --json
 ```
+Returns gems with available updates and version constraints.
 
-Shows:
-- Gems with available updates
-- Current vs latest versions
-- Whether updates are within version constraints
-
-### Audit insecure sources
-
-Detects gems installed from unencrypted HTTP or git:// protocols.
-
-## Integration with Hooks
-
-Add pre-commit hook to your project to check dependencies before committing:
-
-```bash
-# In .claude/settings.json
-{
-  "hooks": {
-    "before-commit": "gemtracker . && echo 'Gem analysis complete'"
-  }
-}
+**Audit gem sources:**
 ```
+/gemtracker
+```
+Detects unencrypted HTTP or git:// source gems.
 
 ## Caching
 
-Results are cached for 24 hours in `~/.cache/gemtracker/`. Clear with:
-
+Results cached 24 hours in `~/.cache/gemtracker/`. Clear:
 ```bash
 rm -rf ~/.cache/gemtracker/
 ```
 
 ## Troubleshooting
 
-**Command not found**: Ensure gemtracker is in your PATH
+**gemtracker not found**: Verify installation
 ```bash
 which gemtracker
 ```
 
-**No dependency files found**: Place Gemfile.lock, gems.locked, or .gemspec in project root
+**No dependency files**: Ensure Gemfile.lock, gems.locked, or .gemspec exists in target directory
 
-**Rate limits**: External API calls (RubyGems, GitHub, OSV.dev) may be rate-limited. Wait and retry.
-
-## See Also
-
-- [Gemtracker README](https://github.com/spaquet/gemtracker)
-- [Installation Guide](./INSTALLATION.md)
+**Rate limits**: API calls may throttle. Wait 1 hour and retry.

@@ -77,7 +77,7 @@ This skill:
 
 **Installation & Usage:**
 
-See [Gemtracker Skill Installation Guide](skills/gemtracker/INSTALLATION.md) for:
+See [Gemtracker Skill Installation Guide](INSTALLATION.md) for:
 - Installing gemtracker CLI
 - Setting up the Claude Code skill
 - Configuring pre-commit hooks
@@ -677,6 +677,8 @@ Once gemtracker has more stable releases and adoption, we may submit it to [home
 
 ## Documentation
 
+- **[INSTALLATION.md](INSTALLATION.md)** — Installing gemtracker CLI and Claude Code skill setup
+- **[IMPLEMENTATION.md](IMPLEMENTATION.md)** — Claude Code skill implementation plan and architecture
 - **[CONTRIBUTING.md](CONTRIBUTING.md)** — How to contribute and code quality requirements
 - **[CHANGELOG.md](CHANGELOG.md)** — Version history and what's new in each release
 - **[RELEASE_GUIDE.md](RELEASE_GUIDE.md)** — How to make releases and manage the distribution pipeline
