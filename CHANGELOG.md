@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [v1.2.13] - 2026-06-21
 
 ### Changed
+- **UI Background** - Unified TUI background color to prevent terminal transparency from showing through
+  - All chrome elements (header, tabs, status bar) now use consistent #262626 background
+  - Improved ANSI reset handling to re-apply background color after styled segments
+  - Entire viewport now rendered with opaque background for clean, cohesive appearance
 - **Dependencies** - Updated Go module dependencies to latest versions
   - charm.land/glamour/v2 v2.0.0 → v2.0.1
   - charm.land/lipgloss/v2 v2.0.3 → v2.0.4

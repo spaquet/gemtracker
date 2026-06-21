@@ -26,12 +26,19 @@ import (
 // transparent patches when the terminal switches between light/dark mode or
 // when individual styled segments reset to the terminal default background.
 func ensureOpaqueBackground(s string) string {
-	// lipgloss v2 uses \x1b[m (SGR reset) at the end of each styled segment.
-	// Replace it with reset + re-apply background so no gap is ever transparent.
-	return strings.ReplaceAll(s, "\x1b[m", "\x1b[m"+bgANSIRGB)
+	// lipgloss v2 and other ANSI codes use multiple reset sequences:
+	// \x1b[m     - SGR reset
+	// \x1b[0m    - SGR reset (explicit 0)
+	// \x1b[39m   - Reset foreground only
+	// Replace all of them with reset + re-apply background so no gap is ever transparent.
+	s = strings.ReplaceAll(s, "\x1b[m", "\x1b[m"+bgANSIRGB)
+	s = strings.ReplaceAll(s, "\x1b[0m", "\x1b[0m"+bgANSIRGB)
+	s = strings.ReplaceAll(s, "\x1b[39m", "\x1b[39m"+bgANSIRGB)
+	return s
 }
 
-// bgANSIRGB is the ANSI escape to set background to #262626 using 24-bit RGB (matching lipgloss v2 output)
+// bgANSIRGB is the ANSI escape to set background to #262626 using 24-bit RGB.
+// This ensures the background is always visible and prevents terminal transparency from showing.
 const bgANSIRGB = "\x1b[48;2;38;38;38m"
 
 // minInt returns the minimum of two integers
@@ -187,6 +194,11 @@ func (m *Model) View() tea.View {
 	}()
 
 	content := m.renderCurrentView()
+
+	// Ensure entire viewport has opaque background to prevent terminal transparency
+	// from showing through gaps in styled output
+	content = ensureOpaqueBackground(content)
+
 	v := tea.NewView(content)
 	v.AltScreen = true
 
