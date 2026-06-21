@@ -60,6 +60,36 @@ For complete documentation, see the [gem-check skill guide](.claude/skills/gem-c
 "Create a prioritized upgrade plan"
 ```
 
+### Gemtracker Claude Code Skill
+
+Use the `gemtracker` skill for direct CLI analysis in Claude Code:
+
+```bash
+/gemtracker
+```
+
+This skill:
+- Runs `gemtracker --report json` directly in your project
+- Parses structured output for automation
+- Shows vulnerability count, severity, and CVSS scores
+- Flags outdated gems and insecure sources
+- Perfect for CI/CD integration and automated workflows
+
+**Installation & Usage:**
+
+See [Gemtracker Skill Installation Guide](skills/gemtracker/INSTALLATION.md) for:
+- Installing gemtracker CLI
+- Setting up the Claude Code skill
+- Configuring pre-commit hooks
+- Troubleshooting guide
+
+**Quick Start:**
+```
+/gemtracker                      # Analyze current project
+/gemtracker /path/to/project    # Analyze specific project
+/gemtracker . --report json     # Get JSON output for automation
+```
+
 ## Installation
 
 ### macOS (Homebrew) — Recommended
