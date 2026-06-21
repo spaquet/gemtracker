@@ -200,16 +200,20 @@ copy_skill_files() {
     # Create target directory
     mkdir -p "$target_path"
 
-    # Copy skill files
+    # Copy SKILL.md
     cp "$SKILL_SOURCE_DIR/SKILL.md" "$target_path/SKILL.md" || {
         log_error "Failed to copy SKILL.md"
         exit 1
     }
 
-    cp "$SKILL_SOURCE_DIR/INSTALLATION.md" "$target_path/INSTALLATION.md" || {
-        log_error "Failed to copy INSTALLATION.md"
-        exit 1
-    }
+    # Copy scripts folder with implementation
+    if [ -d "$SKILL_SOURCE_DIR/scripts" ]; then
+        mkdir -p "$target_path/scripts"
+        cp "$SKILL_SOURCE_DIR/scripts/"* "$target_path/scripts/" || {
+            log_error "Failed to copy scripts"
+            exit 1
+        }
+    fi
 
     log_success "Skill files copied to $target_path"
 }
@@ -280,8 +284,9 @@ verify_installation() {
         return 1
     fi
 
-    if [ ! -f "$target_path/INSTALLATION.md" ]; then
-        log_error "INSTALLATION.md not found at $target_path"
+    # Check implementation script exists
+    if [ ! -f "$target_path/scripts/analyze.sh" ]; then
+        log_error "scripts/analyze.sh not found at $target_path"
         return 1
     fi
 
@@ -332,8 +337,8 @@ print_success_message() {
         echo
     fi
 
-    echo "To update: Run this script again"
-    echo "To uninstall: rm -rf $target_path"
+    echo "To update: bash $REPO/raw/main/skills/upgrade.sh"
+    echo "To uninstall: bash $REPO/raw/main/skills/uninstall.sh"
 }
 
 # ============================================================================

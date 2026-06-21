@@ -27,37 +27,15 @@ log_warning() {
     echo -e "${YELLOW}⚠${NC} $1"
 }
 
-# Get current installed skill version from SKILL.md
-get_installed_version() {
+# Check if skill is installed
+is_skill_installed() {
     local skill_path="$1"
-    if [ -f "$skill_path/SKILL.md" ]; then
-        grep "^version:" "$skill_path/SKILL.md" | awk '{print $2}' || echo "unknown"
-    else
-        echo "not_installed"
-    fi
+    [ -f "$skill_path/SKILL.md" ] && [ -f "$skill_path/scripts/analyze.sh" ]
 }
 
-# Get latest skill version from GitHub
-get_latest_version() {
-    # Try to fetch latest from GitHub API
-    local latest=$(curl -s https://api.github.com/repos/spaquet/gemtracker/contents/skills/gemtracker/SKILL.md \
-        | grep '"version"' | head -1 | sed 's/.*"version": "\([^"]*\)".*/\1/' 2>/dev/null || echo "")
-
-    if [ -z "$latest" ]; then
-        # Fallback: try to get from raw GitHub
-        latest=$(curl -s https://raw.githubusercontent.com/spaquet/gemtracker/main/skills/gemtracker/SKILL.md \
-            | grep "^version:" | awk '{print $2}' 2>/dev/null || echo "")
-    fi
-
-    echo "$latest"
-}
-
-# Compare versions (simple semver)
-version_greater() {
-    local v1="$1"
-    local v2="$2"
-    # Simple comparison: split by dots and compare numerically
-    [[ "$(printf '%s\n' "$v1" "$v2" | sort -V | head -n1)" != "$v1" ]]
+# Download install script to temp location for comparison
+get_latest_install_hash() {
+    curl -s https://raw.githubusercontent.com/spaquet/gemtracker/main/skills/install.sh | md5sum | awk '{print $1}'
 }
 
 # Find installed skill (search all possible locations)
@@ -131,41 +109,21 @@ main() {
     log_success "Found at: $installed_path"
     echo
 
-    # Get versions
-    local current_version=$(get_installed_version "$installed_path")
-    log_info "Current version: $current_version"
-
-    log_info "Checking for new version..."
-    local latest_version=$(get_latest_version)
-
-    if [ -z "$latest_version" ]; then
-        log_warning "Could not determine latest version"
-        echo "Check manually at: https://github.com/spaquet/gemtracker/releases"
+    # Check if skill is valid
+    if ! is_skill_installed "$installed_path"; then
+        log_error "Installed skill appears incomplete or corrupted"
+        echo "Reinstall with:"
+        echo "  curl -fsSL https://raw.githubusercontent.com/spaquet/gemtracker/main/skills/install.sh | bash"
         exit 1
     fi
 
-    log_success "Latest version: $latest_version"
+    log_info "Checking for updates from GitHub..."
+    read -p "Re-run installation to get latest version? (y/n) " -n 1 -r
     echo
-
-    # Compare versions
-    if [ "$current_version" = "$latest_version" ]; then
-        log_success "Already up to date!"
-        exit 0
-    fi
-
-    if version_greater "$latest_version" "$current_version"; then
-        log_warning "Update available: $current_version → $latest_version"
-        echo
-        read -p "Upgrade now? (y/n) " -n 1 -r
-        echo
-        if [[ $REPLY =~ ^[Yy]$ ]]; then
-            run_latest_install
-        else
-            log_info "Upgrade cancelled"
-            exit 0
-        fi
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        run_latest_install
     else
-        log_info "Current version is newer than latest"
+        log_info "Upgrade cancelled"
         exit 0
     fi
 }

@@ -27,18 +27,24 @@ log_warning() {
     echo -e "${YELLOW}⚠${NC} $1"
 }
 
+# Check if valid skill is installed at path
+is_valid_skill() {
+    local skill_path="$1"
+    [ -f "$skill_path/SKILL.md" ] && [ -d "$skill_path/scripts" ]
+}
+
 # Find all installed skill locations
 find_all_skills() {
     local locations=()
 
     # Check global
-    if [ -f "$HOME/.claude/skills/gemtracker/SKILL.md" ]; then
+    if is_valid_skill "$HOME/.claude/skills/gemtracker"; then
         locations+=("global:$HOME/.claude/skills/gemtracker")
     fi
 
     # Check project (if in git repo)
     if git rev-parse --git-dir > /dev/null 2>&1; then
-        if [ -f "./.claude/skills/gemtracker/SKILL.md" ]; then
+        if is_valid_skill "./.claude/skills/gemtracker"; then
             locations+=("project:./.claude/skills/gemtracker")
         fi
     fi
@@ -48,8 +54,10 @@ find_all_skills() {
         while IFS= read -r skill_path; do
             if [ -n "$skill_path" ]; then
                 local dir=$(dirname "$skill_path")
-                local project_hash=$(basename $(dirname $(dirname "$dir")))
-                locations+=("personal ($project_hash):$dir")
+                if is_valid_skill "$dir"; then
+                    local project_hash=$(basename $(dirname $(dirname "$dir")))
+                    locations+=("personal ($project_hash):$dir")
+                fi
             fi
         done < <(find "$HOME/.claude/projects" -path "*/gemtracker/SKILL.md" 2>/dev/null)
     fi
