@@ -1,6 +1,6 @@
 #!/bin/bash
 # Gemtracker skill implementation
-# Wraps the gemtracker CLI for Claude Code integration
+# Wraps the gemtracker CLI for Claude Code and Codex.
 
 set -e
 

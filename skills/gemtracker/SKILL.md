@@ -1,82 +1,59 @@
 ---
 name: gemtracker
-description: Analyze Ruby gem dependencies, vulnerabilities, and outdated packages
+description: Analyze Ruby gem dependencies, vulnerabilities, outdated packages, maintenance health, and insecure gem sources with the gemtracker CLI. Use when asked to audit Ruby gems, check Gemfile.lock security, review dependency health, or run gemtracker.
 ---
 
-# Gemtracker Skill
+# Gemtracker
 
-Analyze Ruby gem dependencies and security risks using the gemtracker CLI.
+Use the `gemtracker` CLI to analyze Ruby gem dependencies.
 
-## Features
+## Agent Usage
 
-- Detect CVEs in gem dependencies
-- Find outdated packages with available updates
-- Monitor gem maintenance health
-- Identify insecure gem sources
-- Output in text, JSON, or CSV formats
-
-## Requirements
-
-Install the `gemtracker` CLI first:
+Claude Code users can run:
 
 ```bash
-brew install spaquet/gemtracker/gemtracker
-```
-
-See [Installation Guide](https://github.com/spaquet/gemtracker/blob/main/INSTALLATION.md) for detailed setup.
-
-## Usage
-
-Analyze current directory:
-```
 /gemtracker
-```
-
-Analyze specific project:
-```
 /gemtracker /path/to/ruby-project
-```
-
-Output formats:
-```
-/gemtracker . --json      # Machine-readable output
-/gemtracker . --csv       # Spreadsheet import
-```
-
-## Examples
-
-**Find vulnerabilities:**
-```
-/gemtracker
-```
-Shows CVEs found, severity levels, and advisory links.
-
-**Check outdated gems:**
-```
 /gemtracker . --json
 ```
-Returns gems with available updates and version constraints.
 
-**Audit gem sources:**
-```
-/gemtracker
-```
-Detects unencrypted HTTP or git:// source gems.
+Codex users can ask naturally:
 
-## Caching
-
-Results cached 24 hours in `~/.cache/gemtracker/`. Clear:
-```bash
-rm -rf ~/.cache/gemtracker/
+```text
+Use gemtracker to audit this repo.
+Check this Ruby project for vulnerable or outdated gems.
+Run gemtracker on /path/to/ruby-project and summarize the result.
 ```
 
-## Troubleshooting
+## Workflow
 
-**gemtracker not found**: Verify installation
-```bash
-which gemtracker
-```
+1. Check for the CLI:
+   ```bash
+   command -v gemtracker
+   ```
+2. If missing, tell the user to install it:
+   ```bash
+   brew tap spaquet/gemtracker && brew install gemtracker
+   ```
+3. Pick the target path. Default to the current repo or `.`.
+4. Run the bundled wrapper when available:
+   ```bash
+   scripts/analyze.sh . --json
+   ```
+   Otherwise run:
+   ```bash
+   gemtracker . --report json
+   ```
+5. Summarize vulnerabilities first, then outdated gems, insecure sources, and maintenance risks.
 
-**No dependency files**: Ensure Gemfile.lock, gems.locked, or .gemspec exists in target directory
+## Output Formats
 
-**Rate limits**: API calls may throttle. Wait 1 hour and retry.
+- Text: `gemtracker . --report text`
+- JSON: `gemtracker . --report json`
+- CSV: `gemtracker . --report csv`
+
+## Notes
+
+- Dependency files: `Gemfile.lock`, `gems.locked`, or `.gemspec`.
+- Cache: `~/.cache/gemtracker/`.
+- The shared install script can also add a normal Git `pre-commit` hook. That hook is editor/agent agnostic, so it works whether commits are made from Claude, Codex, or a terminal.

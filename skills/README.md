@@ -1,74 +1,46 @@
-# Gemtracker Claude Code Skills
+# Gemtracker Agent Skills
 
-This directory contains Claude Code skills to enhance gem dependency analysis in your workflow.
+This directory contains the shared gemtracker skill for Claude Code and Codex.
 
-## Available Skills
+## Install
 
-### gemtracker
-
-Direct gemtracker CLI analysis in Claude Code.
-
-**Best for:**
-- Automated CI/CD integration
-- JSON report parsing
-- Machine-readable analysis
-- Pre-commit vulnerability scanning
-
-**Features:**
-- Structured JSON output
-- Vulnerability severity levels
-- Multiple vulnerabilities per gem
-- CVSS scores
-- Insecure source detection
-
-**Usage:**
+```bash
+curl -fsSL https://raw.githubusercontent.com/spaquet/gemtracker/main/skills/install.sh | bash
 ```
+
+Local clone:
+
+```bash
+bash skills/install.sh
+```
+
+The installer copies the same skill to:
+
+```text
+~/.claude/skills/gemtracker
+~/.codex/skills/gemtracker
+```
+
+When run inside a Git repo, it also adds a normal `.git/hooks/pre-commit` block. That hook is shared by Claude, Codex, and terminal commits.
+
+## Usage
+
+Claude Code:
+
+```text
 /gemtracker
-/gemtracker /path/to/project
-/gemtracker . --report json
+/gemtracker . --json
 ```
 
-**Installation:**
-See [Gemtracker Installation Guide](./gemtracker/INSTALLATION.md)
+Codex:
 
----
+```text
+Use gemtracker to audit this repo.
+Check this Ruby project for vulnerable gems.
+```
 
-## Comparison: gem-check vs gemtracker
+## Files
 
-| Feature | gem-check | gemtracker |
-|---------|-----------|-----------|
-| **Interface** | Interactive guidance | Direct CLI output |
-| **Output Format** | Conversational | JSON/Text/CSV |
-| **Best Use** | Interactive analysis | Automation/CI |
-| **Setup Complexity** | Simple | Requires gemtracker CLI |
-| **AI Reasoning** | Built-in recommendations | Raw data for processing |
-
-**Choose gem-check if:** You want guided, interactive analysis with AI recommendations
-
-**Choose gemtracker if:** You need structured data for automation or CI/CD pipelines
-
----
-
-## Installation
-
-Both skills are included in the gemtracker repository. Install according to the guide for each skill:
-
-- **gem-check**: [.claude/skills/gem-check/SKILL.md](./../.claude/skills/gem-check/SKILL.md)
-- **gemtracker**: [skills/gemtracker/INSTALLATION.md](./gemtracker/INSTALLATION.md)
-
-## Support
-
-For issues or questions:
-
-1. **gemtracker CLI issues**: https://github.com/spaquet/gemtracker/issues
-2. **Skill usage questions**: Check the skill's INSTALLATION.md
-3. **Bug reports**: Include gemtracker version (`gemtracker --version`)
-
-## Contributing
-
-Have improvements? Issues? Pull requests welcome at:
-https://github.com/spaquet/gemtracker
-
-## License
-
-All skills inherit the gemtracker license (MIT).
+- `gemtracker/SKILL.md`: agent instructions
+- `gemtracker/scripts/analyze.sh`: CLI wrapper
+- `install.sh`: dual Claude/Codex installer plus shared Git hook
