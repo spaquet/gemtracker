@@ -11,8 +11,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/getsentry/sentry-go"
 	"github.com/spaquet/gemtracker/internal/gemfile"
 	"github.com/spaquet/gemtracker/internal/logger"
+	"github.com/spaquet/gemtracker/internal/telemetry"
 	"golang.org/x/term"
 )
 
@@ -285,6 +287,7 @@ func (rg *ReportGenerator) Generate(format, outputPath string) error {
 		isOutdated, latestVersion, err := outdatedChecker.IsOutdated(gem.Name, gem.Version)
 		if err != nil {
 			logger.Warn("Failed to check if %s is outdated: %v", gem.Name, err)
+			telemetry.CaptureException(err, sentry.LevelWarning)
 			status.OutdatedFailed = true
 			continue
 		}
@@ -306,6 +309,7 @@ func (rg *ReportGenerator) Generate(format, outputPath string) error {
 	vulnsData, err := rg.scanVulnerabilities(analysis.AllGems)
 	if err != nil {
 		logger.Warn("Failed to scan vulnerabilities: %v", err)
+		telemetry.CaptureException(err, sentry.LevelWarning)
 		printProgressDone("⚠ Vulnerability scan failed, continuing without CVE data")
 		// Continue with report generation, just without CVE data
 	} else {
@@ -831,6 +835,7 @@ func (rg *ReportGenerator) scanVulnerabilities(gems []*gemfile.Gem) ([]*gemfile.
 	vulns, err := osv.QueryBatch(ctx, gems)
 	if err != nil {
 		logger.Warn("Failed to query OSV.dev: %v", err)
+		telemetry.CaptureException(err, sentry.LevelWarning)
 		return nil, err
 	}
 
@@ -847,6 +852,7 @@ func (rg *ReportGenerator) scanVulnerabilities(gems []*gemfile.Gem) ([]*gemfile.
 
 	if err := gemfile.SaveVulnerabilityCache(gemsSignature, cacheEntry); err != nil {
 		logger.Warn("Failed to save CVE cache: %v", err)
+		telemetry.CaptureException(err, sentry.LevelWarning)
 	}
 
 	// Convert to pointers for return
