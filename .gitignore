@@ -45,4 +45,4 @@ go.work.sum
 # Build outputs
 dist/
 bin/
-gemtracker
+/gemtracker
