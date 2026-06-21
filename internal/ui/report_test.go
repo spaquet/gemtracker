@@ -73,7 +73,7 @@ func TestBuildReportData(t *testing.T) {
 		gemStatusMap[status.Name] = status
 	}
 
-	reportData := rg.buildReportData(analysis, gemStatusMap, gf)
+	reportData := rg.buildReportData(analysis, gemStatusMap, gf, make([]*gemfile.Vulnerability, 0))
 
 	// Verify summary stats
 	if reportData.TotalGems != 3 {
