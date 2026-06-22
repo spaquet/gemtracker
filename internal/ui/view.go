@@ -2255,7 +2255,11 @@ func (m *Model) renderProjectInfo(height int) string {
 	sections = append(sections, "")
 
 	// Ruby version
-	sections = append(sections, m.formatInfoLine("Ruby Version", m.RubyVersion))
+	rubyVersionDisplay := m.RubyVersion
+	if m.RubyVersionSource != "" && m.RubyVersionSource != "(not identified)" {
+		rubyVersionDisplay = fmt.Sprintf("%s (%s)", m.RubyVersion, m.RubyVersionSource)
+	}
+	sections = append(sections, m.formatInfoLine("Ruby Version", rubyVersionDisplay))
 
 	// Bundle version
 	sections = append(sections, m.formatInfoLine("Bundle Version", m.BundleVersion))

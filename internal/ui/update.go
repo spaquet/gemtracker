@@ -1349,7 +1349,9 @@ func (m *Model) processAnalysisGems(result *gemfile.AnalysisResult) {
 
 // populateProjectInfo gathers project information and caches the analysis result.
 func (m *Model) populateProjectInfo(result *gemfile.AnalysisResult) {
-	m.RubyVersion = gemfile.ExtractRubyVersion(m.GemfileLockPath)
+	rubyInfo := gemfile.DetectRubyVersion(m.ProjectPath)
+	m.RubyVersion = rubyInfo.Version
+	m.RubyVersionSource = rubyInfo.Source
 	m.BundleVersion = gemfile.ExtractBundleVersion(m.GemfileLockPath)
 
 	// Parse Gemfile for framework detection
@@ -1370,6 +1372,7 @@ func (m *Model) populateProjectInfo(result *gemfile.AnalysisResult) {
 	cacheEntry := &cache.CacheEntry{
 		Result:            result,
 		RubyVersion:       m.RubyVersion,
+		RubyVersionSource: m.RubyVersionSource,
 		BundleVersion:     m.BundleVersion,
 		FrameworkDetected: m.FrameworkDetected,
 		RailsVersion:      m.RailsVersion,

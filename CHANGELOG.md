@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v1.3.9] - 2026-06-22
+
+### Added
+- **Improved Ruby Version Detection** - Multi-source fallback strategy
+  - Check `.ruby-version` or `.ruby` file in project root (highest priority)
+  - Run `ruby --version` command in project directory
+  - Parse Dockerfile for Rails projects (FROM ruby:X.Y.Z)
+  - Extract from Gemfile.lock as fallback
+  - Display detection source in Project Info tab (e.g., "3.2.0 (from .ruby-version file)")
+  - Reduces false "(not identified)" results from incomplete detection
+
 ## [v1.3.8] - 2026-06-21
 
 ### Added
