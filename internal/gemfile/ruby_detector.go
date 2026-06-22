@@ -104,9 +104,11 @@ func getRubyVersionFromCommand(projectPath string) (string, bool) {
 
 // readRubyVersionFromDockerfile attempts to extract Ruby version from Dockerfile.
 // Looks for lines like:
-//   FROM ruby:3.2.0
-//   FROM ruby:3.2.0-alpine
-//   FROM ruby:3.2
+//
+//	FROM ruby:3.2.0
+//	FROM ruby:3.2.0-alpine
+//	FROM ruby:3.2
+//
 // Returns version and true if found, empty string and false otherwise.
 func readRubyVersionFromDockerfile(projectPath string) (string, bool) {
 	dockerfilePath := filepath.Join(projectPath, "Dockerfile")
