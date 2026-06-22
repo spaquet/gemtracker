@@ -24,6 +24,7 @@ type CacheEntry struct {
 	GemfileLockMtime  int64                   `json:"gemfile_lock_mtime"`
 	CachedAt          time.Time               `json:"cached_at"`
 	RubyVersion       string                  `json:"ruby_version"`
+	RubyVersionSource string                  `json:"ruby_version_source"`
 	BundleVersion     string                  `json:"bundle_version"`
 	FrameworkDetected string                  `json:"framework_detected"`
 	RailsVersion      string                  `json:"rails_version"`

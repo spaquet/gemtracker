@@ -331,6 +331,7 @@ type Model struct {
 
 	// Project Info screen state
 	RubyVersion        string
+	RubyVersionSource   string // How Ruby version was detected (e.g., "from .ruby-version file")
 	RailsVersion       string
 	BundleVersion      string
 	OtherFramework     string // For non-Rails projects
