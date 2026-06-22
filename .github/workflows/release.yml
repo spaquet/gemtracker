@@ -59,7 +59,7 @@ jobs:
           echo "✓ Release created"
 
           # Link commits to the release for better context
-          sentry-cli releases set-commits "$VERSION" --auto
+          sentry-cli releases set-commits "$VERSION" --auto --ignore-missing
           echo "✓ Commits linked"
 
           # Finalize the release
