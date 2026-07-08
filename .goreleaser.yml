@@ -48,10 +48,10 @@ release:
   github:
     owner: spaquet
     name: gemtracker
-  draft: false
+  draft: true
   prerelease: false
   name_template: "{{ .ProjectName }} {{ .Version }}"
-  mode: replace
+  mode: append
 
 changelog:
   use: git
