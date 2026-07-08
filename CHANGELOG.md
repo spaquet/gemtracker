@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v1.3.12] - 2026-07-07
+
+### Changed
+- **Dependencies** - Updated Go dependencies to latest versions
+  - charm.land/bubbles/v2: v2.1.0 → v2.1.1
+  - charm.land/bubbletea/v2: v2.0.7 → v2.0.8
+  - charm.land/lipgloss/v2: v2.0.4 → v2.0.5
+  - golang.org/x/text: v0.38.0 → v0.39.0
+  - charmbracelet experimental packages updated
+
 ## [v1.3.11] - 2026-06-22
 
 ### Fixed
