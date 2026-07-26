@@ -204,13 +204,14 @@ func removeANSICodes(s string) string {
 	result := ""
 	inEscape := false
 	for _, ch := range s {
-		if ch == '\x1b' {
+		switch {
+		case ch == '\x1b':
 			inEscape = true
-		} else if inEscape {
+		case inEscape:
 			if (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') {
 				inEscape = false
 			}
-		} else {
+		default:
 			result += string(ch)
 		}
 	}

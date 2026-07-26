@@ -5,7 +5,7 @@ A beautiful, interactive Terminal UI for analyzing Ruby gem dependencies and qui
 [![CI](https://github.com/spaquet/gemtracker/actions/workflows/ci.yml/badge.svg)](https://github.com/spaquet/gemtracker/actions)
 [![Latest Release](https://img.shields.io/github/v/release/spaquet/gemtracker)](https://github.com/spaquet/gemtracker/releases)
 [![License](https://img.shields.io/github/license/spaquet/gemtracker)](LICENSE)
-[![Go Report Card](https://goreportcard.com/badge/github.com/spaquet/gemtracker)](https://goreportcard.com/report/github.com/spaquet/gemtracker)
+[![golangci-lint](https://img.shields.io/badge/lint-golangci--lint-brightgreen)](https://github.com/spaquet/gemtracker/actions/workflows/ci.yml)
 
 ![gemtracker screenshot](images/screen1.png)
 

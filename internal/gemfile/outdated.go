@@ -504,10 +504,10 @@ func isVersionLess(v1, v2 string) bool {
 		var num1, num2 int
 
 		if i < len(v1Nums) {
-			fmt.Sscanf(v1Nums[i], "%d", &num1)
+			_, _ = fmt.Sscanf(v1Nums[i], "%d", &num1)
 		}
 		if i < len(v2Nums) {
-			fmt.Sscanf(v2Nums[i], "%d", &num2)
+			_, _ = fmt.Sscanf(v2Nums[i], "%d", &num2)
 		}
 
 		if num1 < num2 {

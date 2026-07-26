@@ -567,7 +567,7 @@ func BenchmarkGenerateTextReport(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		rg.generateTextReport(reportData, "")
+		_ = rg.generateTextReport(reportData, "")
 	}
 }
 
@@ -582,7 +582,7 @@ func BenchmarkGenerateCSVReport(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		rg.generateCSVReport(reportData, tmpFile.Name())
+		_ = rg.generateCSVReport(reportData, tmpFile.Name())
 	}
 }
 
@@ -597,7 +597,7 @@ func BenchmarkGenerateJSONReport(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		rg.generateJSONReport(reportData, tmpFile.Name())
+		_ = rg.generateJSONReport(reportData, tmpFile.Name())
 	}
 }
 

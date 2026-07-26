@@ -68,9 +68,6 @@ func parseArgs() Args {
 	for i := 1; i < len(os.Args); i++ {
 		arg := os.Args[i]
 		i = parseArg(arg, i, &args)
-		if args.ShowVersion || args.ReportFormat != "" || args.ProjectPath != "" {
-			// Quick exits
-		}
 	}
 
 	return args
@@ -113,6 +110,13 @@ func parseArg(arg string, index int, args *Args) int {
 }
 
 func main() {
+	os.Exit(run())
+}
+
+// run executes the CLI and returns the process exit code. Keeping this
+// separate from main lets deferred cleanup (telemetry, logger) always run
+// before the process exits, since os.Exit in main would skip them.
+func run() int {
 	// Initialize Sentry error tracking (optional, only if SENTRY_DSN is set)
 	if err := telemetry.InitSentry(version); err != nil {
 		// Log error but continue - Sentry is optional
@@ -125,7 +129,7 @@ func main() {
 
 	if args.ShowVersion {
 		printVersion()
-		os.Exit(0)
+		return 0
 	}
 
 	// Initialize logger (before TUI starts)
@@ -142,8 +146,10 @@ func main() {
 
 	// Check if we're in report mode
 	if args.ReportFormat != "" {
-		generateReport(args.ProjectPath, args.ReportFormat, args.OutputPath, args.NoCache, args.Verbose)
-		os.Exit(0)
+		if !generateReport(args.ProjectPath, args.ReportFormat, args.OutputPath, args.NoCache, args.Verbose) {
+			return 1
+		}
+		return 0
 	}
 
 	// Start the interactive TUI
@@ -153,20 +159,22 @@ func main() {
 	if _, err := p.Run(); err != nil {
 		telemetry.CaptureError(err)
 		fmt.Fprintf(os.Stderr, "Error running program: %v\n", err)
-		os.Exit(1)
+		return 1
 	}
+	return 0
 }
 
 // generateReport generates a gem dependency report in the specified format (text, csv, or json)
 // and writes it to the specified output path or stdout if no path is provided.
-// It exits the program with a non-zero status if report generation fails.
-func generateReport(projectPath, format, outputPath string, noCache, verbose bool) {
+// It returns false if report generation fails.
+func generateReport(projectPath, format, outputPath string, noCache, verbose bool) bool {
 	reportGen := ui.NewReportGenerator(projectPath, noCache, verbose)
 	if err := reportGen.Generate(format, outputPath); err != nil {
 		telemetry.CaptureError(err)
 		fmt.Fprintf(os.Stderr, "Error generating report: %v\n", err)
-		os.Exit(1)
+		return false
 	}
+	return true
 }
 
 // printVersion outputs the gemtracker version string to stdout, including commit hash and build date

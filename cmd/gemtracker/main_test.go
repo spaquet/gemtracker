@@ -312,5 +312,5 @@ func BenchmarkPrintVersion(b *testing.B) {
 	}
 
 	w.Close()
-	io.ReadAll(r)
+	_, _ = io.ReadAll(r)
 }

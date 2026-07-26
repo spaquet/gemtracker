@@ -106,7 +106,7 @@ func TestOSVClient_QueryBatch_Success(t *testing.T) {
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		io.WriteString(w, mockResponse)
+		_, _ = io.WriteString(w, mockResponse)
 	}))
 	defer server.Close()
 
@@ -179,7 +179,7 @@ func TestOSVClient_QueryBatch_NoVulnerabilities(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		io.WriteString(w, mockResponse)
+		_, _ = io.WriteString(w, mockResponse)
 	}))
 	defer server.Close()
 
@@ -208,7 +208,7 @@ func TestOSVClient_QueryBatch_NoVulnerabilities(t *testing.T) {
 func TestOSVClient_QueryBatch_APIError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
-		io.WriteString(w, "Internal server error")
+		_, _ = io.WriteString(w, "Internal server error")
 	}))
 	defer server.Close()
 
@@ -234,7 +234,7 @@ func TestOSVClient_QueryBatch_MalformedJSON(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		io.WriteString(w, "{invalid json}")
+		_, _ = io.WriteString(w, "{invalid json}")
 	}))
 	defer server.Close()
 
@@ -462,7 +462,7 @@ func TestOSVClient_QueryBatch_MultipleVulnerabilities(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		io.WriteString(w, mockResponse)
+		_, _ = io.WriteString(w, mockResponse)
 	}))
 	defer server.Close()
 
@@ -495,10 +495,7 @@ func TestOSVClient_QueryBatch_MultipleVulnerabilities(t *testing.T) {
 func TestOSVClient_QueryBatch_ContextCancellation(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Simulate slow response
-		select {
-		case <-r.Context().Done():
-			return
-		}
+		<-r.Context().Done()
 	}))
 	defer server.Close()
 
