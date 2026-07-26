@@ -48,6 +48,11 @@ jobs:
           HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
 
+      - name: Publish GitHub release
+        run: gh release edit "${GITHUB_REF#refs/tags/}" --draft=false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Create Sentry Release
         run: |
           VERSION="${GITHUB_REF#refs/tags/}"
