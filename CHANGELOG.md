@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v1.3.14] - 2026-07-25
+
+### Fixed
+- **CI Lint Pipeline** - `golangci-lint-action` bumped v6 → v9, lint version pinned to `v2.12.2`
+  - Previous `version: latest` was resolving a stale golangci-lint 1.64.8 build (Go 1.24), which couldn't parse config targeting go.mod's `go 1.26.2`
+  - Also drops the Node 20 deprecation warning from the old action version
+- **Release Workflow** - goreleaser draft mode set to `true` with `append` mode to prevent immutable-release 422 errors on re-runs
+
+### Changed
+- **Linting** - Retired goreportcard, adopted golangci-lint v2 config format
+- **Dependencies** - Updated Go dependencies to latest versions
+  - charm.land/bubbles/v2: v2.1.0 → v2.1.1
+  - charm.land/bubbletea/v2: v2.0.7 → v2.0.8
+  - charm.land/lipgloss/v2: v2.0.4 → v2.0.5
+  - golang.org/x/text: v0.38.0 → v0.39.0
+  - charmbracelet experimental packages updated
+- **CI** - `actions/setup-go` bumped v6 → v7
+
 ## [v1.3.12] - 2026-07-07
 
 ### Changed
