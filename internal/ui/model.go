@@ -473,9 +473,15 @@ func (m *Model) Init() tea.Cmd {
 		// If --no-cache flag is set, clear all caches to force fresh data
 		if m.NoCache {
 			logger.Info("--no-cache flag set, clearing all caches")
-			gemfile.ClearVulnerabilityCache()    // Clear CVE cache
-			cache.Clear(m.GemfileLockPath)       // Clear analysis cache
-			cache.ClearHealth(m.GemfileLockPath) // Clear health cache
+			if err := gemfile.ClearVulnerabilityCache(); err != nil {
+				logger.Warn("Failed to clear vulnerability cache: %v", err)
+			}
+			if err := cache.Clear(m.GemfileLockPath); err != nil {
+				logger.Warn("Failed to clear analysis cache: %v", err)
+			}
+			if err := cache.ClearHealth(m.GemfileLockPath); err != nil {
+				logger.Warn("Failed to clear health cache: %v", err)
+			}
 		}
 
 		return tea.Batch(
@@ -602,13 +608,21 @@ func performAnalysis(gemfilePath string, noCache bool) tea.Cmd {
 		// Load group information from Gemfile (only for lock files, not gemspec)
 		if !isGemspec {
 			dir := filepath.Dir(gemfilePath)
-			gf.LoadGroupsFromGemfile(dir)
+			if err := gf.LoadGroupsFromGemfile(dir); err != nil {
+				logger.Warn("Failed to load groups from Gemfile: %v", err)
+			}
 			// Load version constraints from Gemfile/gems.rb
-			gf.LoadConstraintsFromGemfile(dir)
+			if err := gf.LoadConstraintsFromGemfile(dir); err != nil {
+				logger.Warn("Failed to load constraints from Gemfile: %v", err)
+			}
 			// Load GitHub sources from Gemfile (custom forks)
-			gf.LoadGitHubSourcesFromGemfile(dir)
+			if err := gf.LoadGitHubSourcesFromGemfile(dir); err != nil {
+				logger.Warn("Failed to load GitHub sources from Gemfile: %v", err)
+			}
 			// Load constraints from gemspec if present
-			gf.LoadConstraintsFromGemspec("")
+			if err := gf.LoadConstraintsFromGemspec(""); err != nil {
+				logger.Warn("Failed to load constraints from gemspec: %v", err)
+			}
 		}
 
 		// Create the outdated checker once and reuse it
@@ -631,116 +645,6 @@ func performAnalysis(gemfilePath string, noCache bool) tea.Cmd {
 	}
 }
 
-// performAnalysisWithProgress does analysis with progress reporting
-// Emits ProgressMsg messages to show stages, then AnalysisCompleteMsg with results
-func performAnalysisWithProgress(gemfilePath string) tea.Cmd {
-	return func() tea.Msg {
-		// Try to load from cache first
-		cacheEntry, cacheErr := cache.Read(gemfilePath)
-		if cacheErr == nil && cacheEntry != nil && cacheEntry.Result != nil {
-			// Cache hit! Return complete analysis immediately
-			return AnalysisCompleteMsg{
-				Result:          cacheEntry.Result,
-				Error:           nil,
-				OutdatedChecker: gemfile.NewOutdatedChecker(),
-			}
-		}
-
-		// Stage 1: Parse Gemfile.lock (0-40%)
-		gf, err := gemfile.Parse(gemfilePath)
-		if err != nil {
-			return AnalysisCompleteMsg{
-				Result: nil,
-				Error:  err,
-			}
-		}
-
-		// Load group information from Gemfile
-		dir := filepath.Dir(gemfilePath)
-		gf.LoadGroupsFromGemfile(dir)
-		// Load version constraints from Gemfile/gems.rb
-		gf.LoadConstraintsFromGemfile(dir)
-		// Load GitHub sources from Gemfile (custom forks)
-		gf.LoadGitHubSourcesFromGemfile(dir)
-		// Load constraints from gemspec if present
-		gf.LoadConstraintsFromGemspec("")
-
-		// Stage 2: Analyze gems (40-70%)
-		result := gemfile.Analyze(gf)
-
-		// Warm up outdated checker for health data extraction
-		outdatedChecker := gemfile.NewOutdatedChecker()
-		if result != nil {
-			for _, gem := range result.FirstLevelGems {
-				outdatedChecker.GetSourceCodeURI(gem)
-			}
-		}
-
-		// Stage 3: Return complete results (100%)
-		return AnalysisCompleteMsg{
-			Result:          result,
-			Error:           nil,
-			OutdatedChecker: outdatedChecker,
-		}
-	}
-}
-
-// performAnalysisWithProgressStages returns a batch of commands that emit progress
-// This chains multiple progress updates through the message system
-func performAnalysisWithProgressStages(gemfilePath string) tea.Cmd {
-	return tea.Batch(
-		// Emit initial parsing message
-		func() tea.Msg {
-			return ProgressMsg{
-				Stage:      "parsing",
-				Percentage: 10,
-				Message:    "Parsing Gemfile.lock...",
-			}
-		},
-		// Do the actual analysis after a small delay
-		func() tea.Msg {
-			time.Sleep(100 * time.Millisecond)
-
-			// Try to load from cache first
-			cacheEntry, cacheErr := cache.Read(gemfilePath)
-			if cacheErr == nil && cacheEntry != nil && cacheEntry.Result != nil {
-				// Cache hit! Return complete analysis
-				return AnalysisCompleteMsg{
-					Result: cacheEntry.Result,
-					Error:  nil,
-				}
-			}
-
-			// Do full analysis
-			gf, err := gemfile.Parse(gemfilePath)
-			if err != nil {
-				return AnalysisCompleteMsg{
-					Result: nil,
-					Error:  err,
-				}
-			}
-
-			// Load group information from Gemfile
-			dir := filepath.Dir(gemfilePath)
-			gf.LoadGroupsFromGemfile(dir)
-			// Load version constraints from Gemfile/gems.rb
-			gf.LoadConstraintsFromGemfile(dir)
-			// Load GitHub sources from Gemfile (custom forks)
-			gf.LoadGitHubSourcesFromGemfile(dir)
-			// Load constraints from gemspec if present
-			gf.LoadConstraintsFromGemspec("")
-
-			// Analyze gems
-			result := gemfile.Analyze(gf)
-
-			return AnalysisCompleteMsg{
-				Result: result,
-				Error:  nil,
-			}
-		},
-	)
-}
-
 func performDependencyAnalysis(gemfilePath string, gemName string) tea.Cmd {
 	return func() tea.Msg {
 		var gf *gemfile.Gemfile
@@ -761,13 +665,21 @@ func performDependencyAnalysis(gemfilePath string, gemName string) tea.Cmd {
 		// Load group information from Gemfile (only for lock files, not gemspec)
 		if !isGemspec {
 			dir := filepath.Dir(gemfilePath)
-			gf.LoadGroupsFromGemfile(dir)
+			if err := gf.LoadGroupsFromGemfile(dir); err != nil {
+				logger.Warn("Failed to load groups from Gemfile: %v", err)
+			}
 			// Load version constraints from Gemfile/gems.rb
-			gf.LoadConstraintsFromGemfile(dir)
+			if err := gf.LoadConstraintsFromGemfile(dir); err != nil {
+				logger.Warn("Failed to load constraints from Gemfile: %v", err)
+			}
 			// Load GitHub sources from Gemfile (custom forks)
-			gf.LoadGitHubSourcesFromGemfile(dir)
+			if err := gf.LoadGitHubSourcesFromGemfile(dir); err != nil {
+				logger.Warn("Failed to load GitHub sources from Gemfile: %v", err)
+			}
 			// Load constraints from gemspec if present
-			gf.LoadConstraintsFromGemspec("")
+			if err := gf.LoadConstraintsFromGemspec(""); err != nil {
+				logger.Warn("Failed to load constraints from gemspec: %v", err)
+			}
 		}
 
 		// Enrich gemspec dependencies from RubyGems API
@@ -856,7 +768,7 @@ func (m *Model) extractAvailableGroups(gems []*gemfile.GemStatus) []string {
 
 // applyFilters applies the current filter state to FirstLevelGems
 func (m *Model) applyFilters() {
-	if m.UnfilteredGems == nil || len(m.UnfilteredGems) == 0 {
+	if len(m.UnfilteredGems) == 0 {
 		return
 	}
 
@@ -922,7 +834,7 @@ func (m *Model) hasActiveFilters() bool {
 
 // applyCVEFilters applies the current CVE filter state to CVEVulnerabilities
 func (m *Model) applyCVEFilters() {
-	if m.UnfilteredCVEs == nil || len(m.UnfilteredCVEs) == 0 {
+	if len(m.UnfilteredCVEs) == 0 {
 		return
 	}
 
@@ -984,11 +896,12 @@ func (m *Model) matchesAcknowledgmentFilter(vuln *gemfile.Vulnerability) bool {
 		key := gemfile.GetCVECommentKey(vuln)
 		comment, exists := m.CVEComments.Entries[key]
 		if exists && comment != nil {
-			if comment.Decision == gemfile.DecisionAcknowledged {
+			switch comment.Decision {
+			case gemfile.DecisionAcknowledged:
 				vulnState = "acknowledged"
-			} else if comment.Decision == gemfile.DecisionIgnored {
+			case gemfile.DecisionIgnored:
 				vulnState = "ignored"
-			} else {
+			default:
 				vulnState = "unacknowledged"
 			}
 		} else {
@@ -1076,13 +989,18 @@ func (m *Model) buildUpgradeableList() {
 
 // allUpgradeableGems returns a combined slice of all upgradeable gems (first-level + framework + transitive)
 func (m *Model) allUpgradeableGems() []*gemfile.GemStatus {
-	all := append(m.UpgradeableGems, m.UpgradeableFrameworkGems...)
-	return append(all, m.UpgradeableTransitiveDeps...)
+	all := make([]*gemfile.GemStatus, 0, len(m.UpgradeableGems)+len(m.UpgradeableFrameworkGems)+len(m.UpgradeableTransitiveDeps))
+	all = append(all, m.UpgradeableGems...)
+	all = append(all, m.UpgradeableFrameworkGems...)
+	all = append(all, m.UpgradeableTransitiveDeps...)
+	return all
 }
 
 // SelectableUpgradeableGems returns only Direct + Framework gems (selectable)
 func (m *Model) SelectableUpgradeableGems() []*gemfile.GemStatus {
-	all := append(m.UpgradeableGems, m.UpgradeableFrameworkGems...)
+	all := make([]*gemfile.GemStatus, 0, len(m.UpgradeableGems)+len(m.UpgradeableFrameworkGems))
+	all = append(all, m.UpgradeableGems...)
+	all = append(all, m.UpgradeableFrameworkGems...)
 	return all
 }
 
@@ -1312,7 +1230,7 @@ func fetchNextUpdateableItem(gems []*gemfile.GemStatus, resolver *gemfile.Constr
 // Returns cached data if available and not expired, otherwise fetches fresh data
 func performCVEScan(gems []*gemfile.Gem) tea.Cmd {
 	return func() tea.Msg {
-		if gems == nil || len(gems) == 0 {
+		if len(gems) == 0 {
 			logger.Info("CVE scan skipped: no gems to scan")
 			return CVECompleteMsg{Vulnerabilities: []*gemfile.Vulnerability{}, Error: nil}
 		}

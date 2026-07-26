@@ -38,7 +38,7 @@ func TestInitSentry_InvalidDSN(t *testing.T) {
 func TestCaptureError_Uninitialized(t *testing.T) {
 	// Clear any previous Sentry initialization
 	t.Setenv("SENTRY_DSN", "")
-	InitSentry("")
+	_ = InitSentry("")
 
 	// Should not panic when calling CaptureError without initialization
 	testErr := errors.New("test error")
@@ -48,7 +48,7 @@ func TestCaptureError_Uninitialized(t *testing.T) {
 func TestCaptureException_Uninitialized(t *testing.T) {
 	// Clear any previous Sentry initialization
 	t.Setenv("SENTRY_DSN", "")
-	InitSentry("")
+	_ = InitSentry("")
 
 	// Should not panic when calling CaptureException without initialization
 	testErr := errors.New("test exception")
@@ -58,7 +58,7 @@ func TestCaptureException_Uninitialized(t *testing.T) {
 func TestClose_Uninitialized(t *testing.T) {
 	// Clear any previous Sentry initialization
 	t.Setenv("SENTRY_DSN", "")
-	InitSentry("")
+	_ = InitSentry("")
 
 	// Should not panic when calling Close without initialization
 	Close() // Should not panic
@@ -67,7 +67,7 @@ func TestClose_Uninitialized(t *testing.T) {
 func TestCaptureError_SafeWithoutClient(t *testing.T) {
 	// Ensure no client is initialized
 	t.Setenv("SENTRY_DSN", "")
-	InitSentry("")
+	_ = InitSentry("")
 
 	// Multiple calls should be safe
 	for i := 0; i < 5; i++ {
@@ -78,7 +78,7 @@ func TestCaptureError_SafeWithoutClient(t *testing.T) {
 func TestCaptureException_SafeWithoutClient(t *testing.T) {
 	// Ensure no client is initialized
 	t.Setenv("SENTRY_DSN", "")
-	InitSentry("")
+	_ = InitSentry("")
 
 	// Multiple calls with different levels should be safe
 	levels := []sentry.Level{

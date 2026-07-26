@@ -41,14 +41,6 @@ func ensureOpaqueBackground(s string) string {
 // This ensures the background is always visible and prevents terminal transparency from showing.
 const bgANSIRGB = "\x1b[48;2;38;38;38m"
 
-// minInt returns the minimum of two integers
-func minInt(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
-
 // wrapText wraps a string to the specified width, maintaining word boundaries
 func wrapText(text string, width int) []string {
 	var result []string
@@ -56,14 +48,13 @@ func wrapText(text string, width int) []string {
 	var currentLine string
 
 	for _, word := range words {
-		if currentLine == "" {
+		switch {
+		case currentLine == "":
 			currentLine = word
-		} else if len(currentLine)+1+len(word) <= width {
+		case len(currentLine)+1+len(word) <= width:
 			currentLine += " " + word
-		} else {
-			if currentLine != "" {
-				result = append(result, currentLine)
-			}
+		default:
+			result = append(result, currentLine)
 			currentLine = word
 		}
 	}
@@ -167,17 +158,6 @@ func clipLinesToWindow(lines []string, offset, height int) []string {
 		return lines[offset:]
 	}
 	return lines[offset : offset+height]
-}
-
-// clampInt returns v clamped to the range [lo, hi].
-func clampInt(v, lo, hi int) int {
-	if v < lo {
-		return lo
-	}
-	if v > hi {
-		return hi
-	}
-	return v
 }
 
 // ============================================================================
@@ -300,7 +280,7 @@ func (m *Model) renderHintLine(hints []string) string {
 		}
 	}
 	hintContent := strings.Join(rendered, "  ")
-	return StatusBarStyle.Width(m.Width).ColorWhitespace(true).Render(hintContent)
+	return StatusBarStyle.Width(m.Width).Render(hintContent)
 }
 
 func (m *Model) assembleViewWithChrome(contentString string) string {
@@ -354,7 +334,7 @@ func (m *Model) assembleViewWithChrome(contentString string) string {
 
 	// Pad each line to full terminal width with background color
 	for i := range allLines {
-		allLines[i] = AppBackgroundStyle.Width(m.Width).ColorWhitespace(true).Render(allLines[i])
+		allLines[i] = AppBackgroundStyle.Width(m.Width).Render(allLines[i])
 	}
 
 	result := lipgloss.JoinVertical(lipgloss.Left, allLines...)
@@ -369,7 +349,7 @@ func (m *Model) assembleViewWithChrome(contentString string) string {
 func (m *Model) renderAppHeader() string {
 	appName := fmt.Sprintf("gemtracker %s", m.Version)
 	// Render header filling full width with opaque background
-	return AppHeaderStyle.Width(m.Width).ColorWhitespace(true).Render(appName)
+	return AppHeaderStyle.Width(m.Width).Render(appName)
 }
 
 func (m *Model) renderTabBar() string {
@@ -400,8 +380,7 @@ func (m *Model) renderTabBar() string {
 	// Wrap entire tab bar in surface background to fill full width with no transparent gaps
 	tabBarStyle := lipgloss.NewStyle().
 		Background(lipgloss.Color("#3a3a3a")).
-		Width(m.Width).
-		ColorWhitespace(true)
+		Width(m.Width)
 	return tabBarStyle.Render(tabContent)
 }
 
@@ -456,7 +435,7 @@ func (m *Model) renderStatusBar() string {
 
 	if len(statusParts) > 0 {
 		statusContent := strings.Join(statusParts, "  ")
-		statusLine := StatusBarStyle.Width(m.Width).ColorWhitespace(true).Render(statusContent)
+		statusLine := StatusBarStyle.Width(m.Width).Render(statusContent)
 		lines = append(lines, statusLine)
 	}
 
@@ -478,7 +457,7 @@ func (m *Model) renderUpdateBar() string {
 		updateMsg = fmt.Sprintf("  ↑ New version available (%s) — https://github.com/spaquet/gemtracker/releases", m.NewVersionAvailable)
 	}
 
-	return UpdateBarStyle.Width(m.Width).ColorWhitespace(true).Render(updateMsg)
+	return UpdateBarStyle.Width(m.Width).Render(updateMsg)
 }
 
 // ============================================================================
@@ -588,14 +567,14 @@ func (m *Model) renderGemListTable(height int) string {
 			Foreground(lipgloss.Color(ColorWarning)).
 			Background(lipgloss.Color("#262626")).
 			Italic(true)
-		lines = append(lines, filterStatusStyle.Width(m.Width).ColorWhitespace(true).Render(filterStatus))
+		lines = append(lines, filterStatusStyle.Width(m.Width).Render(filterStatus))
 		lines = append(lines, "")
 	}
 
 	// Table header
 	headerRow := fmt.Sprintf("  %-3s %-16s %-8s %-10s %-11s %-8s %-8s %-3s %s",
 		"#", "Gem Name", "Current", "Constraint", "Updateable", "Latest", "Groups", "H", "CVE")
-	header := TableHeaderStyle.Width(m.Width).ColorWhitespace(true).Render(headerRow)
+	header := TableHeaderStyle.Width(m.Width).Render(headerRow)
 	lines = append(lines, header)
 
 	// Table rows - don't reserve space for padding, show as many gems as will fit
@@ -702,11 +681,12 @@ func (m *Model) formatGemListRow(idx int, gem *gemfile.GemStatus, selected bool)
 	// Latest version display with color coding based on update type
 	// Truncate BEFORE coloring so padding works correctly
 	var latestDisplay string
-	if gem.OutdatedFailed {
+	switch {
+	case gem.OutdatedFailed:
 		latestDisplay = "-"
-	} else if gem.LatestVersion == "" {
+	case gem.LatestVersion == "":
 		latestDisplay = "…"
-	} else if gem.IsOutdated {
+	case gem.IsOutdated:
 		latestTrunc := truncateStr(gem.LatestVersion, 8)
 		// Determine update type: patch (green), minor (orange), major (red)
 		updateType := m.getUpdateType(gem.Version, gem.LatestVersion)
@@ -716,7 +696,7 @@ func (m *Model) formatGemListRow(idx int, gem *gemfile.GemStatus, selected bool)
 		} else {
 			latestDisplay = m.colorizeVersion(latestTrunc, updateType)
 		}
-	} else {
+	default:
 		latestDisplay = "latest"
 	}
 
@@ -803,9 +783,9 @@ func (m *Model) formatGemListRow(idx int, gem *gemfile.GemStatus, selected bool)
 		)
 	}
 
-	// Apply row style to the entire row at once — Width fills to terminal edge,
-	// ColorWhitespace ensures padding gets the background color too
-	return rowStyle.Width(m.Width).ColorWhitespace(true).Render(rowContent)
+	// Apply row style to the entire row at once — Width fills to terminal edge
+	// with the style's background color applied to the padding.
+	return rowStyle.Width(m.Width).Render(rowContent)
 }
 
 // buildGemInfoLines builds the header, description, and health info lines for gem detail view
@@ -846,13 +826,14 @@ func (m *Model) buildGemInfoLines(descMaxLen int) []string {
 	gemInfoLines = append(gemInfoLines, urlLine)
 
 	// Health section
-	if m.SelectedGem.Health != nil {
+	switch {
+	case m.SelectedGem.Health != nil:
 		healthLines := m.renderHealthSection(m.SelectedGem.Health, descMaxLen)
 		gemInfoLines = append(gemInfoLines, healthLines...)
-	} else if m.HealthLoading {
+	case m.HealthLoading:
 		healthLine := OpaqueMutedStyle.Render("  Health: ⠙ fetching...")
 		gemInfoLines = append(gemInfoLines, healthLine)
-	} else if m.HealthRateLimited {
+	case m.HealthRateLimited:
 		healthLine := OpaqueTextStyle.Foreground(lipgloss.Color(ColorWarning)).Render("  Health: — GitHub rate limited")
 		gemInfoLines = append(gemInfoLines, healthLine)
 	}
@@ -1162,13 +1143,14 @@ func (m *Model) renderHealthSection(health *gemfile.GemHealth, maxLen int) []str
 	if !health.LastRelease.IsZero() {
 		daysAgo := int(time.Since(health.LastRelease).Hours() / 24)
 		var releaseStr string
-		if daysAgo < 1 {
+		switch {
+		case daysAgo < 1:
 			releaseStr = "days ago"
-		} else if daysAgo < 30 {
+		case daysAgo < 30:
 			releaseStr = fmt.Sprintf("%d days ago", daysAgo)
-		} else if daysAgo < 365 {
+		case daysAgo < 365:
 			releaseStr = fmt.Sprintf("%d months ago", daysAgo/30)
-		} else {
+		default:
 			releaseStr = fmt.Sprintf("%d years ago", daysAgo/365)
 		}
 		details = append(details, fmt.Sprintf("Last: %s", releaseStr))
@@ -1437,11 +1419,12 @@ func (m *Model) renderUpgradeableGemRow(gem *gemfile.GemStatus, selected, cursor
 	isChecked := m.SelectedUpgradeableGems != nil && m.SelectedUpgradeableGems[gem.Name]
 
 	var checkbox string
-	if !isSelectable {
+	switch {
+	case !isSelectable:
 		checkbox = "[·]"
-	} else if isChecked {
+	case isChecked:
 		checkbox = "[x]"
-	} else {
+	default:
 		checkbox = "[ ]"
 	}
 
@@ -1600,7 +1583,7 @@ func (m *Model) countVulnsBySeverity() (crit, high, medium, low int) {
 func (m *Model) buildCVECacheStatusParts() []string {
 	var parts []string
 
-	if m.CVEVulnerabilities == nil || len(m.CVEVulnerabilities) == 0 {
+	if len(m.CVEVulnerabilities) == 0 {
 		return parts
 	}
 
@@ -1769,16 +1752,13 @@ func (m *Model) formatCVERow(vuln *gemfile.Vulnerability, selected bool, rowNum 
 		severityBadge = BadgeHealthyDotStyle.Render("●")
 	}
 
-	// Standardize badge width to prevent ANSI codes from breaking fmt.Sprintf
-	severityBadge = fmt.Sprintf("%s", severityBadge)
-
 	// Get gem type (Direct/Transitive) and group
 	gemType, group := m.getCVEGemInfo(vuln.GemName)
 
 	// Add framework tag to gem name if applicable
 	gemDisplay := vuln.GemName
 	if m.isFrameworkGem(vuln.GemName) {
-		gemDisplay = gemDisplay + " [fw]"
+		gemDisplay += " [fw]"
 	}
 
 	// Determine comment icon
@@ -1817,14 +1797,16 @@ func (m *Model) formatCVERow(vuln *gemfile.Vulnerability, selected bool, rowNum 
 
 // formatDuration converts a duration to a human-readable string
 func formatDuration(d time.Duration) string {
-	if d < time.Minute {
+	switch {
+	case d < time.Minute:
 		return fmt.Sprintf("%ds", int(d.Seconds()))
-	} else if d < time.Hour {
+	case d < time.Hour:
 		return fmt.Sprintf("%dm", int(d.Minutes()))
-	} else if d < 24*time.Hour {
+	case d < 24*time.Hour:
 		return fmt.Sprintf("%dh", int(d.Hours()))
+	default:
+		return fmt.Sprintf("%dd", int(d.Hours()/24))
 	}
-	return fmt.Sprintf("%dd", int(d.Hours()/24))
 }
 
 // ============================================================================
@@ -2066,7 +2048,6 @@ func (m *Model) renderGemInfoModalBox() string {
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color(ColorBorderActive)).
 		Background(lipgloss.Color("#3a3a3a")).
-		ColorWhitespace(true).
 		Padding(1, 2)
 
 	rendered := boxStyle.Width(modalWidth).Render(content)
@@ -2127,10 +2108,11 @@ func (m *Model) buildGemInfoContentLines(gem *gemfile.GemStatus) []string {
 func (m *Model) buildGemInstalledVersionsLines() []string {
 	var lines []string
 
-	if m.GemInfoLoading {
+	switch {
+	case m.GemInfoLoading:
 		loadingFrame := spinnerFrames[m.AnimationFrame%len(spinnerFrames)]
 		lines = append(lines, fmt.Sprintf("  %s Fetching version info...", loadingFrame))
-	} else if m.ParsedGemInfo != nil && len(m.ParsedGemInfo.Versions) > 0 {
+	case m.ParsedGemInfo != nil && len(m.ParsedGemInfo.Versions) > 0:
 		for _, ver := range m.ParsedGemInfo.Versions {
 			versionLine := fmt.Sprintf("  %-8s  %s", ver.Version, ver.Path)
 			if len(versionLine) > 76 {
@@ -2138,9 +2120,9 @@ func (m *Model) buildGemInstalledVersionsLines() []string {
 			}
 			lines = append(lines, versionLine)
 		}
-	} else if m.CurrentGemInfoOutput != "" {
+	case m.CurrentGemInfoOutput != "":
 		lines = append(lines, "  (no versions found)")
-	} else {
+	default:
 		lines = append(lines, "  —")
 	}
 
@@ -2471,12 +2453,11 @@ func (m *Model) renderFilterModalBox() string {
 		modalWidth = m.Width - 4
 	}
 
-	// Apply border and styling — ColorWhitespace ensures background fills padding
+	// Apply border and styling; Width+Background fills the row with color
 	boxStyle := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color(ColorBorderActive)).
 		Background(lipgloss.Color("#3a3a3a")).
-		ColorWhitespace(true).
 		Padding(1, 2)
 
 	// Post-process: ensure surface background after all ANSI resets within modal
@@ -2587,12 +2568,11 @@ func (m *Model) renderCVEFilterModalBox() string {
 		modalWidth = m.Width - 4
 	}
 
-	// Apply border and styling — ColorWhitespace ensures background fills padding
+	// Apply border and styling; Width+Background fills the row with color
 	boxStyle := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color(ColorBorderActive)).
 		Background(lipgloss.Color("#3a3a3a")).
-		ColorWhitespace(true).
 		Padding(1, 2)
 
 	// Post-process: ensure surface background after all ANSI resets within modal
@@ -2827,12 +2807,11 @@ func (m *Model) renderCVEInfoModalWithLines(lines []string) string {
 	// Build scroll hint
 	scrollHint := m.buildScrollHint(m.CVEInfoScroll, availableHeight, len(lines))
 
-	// Apply border and styling with height constraint — ColorWhitespace fills padding
+	// Apply border and styling with height constraint; Width+Background fills the row
 	boxStyle := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color(ColorBorderActive)).
 		Background(lipgloss.Color(ColorSurface)).
-		ColorWhitespace(true).
 		Padding(1, 2)
 
 	rendered := boxStyle.Width(modalWidth).Height(availableHeight + 2).Render(clippedContent)
@@ -3061,7 +3040,6 @@ func (m *Model) renderCVECommentModalBox() string {
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color(ColorBorderActive)).
 		Background(lipgloss.Color(ColorSurface)).
-		ColorWhitespace(true).
 		Padding(1, 2)
 
 	rendered := modalStyle.Render(content)
@@ -3210,7 +3188,6 @@ func (m *Model) renderUpgradeResultModalBox() string {
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color(ColorPrimary)).
 		Background(lipgloss.Color("#262626")).
-		ColorWhitespace(true).
 		Padding(0)
 
 	rendered := modalStyle.Render(modalContent)
@@ -3233,20 +3210,4 @@ func pluralizeGem(count int) string {
 		return "gem"
 	}
 	return "gems"
-}
-
-func extractCVEID(vulnInfo string) string {
-	parts := strings.Split(vulnInfo, ":")
-	if len(parts) > 0 {
-		return strings.TrimSpace(parts[0])
-	}
-	return "Unknown"
-}
-
-func extractCVEDesc(vulnInfo string) string {
-	parts := strings.Split(vulnInfo, ":")
-	if len(parts) > 1 {
-		return strings.TrimSpace(parts[1])
-	}
-	return vulnInfo
 }

@@ -158,7 +158,7 @@ func generateDetails(result *AnalysisResult) string {
 			status = "⚠"
 		}
 
-		sb.WriteString(fmt.Sprintf("%s %-30s v%s\n", status, gemStatus.Name, gemStatus.Version))
+		fmt.Fprintf(&sb, "%s %-30s v%s\n", status, gemStatus.Name, gemStatus.Version)
 	}
 
 	return sb.String()

@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/spaquet/gemtracker/internal/logger"
 )
 
 type UpgradeResult struct {
@@ -28,7 +30,9 @@ func init() {
 
 func getCacheDir() string {
 	if _, err := os.Stat(cacheDir); os.IsNotExist(err) {
-		os.MkdirAll(cacheDir, 0755)
+		if mkErr := os.MkdirAll(cacheDir, 0755); mkErr != nil {
+			logger.Warn("Failed to create cache dir %q: %v", cacheDir, mkErr)
+		}
 	}
 	return cacheDir
 }
@@ -72,7 +76,9 @@ func writeErrorLog(logPath, gemName, errMsg, output string) {
 	}
 	defer f.Close()
 
-	f.WriteString(logEntry)
+	if _, err := f.WriteString(logEntry); err != nil {
+		logger.Warn("Failed to write upgrade error log entry: %v", err)
+	}
 }
 
 func GetUpgradeErrorLogPath() string {

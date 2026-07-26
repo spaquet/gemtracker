@@ -75,7 +75,9 @@ func TestInit_Verbose(t *testing.T) {
 		t.Errorf("log file should be created at %s, got error: %v", logPath, err)
 	}
 
-	Close()
+	if err := Close(); err != nil {
+		t.Errorf("Close() returned error: %v", err)
+	}
 }
 
 func TestClose_NoFile(t *testing.T) {
@@ -94,7 +96,9 @@ func TestClose_WithFile(t *testing.T) {
 	logPath := filepath.Join(homeDir, ".cache", "gemtracker", "gemtracker.log")
 	defer os.Remove(logPath)
 
-	Init(true)
+	if err := Init(true); err != nil {
+		t.Fatalf("Init(true) returned error: %v", err)
+	}
 
 	err := Close()
 	if err != nil {
@@ -120,7 +124,9 @@ func TestLogging_NotVerbose_NoOutput(t *testing.T) {
 	// Remove any existing log file
 	os.Remove(logPath)
 
-	Init(false)
+	if err := Init(false); err != nil {
+		t.Fatalf("Init(false) returned error: %v", err)
+	}
 
 	Info("should not appear")
 	Warn("should not appear")
@@ -140,14 +146,14 @@ func TestLogging_Verbose_WritesToFile(t *testing.T) {
 	logPath := filepath.Join(homeDir, ".cache", "gemtracker", "gemtracker.log")
 	defer os.Remove(logPath)
 
-	Init(true)
+	_ = Init(true)
 
 	// Write test messages
 	Info("info message")
 	Warn("warn message")
 	Error("error message")
 
-	Close()
+	_ = Close()
 
 	// Read the file and verify content
 	content, err := os.ReadFile(logPath)
@@ -187,8 +193,8 @@ func TestLogging_Concurrent(t *testing.T) {
 	logPath := filepath.Join(homeDir, ".cache", "gemtracker", "gemtracker.log")
 	defer os.Remove(logPath)
 
-	Init(true)
-	defer Close()
+	_ = Init(true)
+	defer func() { _ = Close() }()
 
 	// Spawn multiple goroutines writing concurrently
 	var wg sync.WaitGroup
@@ -231,14 +237,14 @@ func TestLogging_FormattedMessages(t *testing.T) {
 	logPath := filepath.Join(homeDir, ".cache", "gemtracker", "gemtracker.log")
 	defer os.Remove(logPath)
 
-	Init(true)
+	_ = Init(true)
 
 	// Test formatted messages with arguments
 	Info("formatted %s %d", "string", 42)
 	Warn("warning with error: %v", fmt.Errorf("test error"))
 	Error("error code %d", 500)
 
-	Close()
+	_ = Close()
 
 	content, err := os.ReadFile(logPath)
 	if err != nil {

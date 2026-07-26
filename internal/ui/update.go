@@ -246,9 +246,15 @@ func (m *Model) performRefresh() (tea.Model, tea.Cmd) {
 	m.LoadingMessage = "Refreshing all data..."
 
 	// Clear all caches to force fresh data
-	cache.Clear(m.GemfileLockPath)
-	cache.ClearHealth(m.GemfileLockPath)
-	gemfile.ClearVulnerabilityCache()
+	if err := cache.Clear(m.GemfileLockPath); err != nil {
+		logger.Warn("Failed to clear analysis cache: %v", err)
+	}
+	if err := cache.ClearHealth(m.GemfileLockPath); err != nil {
+		logger.Warn("Failed to clear health cache: %v", err)
+	}
+	if err := gemfile.ClearVulnerabilityCache(); err != nil {
+		logger.Warn("Failed to clear vulnerability cache: %v", err)
+	}
 
 	return m, performAnalysis(m.GemfileLockPath, true)
 }
@@ -262,7 +268,7 @@ func (m *Model) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	// Handle global keys — skip "q" quit when Search view is active (user typing search query)
 	// Don't quit on "q" when user is typing in a text input
 	textInputViews := m.CurrentView == ViewSearch || m.CurrentView == ViewCVEComment || m.CurrentView == ViewSelectPath
-	if isQuitKey(msg) && !(msg.String() == "q" && textInputViews) {
+	if isQuitKey(msg) && (msg.String() != "q" || !textInputViews) {
 		m.Quitting = true
 		return m, tea.Quit
 	}
@@ -1574,7 +1580,11 @@ func (m *Model) handleHealthComplete() (tea.Model, tea.Cmd) {
 	}
 
 	// Fire-and-forget cache write
-	go cache.WriteHealth(m.GemfileLockPath, healthCache)
+	go func() {
+		if err := cache.WriteHealth(m.GemfileLockPath, healthCache); err != nil {
+			logger.Warn("Failed to write health cache: %v", err)
+		}
+	}()
 
 	return m, nil
 }
@@ -1936,13 +1946,14 @@ func (m *Model) ensureDetailCursorVisible() {
 	panelHeight := (contentHeight - 2) / 2
 
 	// Clamp cursor to visible range
-	if m.DetailTreeCursor >= panelHeight {
+	switch {
+	case m.DetailTreeCursor >= panelHeight:
 		// Cursor is beyond visible area, scroll down
 		*offset = m.DetailTreeCursor - panelHeight + 1
-	} else if m.DetailTreeCursor < 0 {
+	case m.DetailTreeCursor < 0:
 		m.DetailTreeCursor = 0
 		*offset = 0
-	} else {
+	default:
 		// Cursor is within visible area - reset offset to show from top if possible
 		*offset = 0
 	}

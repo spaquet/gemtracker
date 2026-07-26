@@ -124,7 +124,9 @@ func TestHealthCacheTTL(t *testing.T) {
 
 	// Ensure cache dir exists
 	cacheDir := filepath.Dir(cachePath)
-	os.MkdirAll(cacheDir, 0755)
+	if err := os.MkdirAll(cacheDir, 0755); err != nil {
+		t.Fatalf("Failed to create cache dir: %v", err)
+	}
 
 	// Write directly without using WriteHealth (which updates CachedAt)
 	data, _ := json.MarshalIndent(entry, "", "  ")

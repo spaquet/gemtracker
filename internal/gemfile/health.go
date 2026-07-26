@@ -241,7 +241,7 @@ func (hc *HealthChecker) fetchGitHubBatchGroup(pairs []RepoOwnerPair, token stri
 	queryBuilder.WriteString("query {")
 	for i, pair := range pairs {
 		alias := fmt.Sprintf("r%d", i)
-		queryBuilder.WriteString(fmt.Sprintf(
+		fmt.Fprintf(&queryBuilder,
 			`%s: repository(owner: "%s", name: "%s") {
 				pushedAt
 				stargazerCount
@@ -250,7 +250,7 @@ func (hc *HealthChecker) fetchGitHubBatchGroup(pairs []RepoOwnerPair, token stri
 				openIssues: issues(states: OPEN) { totalCount }
 			}`,
 			alias, pair.Owner, pair.Repo,
-		))
+		)
 	}
 	queryBuilder.WriteString("}")
 
@@ -305,7 +305,7 @@ func (hc *HealthChecker) fetchGitHubBatchGroup(pairs []RepoOwnerPair, token stri
 
 		// Find the corresponding pair by alias index
 		idx := 0
-		fmt.Sscanf(alias, "r%d", &idx)
+		_, _ = fmt.Sscanf(alias, "r%d", &idx)
 		if idx >= len(pairs) {
 			continue
 		}

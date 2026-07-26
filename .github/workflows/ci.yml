@@ -43,3 +43,8 @@ jobs:
             gofmt -s -d .
             exit 1
           fi
+
+      - name: Run golangci-lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: latest

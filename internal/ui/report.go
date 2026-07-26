@@ -143,7 +143,9 @@ func resolveOutputPath(outputPath string) (string, bool, error) {
 		fmt.Fprintf(os.Stderr, "Your choice [R/C/N]: ")
 
 		var choice string
-		fmt.Fscan(os.Stdin, &choice)
+		if _, err := fmt.Fscan(os.Stdin, &choice); err != nil {
+			return "", false, nil
+		}
 
 		switch strings.ToUpper(strings.TrimSpace(choice)) {
 		case "R":
@@ -153,7 +155,9 @@ func resolveOutputPath(outputPath string) (string, bool, error) {
 		case "N":
 			fmt.Fprintf(os.Stderr, "New filename (without extension to keep %s): ", ext)
 			var newName string
-			fmt.Fscan(os.Stdin, &newName)
+			if _, err := fmt.Fscan(os.Stdin, &newName); err != nil {
+				return "", false, nil
+			}
 			newName = strings.TrimSpace(newName)
 			if newName == "" {
 				continue
@@ -549,7 +553,7 @@ func writeGroupedGems(output *strings.Builder, gems []*GemReport, mode string) {
 	byGroup := groupGemsByGroup(gems)
 
 	for _, group := range sortedGroupKeys(byGroup) {
-		output.WriteString(fmt.Sprintf("Group: %s\n", group))
+		fmt.Fprintf(output, "Group: %s\n", group)
 		groupGems := byGroup[group]
 
 		// Sort: direct first, then transitive; alphabetical within each
@@ -600,8 +604,8 @@ func (rg *ReportGenerator) generateTextReport(data *ReportData, outputPath strin
 	output.WriteString("GEMTRACKER REPORT\n")
 	output.WriteString("==================\n\n")
 
-	output.WriteString(fmt.Sprintf("Generated: %s\n", data.GeneratedAt))
-	output.WriteString(fmt.Sprintf("Project: %s\n\n", data.ProjectPath))
+	fmt.Fprintf(&output, "Generated: %s\n", data.GeneratedAt)
+	fmt.Fprintf(&output, "Project: %s\n\n", data.ProjectPath)
 
 	// Gem statistics
 	output.WriteString("Total Gems: " + fmt.Sprintf("%d\n", data.TotalGems))
@@ -609,7 +613,7 @@ func (rg *ReportGenerator) generateTextReport(data *ReportData, outputPath strin
 	output.WriteString("  Transitive Dependencies: " + fmt.Sprintf("%d\n", data.TransitiveDependencies))
 	output.WriteString("\n")
 
-	output.WriteString(fmt.Sprintf("Summary: %s\n\n", data.Summary))
+	fmt.Fprintf(&output, "Summary: %s\n\n", data.Summary)
 
 	// Vulnerable gems section
 	if data.VulnerableCount > 0 {
@@ -636,11 +640,11 @@ func (rg *ReportGenerator) generateTextReport(data *ReportData, outputPath strin
 			output.WriteString(header + "\n")
 
 			// CVE detail line
-			output.WriteString(fmt.Sprintf("    %s\n", gem.VulnerabilityInfo))
+			fmt.Fprintf(&output, "    %s\n", gem.VulnerabilityInfo)
 
 			// URL line if available
 			if gem.VulnerabilityURL != "" {
-				output.WriteString(fmt.Sprintf("    %s\n", gem.VulnerabilityURL))
+				fmt.Fprintf(&output, "    %s\n", gem.VulnerabilityURL)
 			}
 			output.WriteString("\n")
 		}
@@ -653,8 +657,8 @@ func (rg *ReportGenerator) generateTextReport(data *ReportData, outputPath strin
 		output.WriteString("The following gems are sourced from insecure protocols (http://, git://).\n")
 		output.WriteString("Consider switching to secure HTTPS sources when possible.\n\n")
 		for _, gem := range data.InsecureSourceGems {
-			output.WriteString(fmt.Sprintf("  • %s (%s)\n", gem.Name, gem.Version))
-			output.WriteString(fmt.Sprintf("    Source: %s\n", gem.Source))
+			fmt.Fprintf(&output, "  • %s (%s)\n", gem.Name, gem.Version)
+			fmt.Fprintf(&output, "    Source: %s\n", gem.Source)
 			output.WriteString("\n")
 		}
 	}
@@ -680,12 +684,12 @@ func (rg *ReportGenerator) generateCSVReport(data *ReportData, outputPath string
 	var output strings.Builder
 
 	// Add summary header comments
-	output.WriteString(fmt.Sprintf("# Generated: %s\n", data.GeneratedAt))
-	output.WriteString(fmt.Sprintf("# Project: %s\n", data.ProjectPath))
-	output.WriteString(fmt.Sprintf("# Total Gems: %d\n", data.TotalGems))
-	output.WriteString(fmt.Sprintf("# Direct Dependencies: %d\n", data.FirstLevelGems))
-	output.WriteString(fmt.Sprintf("# Transitive Dependencies: %d\n", data.TransitiveDependencies))
-	output.WriteString(fmt.Sprintf("# Outdated: %d, Vulnerable: %d\n#\n", data.OutdatedCount, data.VulnerableCount))
+	fmt.Fprintf(&output, "# Generated: %s\n", data.GeneratedAt)
+	fmt.Fprintf(&output, "# Project: %s\n", data.ProjectPath)
+	fmt.Fprintf(&output, "# Total Gems: %d\n", data.TotalGems)
+	fmt.Fprintf(&output, "# Direct Dependencies: %d\n", data.FirstLevelGems)
+	fmt.Fprintf(&output, "# Transitive Dependencies: %d\n", data.TransitiveDependencies)
+	fmt.Fprintf(&output, "# Outdated: %d, Vulnerable: %d\n#\n", data.OutdatedCount, data.VulnerableCount)
 
 	writer := csv.NewWriter(&output)
 	defer writer.Flush()

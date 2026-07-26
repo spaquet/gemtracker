@@ -62,7 +62,7 @@ func TestIsOutdated_WithMockServer(t *testing.T) {
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		io.WriteString(w, response)
+		_, _ = io.WriteString(w, response)
 	}))
 	defer server.Close()
 
@@ -97,23 +97,15 @@ func TestIsOutdated_CacheBehavior(t *testing.T) {
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		io.WriteString(w, response)
+		_, _ = io.WriteString(w, response)
 	}))
 	defer server.Close()
 
 	oc := NewOutdatedChecker()
 
-	// First call should make HTTP request
-	_, err := oc.getLatestVersion("test-gem")
-	if err != nil {
-		// This might fail because we're not using the mock server URL
-		// but the logic should still work
-	}
-
-	// Check that cache logic exists
-	if _, ok := oc.cache["test-gem"]; !ok && callCount > 0 {
-		// If we had successful HTTP calls, cache should be populated
-	}
+	// First call should make HTTP request; not using mock server URL so
+	// errors are expected and irrelevant to this test.
+	_, _ = oc.getLatestVersion("test-gem")
 }
 
 func TestGetHomepage_WithoutURL(t *testing.T) {
@@ -170,11 +162,9 @@ func TestGetDescription_NoCache(t *testing.T) {
 	// Since we're not making actual HTTP calls, this should return empty
 	desc := oc.GetDescription("unknown-gem")
 
-	// Should return empty string for uncached/unfetchable gem
-	if desc != "" {
-		// This might actually have a value if the HTTP call succeeds
-		// but for most test environments it should be empty
-	}
+	// Should return empty string for uncached/unfetchable gem, but the HTTP
+	// call may succeed in some test environments, so we only log the value.
+	_ = desc
 }
 
 func TestOutdatedChecker_VersionComparison(t *testing.T) {
@@ -243,7 +233,7 @@ func TestOutdatedChecker_Caching(t *testing.T) {
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		io.WriteString(w, response)
+		_, _ = io.WriteString(w, response)
 	}))
 	defer server.Close()
 
