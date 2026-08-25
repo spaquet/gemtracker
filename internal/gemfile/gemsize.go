@@ -406,13 +406,14 @@ func extractVersionsFromFirstLine(line string) []string {
 	}
 
 	// Find content in parentheses: "gemname (v1, v2, ...)"
-	start := strings.Index(line, "(")
-	end := strings.LastIndex(line, ")")
-	if start == -1 || end == -1 || end <= start {
+	_, versionsStr, found := strings.Cut(line, "(")
+	if !found {
 		return nil
 	}
-
-	versionsStr := line[start+1 : end]
+	versionsStr, _, found = strings.CutLast(versionsStr, ")")
+	if !found {
+		return nil
+	}
 	versionsStr = strings.TrimSpace(versionsStr)
 
 	// Handle platform suffix: "1.6.3-arm64-darwin" → "1.6.3"
