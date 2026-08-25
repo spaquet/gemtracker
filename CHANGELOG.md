@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v1.3.16] - 2026-08-24
+
+### Changed
+- **Go** - Upgraded the project and documented minimum version to Go 1.27
+- **Dependencies** - Updated Go dependencies to their latest compatible versions
+- **Release Workflow** - GitHub releases are automatically published after GoReleaser succeeds
+- **Version Parsing** - Simplified installed gem version parsing with Go 1.27's `strings.CutLast`
+
 ## [v1.3.14] - 2026-07-25
 
 ### Fixed
