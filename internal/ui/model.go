@@ -505,18 +505,18 @@ func (m *Model) Init() tea.Cmd {
 // Project Loading
 // ============================================================================
 
-func (m *Model) loadProject(path string) {
-	// Expand ~ to home directory
-	expandedPath := path
-	if len(path) > 0 && path[0] == '~' {
-		home := os.Getenv("HOME")
-		expandedPath = home + path[1:]
+func expandHome(path string) string {
+	if strings.HasPrefix(path, "~") {
+		return os.Getenv("HOME") + path[1:]
 	}
+	return path
+}
 
+func (m *Model) loadProject(path string) {
 	// Convert to absolute path for reliable handling
-	absPath, err := filepath.Abs(expandedPath)
+	absPath, err := filepath.Abs(expandHome(path))
 	if err != nil {
-		absPath = expandedPath
+		absPath = expandHome(path)
 	}
 
 	// Check if path is a file (Gemfile.lock, gems.locked, etc.) or directory
@@ -545,16 +545,11 @@ func (m *Model) loadProject(path string) {
 	}
 
 	// 2. Check for .gemspec file (only if no lock file found)
-	files, err := os.ReadDir(m.ProjectPath)
-	if err == nil {
-		for _, file := range files {
-			if !file.IsDir() && strings.HasSuffix(file.Name(), ".gemspec") {
-				m.GemfileLockPath = filepath.Join(m.ProjectPath, file.Name())
-				m.GemfileSource = file.Name()
-				logger.Info("Project loaded from gemspec file: %s (gem project)", m.GemfileSource)
-				return
-			}
-		}
+	if gemspecPath := gemfile.FindGemspec(m.ProjectPath); gemspecPath != "" {
+		m.GemfileLockPath = gemspecPath
+		m.GemfileSource = filepath.Base(gemspecPath)
+		logger.Info("Project loaded from gemspec file: %s (gem project)", m.GemfileSource)
+		return
 	}
 
 	// 3. No dependency files found - set default but don't log success
@@ -607,22 +602,7 @@ func performAnalysis(gemfilePath string, noCache bool) tea.Cmd {
 
 		// Load group information from Gemfile (only for lock files, not gemspec)
 		if !isGemspec {
-			dir := filepath.Dir(gemfilePath)
-			if err := gf.LoadGroupsFromGemfile(dir); err != nil {
-				logger.Warn("Failed to load groups from Gemfile: %v", err)
-			}
-			// Load version constraints from Gemfile/gems.rb
-			if err := gf.LoadConstraintsFromGemfile(dir); err != nil {
-				logger.Warn("Failed to load constraints from Gemfile: %v", err)
-			}
-			// Load GitHub sources from Gemfile (custom forks)
-			if err := gf.LoadGitHubSourcesFromGemfile(dir); err != nil {
-				logger.Warn("Failed to load GitHub sources from Gemfile: %v", err)
-			}
-			// Load constraints from gemspec if present
-			if err := gf.LoadConstraintsFromGemspec(""); err != nil {
-				logger.Warn("Failed to load constraints from gemspec: %v", err)
-			}
+			loadGemfileMetadata(gf, filepath.Dir(gemfilePath))
 		}
 
 		// Create the outdated checker once and reuse it
@@ -642,6 +622,21 @@ func performAnalysis(gemfilePath string, noCache bool) tea.Cmd {
 			Error:           nil,
 			OutdatedChecker: outdatedChecker,
 		}
+	}
+}
+
+func loadGemfileMetadata(gf *gemfile.Gemfile, dir string) {
+	if err := gf.LoadGroupsFromGemfile(dir); err != nil {
+		logger.Warn("Failed to load groups from Gemfile: %v", err)
+	}
+	if err := gf.LoadConstraintsFromGemfile(dir); err != nil {
+		logger.Warn("Failed to load constraints from Gemfile: %v", err)
+	}
+	if err := gf.LoadGitHubSourcesFromGemfile(dir); err != nil {
+		logger.Warn("Failed to load GitHub sources from Gemfile: %v", err)
+	}
+	if err := gf.LoadConstraintsFromGemspec(""); err != nil {
+		logger.Warn("Failed to load constraints from gemspec: %v", err)
 	}
 }
 
@@ -1249,26 +1244,7 @@ func performCVEScan(gems []*gemfile.Gem) tea.Cmd {
 		}
 
 		if cacheEntry != nil && gemfile.IsCacheValid(cacheEntry) {
-			// Cache hit! Return cached data immediately (don't enrich yet)
-			cacheAge := gemfile.GetCacheAge(cacheEntry)
-			cacheTTL := time.Duration(cacheEntry.TTLSeconds) * time.Second
-
-			logger.Info("CVE cache HIT: returning %d cached vulnerabilities (age: %v, TTL: %v)",
-				len(cacheEntry.Vulnerabilities), cacheAge.Round(time.Second), cacheTTL)
-
-			// Convert vulnerabilities to pointers
-			vulnPtrs := make([]*gemfile.Vulnerability, len(cacheEntry.Vulnerabilities))
-			for i := range cacheEntry.Vulnerabilities {
-				vulnPtrs[i] = &cacheEntry.Vulnerabilities[i]
-			}
-
-			// Return immediately so UI can display cached data
-			// Enrichment will happen asynchronously in the model's update handler
-			return CVELoadFromCacheMsg{
-				Vulnerabilities: vulnPtrs,
-				CacheAge:        cacheAge,
-				CacheTTL:        cacheTTL,
-			}
+			return cachedCVEMessage(cacheEntry)
 		}
 
 		// Cache miss or expired, fetch from OSV.dev
@@ -1308,6 +1284,24 @@ func performCVEScan(gems []*gemfile.Gem) tea.Cmd {
 		}
 
 		return CVECompleteMsg{Vulnerabilities: vulnPtrs, Error: nil}
+	}
+}
+
+func cachedCVEMessage(entry *gemfile.CacheEntry) tea.Msg {
+	cacheAge := gemfile.GetCacheAge(entry)
+	cacheTTL := time.Duration(entry.TTLSeconds) * time.Second
+	logger.Info("CVE cache HIT: returning %d cached vulnerabilities (age: %v, TTL: %v)",
+		len(entry.Vulnerabilities), cacheAge.Round(time.Second), cacheTTL)
+
+	// Return cached data immediately; the update handler enriches it asynchronously.
+	vulnPtrs := make([]*gemfile.Vulnerability, len(entry.Vulnerabilities))
+	for i := range entry.Vulnerabilities {
+		vulnPtrs[i] = &entry.Vulnerabilities[i]
+	}
+	return CVELoadFromCacheMsg{
+		Vulnerabilities: vulnPtrs,
+		CacheAge:        cacheAge,
+		CacheTTL:        cacheTTL,
 	}
 }
 

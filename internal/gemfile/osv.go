@@ -103,8 +103,33 @@ func (c *OSVClient) QueryBatch(ctx context.Context, gems []*Gem) ([]Vulnerabilit
 	}
 
 	logger.Info("Starting OSV batch query for %d gems", len(gems))
+	resp, err := c.sendBatchRequest(ctx, gems)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
 
-	// Build batch request
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		logger.Warn("OSV API returned status %d: %s", resp.StatusCode, string(body))
+		return nil, fmt.Errorf("OSV API returned status %d: %s", resp.StatusCode, string(body))
+	}
+
+	logger.Info("OSV API response received (HTTP %d)", resp.StatusCode)
+	var batchResp OSVBatchResponse
+	if err := json.NewDecoder(resp.Body).Decode(&batchResp); err != nil {
+		logger.Warn("Failed to parse OSV response: %v", err)
+		return nil, fmt.Errorf("failed to parse OSV response: %w", err)
+	}
+	logger.Info("Parsing OSV response: %d results", len(batchResp.Results))
+	logOSVSample(batchResp.Results)
+	vulns := c.parseOSVResponse(batchResp, gems)
+	c.enrichBatchVulns(ctx, vulns)
+	logger.Info("OSV batch query complete: found %d vulnerabilities", len(vulns))
+	return vulns, nil
+}
+
+func (c *OSVClient) sendBatchRequest(ctx context.Context, gems []*Gem) (*http.Response, error) {
 	queries := make([]OSVQueryRequest, len(gems))
 	for i, gem := range gems {
 		queries[i] = OSVQueryRequest{
@@ -139,64 +164,32 @@ func (c *OSVClient) QueryBatch(ctx context.Context, gems []*Gem) ([]Vulnerabilit
 		logger.Warn("OSV API request failed: %v", err)
 		return nil, fmt.Errorf("OSV API request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	return resp, nil
+}
 
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		logger.Warn("OSV API returned status %d: %s", resp.StatusCode, string(body))
-		return nil, fmt.Errorf("OSV API returned status %d: %s", resp.StatusCode, string(body))
-	}
-
-	logger.Info("OSV API response received (HTTP %d)", resp.StatusCode)
-
-	// Parse response
-	var batchResp OSVBatchResponse
-	if err := json.NewDecoder(resp.Body).Decode(&batchResp); err != nil {
-		logger.Warn("Failed to parse OSV response: %v", err)
-		return nil, fmt.Errorf("failed to parse OSV response: %w", err)
-	}
-
-	logger.Info("Parsing OSV response: %d results", len(batchResp.Results))
-
-	// Log sample vulnerability for debugging CVSS extraction
-	if len(batchResp.Results) > 0 {
-		for i, result := range batchResp.Results {
-			if len(result.Vulns) > 0 {
-				firstVuln := result.Vulns[0]
-				logger.Info("[OSV Response Sample %d] CVE: %s, Has severity array: %v", i, firstVuln.ID, len(firstVuln.Severity) > 0)
-				break
-			}
+func logOSVSample(results []OSVResult) {
+	for i, result := range results {
+		if len(result.Vulns) > 0 {
+			firstVuln := result.Vulns[0]
+			logger.Info("[OSV Response Sample %d] CVE: %s, Has severity array: %v", i, firstVuln.ID, len(firstVuln.Severity) > 0)
+			return
 		}
 	}
+}
 
-	// Convert OSV vulnerabilities to our format, filtering clean gems
-	vulns := c.parseOSVResponse(batchResp, gems)
-
-	// Enrich vulnerabilities with detailed CVSS/Severity data
-	// The batch endpoint doesn't include this, so we need individual requests
+func (c *OSVClient) enrichBatchVulns(ctx context.Context, vulns []Vulnerability) {
 	logger.Info("Enriching %d vulnerabilities with detailed CVSS/Severity data...", len(vulns))
-
-	// Convert to pointers for enrichment
 	vulnPtrs := make([]*Vulnerability, len(vulns))
 	for i := range vulns {
 		vulnPtrs[i] = &vulns[i]
 	}
 	c.EnrichVulnerabilitiesWithDetails(ctx, vulnPtrs)
-
-	logger.Info("OSV batch query complete: found %d vulnerabilities", len(vulns))
-	return vulns, nil
 }
 
 // parseOSVResponse converts OSV.dev response to our Vulnerability structs
 // Only returns vulnerabilities for gems that have them (filters out clean gems)
 func (c *OSVClient) parseOSVResponse(resp OSVBatchResponse, gems []*Gem) []Vulnerability {
 	var vulnerabilities []Vulnerability
-
-	// Build a map of gems for quick lookup
-	gemMap := make(map[string]*Gem)
-	for _, gem := range gems {
-		gemMap[gem.Name] = gem
-	}
 
 	// Process each result
 	for resultIdx, result := range resp.Results {
@@ -212,54 +205,40 @@ func (c *OSVClient) parseOSVResponse(resp OSVBatchResponse, gems []*Gem) []Vulne
 
 		// Only add vulnerabilities for this gem if there are any
 		for _, osvVuln := range result.Vulns {
-			// Extract CVSS score and severity from OSV response
-			cvssScore, severityStr := extractCVSSData(osvVuln)
-
-			// Determine severity: use CVSS-based level if available, otherwise use OSV severity string
-			severity := determineSeverityFromCVSS(cvssScore)
-			if severity == "" {
-				severity = normalizeSeverity(severityStr)
-			}
-
-			vuln := Vulnerability{
-				GemName:     gem.Name,
-				CVE:         osvVuln.ID,
-				Description: osvVuln.Summary,
-				Severity:    severity,
-				CVSS:        cvssScore,
-				OSVId:       osvVuln.ID,
-				Source:      "osv.dev",
-			}
-
-			// Parse dates
-			if osvVuln.Published != "" {
-				if t, err := time.Parse(time.RFC3339, osvVuln.Published); err == nil {
-					vuln.PublishedDate = t
-				}
-			}
-
-			// Extract fixed version and affected ranges
-			vuln.AffectedVersions = extractVersionRanges(&osvVuln)
-			vuln.FixedVersion = extractFixedVersion(&osvVuln)
-
-			// Add references
-			for _, ref := range osvVuln.References {
-				if ref.URL != "" {
-					vuln.References = append(vuln.References, ref.URL)
-				}
-			}
-
-			// Extract workarounds from details
-			if osvVuln.Details != "" {
-				vuln.Workarounds = extractWorkarounds(osvVuln.Details)
-			}
-
+			vuln := vulnerabilityFromOSV(gem, &osvVuln)
 			logger.Info("✓ CVE %s [%s] (CVSS: %.1f) - %s | Gem: %s@%s", osvVuln.ID, vuln.Severity, vuln.CVSS, osvVuln.Summary, gem.Name, gem.Version)
 			vulnerabilities = append(vulnerabilities, vuln)
 		}
 	}
 
 	return vulnerabilities
+}
+
+func vulnerabilityFromOSV(gem *Gem, osvVuln *OSVVulnerability) Vulnerability {
+	cvssScore, severityStr := extractCVSSData(*osvVuln)
+	severity := determineSeverityFromCVSS(cvssScore)
+	if severity == "" {
+		severity = normalizeSeverity(severityStr)
+	}
+	vuln := Vulnerability{
+		GemName: gem.Name, CVE: osvVuln.ID, Description: osvVuln.Summary,
+		Severity: severity, CVSS: cvssScore, OSVId: osvVuln.ID, Source: "osv.dev",
+		AffectedVersions: extractVersionRanges(osvVuln), FixedVersion: extractFixedVersion(osvVuln),
+	}
+	if osvVuln.Published != "" {
+		if t, err := time.Parse(time.RFC3339, osvVuln.Published); err == nil {
+			vuln.PublishedDate = t
+		}
+	}
+	for _, ref := range osvVuln.References {
+		if ref.URL != "" {
+			vuln.References = append(vuln.References, ref.URL)
+		}
+	}
+	if osvVuln.Details != "" {
+		vuln.Workarounds = extractWorkarounds(osvVuln.Details)
+	}
+	return vuln
 }
 
 // normalizeSeverity ensures severity is in expected format
@@ -335,56 +314,38 @@ func determineSeverityFromCVSS(cvssScore float64) string {
 // For GitHub-reviewed vulnerabilities (RubyGems), severity is in database_specific.severity
 // CVSS is in the severity array as a CVSS string vector (e.g., "CVSS:3.1/AV:N/AC:L/...")
 func extractCVSSData(osvVuln OSVVulnerability) (float64, string) {
-	cvssScore := 0.0
-	severity := ""
-
-	// Primary source: database_specific.severity (GitHub reviewed vulnerabilities)
-	if osvVuln.DatabaseSpecific != nil {
-		if sevVal, ok := osvVuln.DatabaseSpecific["severity"]; ok {
-			if sevStr, ok := sevVal.(string); ok {
-				severity = sevStr
-				logger.Info("CVE %s: Severity from database_specific = %s", osvVuln.ID, sevStr)
-			}
-		}
+	severity := severityField(osvVuln.DatabaseSpecific)
+	if severity != "" {
+		logger.Info("CVE %s: Severity from database_specific = %s", osvVuln.ID, severity)
 	}
 
-	// Fallback: check affected[].ecosystem_specific.severity
 	if severity == "" && len(osvVuln.Affected) > 0 {
-		affected := osvVuln.Affected[0]
-		if affected.EcosystemSpecific != nil {
-			if sevVal, ok := affected.EcosystemSpecific["severity"]; ok {
-				if sevStr, ok := sevVal.(string); ok {
-					severity = sevStr
-					logger.Info("CVE %s: Severity from affected[0].ecosystem_specific = %s", osvVuln.ID, sevStr)
-				}
+		severity = severityField(osvVuln.Affected[0].EcosystemSpecific)
+		if severity != "" {
+			logger.Info("CVE %s: Severity from affected[0].ecosystem_specific = %s", osvVuln.ID, severity)
+		}
+	}
+
+	// A vector string is not a numeric score.
+	for _, entry := range osvVuln.Severity {
+		switch score := entry["score"].(type) {
+		case float64:
+			logger.Info("CVE %s: CVSS score from severity array = %.1f", osvVuln.ID, score)
+			return score, severity
+		case string:
+			if strings.Contains(score, "CVSS") {
+				logger.Info("CVE %s: Found CVSS vector but no numeric score: %s", osvVuln.ID, score)
 			}
 		}
 	}
 
-	// Extract CVSS score from severity array (CVSS string vector)
-	// Example: "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H"
-	// We can't easily calculate the score from the vector, so we look for a separate score field
-	if len(osvVuln.Severity) > 0 {
-		for _, sevEntry := range osvVuln.Severity {
-			// Check if this entry has a score field (different from the vector string)
-			if score, ok := sevEntry["score"]; ok {
-				switch s := score.(type) {
-				case float64:
-					cvssScore = s
-					logger.Info("CVE %s: CVSS score from severity array = %.1f", osvVuln.ID, s)
-					return cvssScore, severity
-				case string:
-					// Score might be a string representation
-					if strings.Contains(s, "CVSS") {
-						logger.Info("CVE %s: Found CVSS vector but no numeric score: %s", osvVuln.ID, s)
-					}
-				}
-			}
-		}
-	}
+	logger.Info("CVE %s: Final extracted - CVSS: %.1f, Severity: %s", osvVuln.ID, 0.0, severity)
+	return 0, severity
+}
 
-	logger.Info("CVE %s: Final extracted - CVSS: %.1f, Severity: %s", osvVuln.ID, cvssScore, severity)
-	return cvssScore, severity
+func severityField(fields map[string]interface{}) string {
+	severity, _ := fields["severity"].(string)
+	return severity
 }
 
 // EnrichVulnerabilitiesWithDetails fetches detailed CVSS/Severity data and workarounds for vulnerabilities
@@ -410,43 +371,42 @@ func (c *OSVClient) EnrichVulnerabilitiesWithDetails(ctx context.Context, vulns 
 			logger.Warn("Failed to fetch details for %s: %v", vulns[i].OSVId, err)
 			continue
 		}
-
-		// Extract CVSS and severity from detailed response
-		cvssScore, severityStr := extractCVSSData(*detailVuln)
-
-		// Only update if we got better data (non-zero CVSS or non-empty severity)
-		if cvssScore > 0 || severityStr != "" {
-			vulns[i].CVSS = cvssScore
-			severity := determineSeverityFromCVSS(cvssScore)
-			if severity == "" {
-				severity = normalizeSeverity(severityStr)
-			}
-			if severity != "" {
-				vulns[i].Severity = severity
-			}
-			logger.Info("✓ Enriched %s: CVSS %.1f, Severity: %s", vulns[i].OSVId, cvssScore, vulns[i].Severity)
-		}
-
-		// Extract workarounds from detailed response (batch endpoint doesn't include Details)
-		if detailVuln.Details != "" && vulns[i].Workarounds == "" {
-			vulns[i].Workarounds = extractWorkarounds(detailVuln.Details)
-			if vulns[i].Workarounds != "" {
-				// Count lines in workarounds
-				workaroundLineCount := len(strings.Split(vulns[i].Workarounds, "\n"))
-				logger.Info("✓ Extracted workarounds for %s (%d lines)", vulns[i].OSVId, workaroundLineCount)
-			} else {
-				logger.Info("✗ No workarounds found in Details for %s (Details length: %d)", vulns[i].OSVId, len(detailVuln.Details))
-			}
-		} else {
-			if detailVuln.Details == "" {
-				logger.Info("✗ Details field empty for %s", vulns[i].OSVId)
-			}
-			if vulns[i].Workarounds != "" {
-				logger.Info("✓ Workarounds already populated for %s", vulns[i].OSVId)
-			}
-		}
+		applyVulnerabilityDetails(vulns[i], detailVuln)
 	}
 	logger.Info("Vulnerability enrichment complete")
+}
+
+func applyVulnerabilityDetails(vuln *Vulnerability, detailVuln *OSVVulnerability) {
+	cvssScore, severityStr := extractCVSSData(*detailVuln)
+
+	if cvssScore > 0 || severityStr != "" {
+		vuln.CVSS = cvssScore
+		severity := determineSeverityFromCVSS(cvssScore)
+		if severity == "" {
+			severity = normalizeSeverity(severityStr)
+		}
+		if severity != "" {
+			vuln.Severity = severity
+		}
+		logger.Info("✓ Enriched %s: CVSS %.1f, Severity: %s", vuln.OSVId, cvssScore, vuln.Severity)
+	}
+
+	if detailVuln.Details != "" && vuln.Workarounds == "" {
+		vuln.Workarounds = extractWorkarounds(detailVuln.Details)
+		if vuln.Workarounds != "" {
+			workaroundLineCount := len(strings.Split(vuln.Workarounds, "\n"))
+			logger.Info("✓ Extracted workarounds for %s (%d lines)", vuln.OSVId, workaroundLineCount)
+		} else {
+			logger.Info("✗ No workarounds found in Details for %s (Details length: %d)", vuln.OSVId, len(detailVuln.Details))
+		}
+	} else {
+		if detailVuln.Details == "" {
+			logger.Info("✗ Details field empty for %s", vuln.OSVId)
+		}
+		if vuln.Workarounds != "" {
+			logger.Info("✓ Workarounds already populated for %s", vuln.OSVId)
+		}
+	}
 }
 
 // queryVulnerabilityDetails fetches detailed information for a specific vulnerability

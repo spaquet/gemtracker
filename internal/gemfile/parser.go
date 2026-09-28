@@ -124,18 +124,7 @@ func resolveLockFilePath(path string) (string, error) {
 func processParserLine(line string, gf *Gemfile, state *parseState, gemLineRegex, dependencyRegex, dependencyItemRegex, remoteRegex *regexp.Regexp) bool {
 	// Check for section headers
 	if newSection, isSectionHeader := detectSection(line); isSectionHeader {
-		if newSection == "BUNDLED" {
-			return true
-		}
-		state.inSection = newSection
-		switch newSection {
-		case "GEM":
-			state.currentSource = "https://rubygems.org/"
-		case "PATH":
-			// PATH section source will be set by the remote line, default to "."
-			state.currentSource = "."
-		}
-		return false
+		return updateParserSection(state, newSection)
 	}
 
 	if shouldSkipLine(line, state.inSection) {
@@ -143,12 +132,8 @@ func processParserLine(line string, gf *Gemfile, state *parseState, gemLineRegex
 	}
 
 	// Parse remote lines in GIT and PATH sections
-	if state.inSection == "GIT" || state.inSection == "PATH" {
-		remoteMatches := remoteRegex.FindStringSubmatch(line)
-		if len(remoteMatches) > 0 {
-			state.currentSource = strings.TrimSpace(remoteMatches[1])
-			return false
-		}
+	if updateParserSource(line, state, remoteRegex) {
+		return false
 	}
 
 	// Parse GIT, PATH, and GEM sections (all contain gem specifications)
@@ -166,6 +151,32 @@ func processParserLine(line string, gf *Gemfile, state *parseState, gemLineRegex
 	}
 
 	return false
+}
+
+func updateParserSection(state *parseState, section string) bool {
+	if section == "BUNDLED" {
+		return true
+	}
+	state.inSection = section
+	switch section {
+	case "GEM":
+		state.currentSource = "https://rubygems.org/"
+	case "PATH":
+		state.currentSource = "."
+	}
+	return false
+}
+
+func updateParserSource(line string, state *parseState, remoteRegex *regexp.Regexp) bool {
+	if state.inSection != "GIT" && state.inSection != "PATH" {
+		return false
+	}
+	matches := remoteRegex.FindStringSubmatch(line)
+	if len(matches) == 0 {
+		return false
+	}
+	state.currentSource = strings.TrimSpace(matches[1])
+	return true
 }
 
 // detectSection checks if a line is a Gemfile.lock section header and returns the section name
@@ -206,11 +217,10 @@ func shouldSkipLine(line string, inSection string) bool {
 		return true
 	}
 	// Skip specs, revision, branch, tag lines
-	if strings.HasPrefix(line, "  specs:") ||
-		strings.HasPrefix(line, "  revision:") ||
-		strings.HasPrefix(line, "  branch:") ||
-		strings.HasPrefix(line, "  tag:") {
-		return true
+	for _, prefix := range []string{"  specs:", "  revision:", "  branch:", "  tag:"} {
+		if strings.HasPrefix(line, prefix) {
+			return true
+		}
 	}
 	// In GIT section, don't skip remote line (we need it)
 	// In GEM section, skip remote line (it's always rubygems.org)
@@ -474,16 +484,18 @@ func (g *Gemfile) LoadGroupsFromGemfile(gemfilePath string) error {
 		}
 
 		// Check for gem declaration
-		gemMatches := gemRegex.FindStringSubmatch(line)
-		if len(gemMatches) > 0 {
-			gemName := gemMatches[1]
-			if gem, ok := g.Gems[gemName]; ok {
-				addGroupsToGem(gem, currentGroups)
-			}
-		}
+		g.addGroupsForLine(line, gemRegex, currentGroups)
 	}
 
 	return nil
+}
+
+func (g *Gemfile) addGroupsForLine(line string, gemRegex *regexp.Regexp, groups []string) {
+	if matches := gemRegex.FindStringSubmatch(line); len(matches) > 0 {
+		if gem, ok := g.Gems[matches[1]]; ok {
+			addGroupsToGem(gem, groups)
+		}
+	}
 }
 
 // ExtractRubyVersion extracts the Ruby version from Gemfile.lock
@@ -605,22 +617,7 @@ func (g *Gemfile) LoadConstraintsFromGemfile(gemfilePath string) error {
 		gemName := matches[1]
 		remainder := matches[2]
 
-		// Extract all quoted strings after gem name (these are constraints and options)
-		quotedMatches := quotedRegex.FindAllStringSubmatch(remainder, -1)
-		var constraints []string
-
-		for _, qm := range quotedMatches {
-			if len(qm) > 1 {
-				quoted := qm[1]
-				// Skip option keys like "git", "path", "platforms", etc.
-				// Version constraints start with operators: ~>, >=, >, <=, <, =
-				if isVersionConstraint(quoted) {
-					constraints = append(constraints, quoted)
-				}
-			}
-		}
-
-		constraint := strings.Join(constraints, ", ")
+		constraint := quotedConstraints(remainder, quotedRegex)
 
 		// Store constraint only for first-level gems (those in DEPENDENCIES section of lock file)
 		if gem, ok := g.Gems[gemName]; ok && gem.IsFirstLevel {
@@ -639,19 +636,8 @@ func (g *Gemfile) LoadConstraintsFromGemfile(gemfilePath string) error {
 // Handles multiple constraints: spec.add_runtime_dependency "pg", ">= 1.1", "< 2.0" -> ">= 1.1, < 2.0"
 // Returns an error if the gemspec cannot be read; returns nil if not found (graceful degradation).
 func (g *Gemfile) LoadConstraintsFromGemspec(gemspecPath string) error {
-	// Try to find gemspec file in same directory as lock file
 	if gemspecPath == "" {
-		lockDir := filepath.Dir(g.Path)
-		entries, err := os.ReadDir(lockDir)
-		if err != nil {
-			return nil
-		}
-		for _, entry := range entries {
-			if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".gemspec") {
-				gemspecPath = filepath.Join(lockDir, entry.Name())
-				break
-			}
-		}
+		gemspecPath = FindGemspec(filepath.Dir(g.Path))
 	}
 
 	if gemspecPath == "" {
@@ -681,20 +667,7 @@ func (g *Gemfile) LoadConstraintsFromGemspec(gemspecPath string) error {
 		gemName := matches[1]
 		remainder := matches[2]
 
-		// Extract all quoted strings after gem name (these are constraints)
-		quotedMatches := quotedRegex.FindAllStringSubmatch(remainder, -1)
-		var constraints []string
-
-		for _, qm := range quotedMatches {
-			if len(qm) > 1 {
-				quoted := qm[1]
-				if isVersionConstraint(quoted) {
-					constraints = append(constraints, quoted)
-				}
-			}
-		}
-
-		constraint := strings.Join(constraints, ", ")
+		constraint := quotedConstraints(remainder, quotedRegex)
 
 		// For gemspec, add constraint only if not already set by Gemfile (Gemfile takes precedence)
 		if gem, ok := g.Gems[gemName]; ok && gem.Constraint == "" {
@@ -703,6 +676,30 @@ func (g *Gemfile) LoadConstraintsFromGemspec(gemspecPath string) error {
 	}
 
 	return nil
+}
+
+// FindGemspec returns the first gemspec in a directory, or an empty string.
+func FindGemspec(dir string) string {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return ""
+	}
+	for _, entry := range entries {
+		if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".gemspec") {
+			return filepath.Join(dir, entry.Name())
+		}
+	}
+	return ""
+}
+
+func quotedConstraints(remainder string, quotedRegex *regexp.Regexp) string {
+	var constraints []string
+	for _, match := range quotedRegex.FindAllStringSubmatch(remainder, -1) {
+		if len(match) > 1 && isVersionConstraint(match[1]) {
+			constraints = append(constraints, match[1])
+		}
+	}
+	return strings.Join(constraints, ", ")
 }
 
 // isVersionConstraint checks if a string is a version constraint (starts with operator).

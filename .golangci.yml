@@ -3,6 +3,9 @@ run:
   tests: true
 linters:
   enable:
+    - cyclop
+    - funlen
+    - gocognit
     - gocritic
   exclusions:
     generated: lax
@@ -12,6 +15,10 @@ linters:
       - legacy
       - std-error-handling
     rules:
+      - linters:
+          - cyclop
+          - funlen
+        path: .*_test\.go
       - linters:
           - golint
         path: .*_test\.go

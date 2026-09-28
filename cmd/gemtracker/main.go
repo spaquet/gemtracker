@@ -83,16 +83,8 @@ func parseArg(arg string, index int, args *Args) int {
 		args.NoCache = true
 	case "--verbose":
 		args.Verbose = true
-	case "--report":
-		if index+1 < len(os.Args) && os.Args[index+1][0:1] != "-" {
-			args.ReportFormat = os.Args[index+1]
-			return index + 1
-		}
-	case "--output":
-		if index+1 < len(os.Args) && os.Args[index+1][0:1] != "-" {
-			args.OutputPath = os.Args[index+1]
-			return index + 1
-		}
+	case "--report", "--output":
+		return consumeOptionValue(arg, index, args)
 	case "-h", "--help":
 		flag.Usage()
 		os.Exit(0)
@@ -107,6 +99,18 @@ func parseArg(arg string, index int, args *Args) int {
 		}
 	}
 	return index
+}
+
+func consumeOptionValue(option string, index int, args *Args) int {
+	if index+1 >= len(os.Args) || os.Args[index+1][0:1] == "-" {
+		return index
+	}
+	if option == "--report" {
+		args.ReportFormat = os.Args[index+1]
+	} else {
+		args.OutputPath = os.Args[index+1]
+	}
+	return index + 1
 }
 
 func main() {

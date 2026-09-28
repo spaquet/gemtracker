@@ -309,9 +309,6 @@ func ParseGemInfo(output string) *ParsedGemInfo {
 	}
 
 	lines := strings.Split(output, "\n")
-	if len(lines) == 0 {
-		return result
-	}
 
 	// Step 1: Extract versions from first line
 	firstLineVersions := extractVersionsFromFirstLine(lines[0])
@@ -319,45 +316,8 @@ func ParseGemInfo(output string) *ParsedGemInfo {
 
 	// Step 2: Parse all lines for installed paths
 	for _, line := range lines {
-		trimmed := strings.TrimSpace(line)
-
-		// Format B: "Installed at: /path" (no version in parentheses)
-		if strings.HasPrefix(trimmed, "Installed at:") && !strings.Contains(trimmed, "):") {
-			// This will return empty version, fill from queue
-			_, path := parseVersionLine(trimmed)
-			if path != "" && len(versionQueue) > 0 {
-				// Pop next version from queue
-				version := versionQueue[0]
-				versionQueue = versionQueue[1:]
-				result.Versions = append(result.Versions, InstalledVersion{
-					Version: version,
-					Path:    path,
-				})
-			}
-			continue
-		}
-
-		// Format A: "Installed at (VERSION): PATH" pattern (first version with parens)
-		if strings.HasPrefix(trimmed, "Installed at (") && strings.Contains(trimmed, "):") {
-			version, path := parseVersionLine(trimmed)
-			if version != "" && path != "" {
-				result.Versions = append(result.Versions, InstalledVersion{
-					Version: version,
-					Path:    path,
-				})
-			}
-			continue
-		}
-
-		// Format A continuation: "(VERSION): PATH" (subsequent versions, no "Installed at" prefix)
-		if strings.HasPrefix(trimmed, "(") && strings.Contains(trimmed, "):") && !strings.HasPrefix(trimmed, "Installed") {
-			version, path := parseVersionLine(trimmed)
-			if version != "" && path != "" {
-				result.Versions = append(result.Versions, InstalledVersion{
-					Version: version,
-					Path:    path,
-				})
-			}
+		if installed, ok := parseGemInfoLine(strings.TrimSpace(line), &versionQueue); ok {
+			result.Versions = append(result.Versions, installed)
 		}
 	}
 
@@ -365,6 +325,25 @@ func ParseGemInfo(output string) *ParsedGemInfo {
 	sortVersionsDescending(result.Versions)
 
 	return result
+}
+
+func parseGemInfoLine(line string, versionQueue *[]string) (InstalledVersion, bool) {
+	// Format B has a path but no version; use the version from the header.
+	if strings.HasPrefix(line, "Installed at:") && !strings.Contains(line, "):") {
+		_, path := parseVersionLine(line)
+		if path == "" || len(*versionQueue) == 0 {
+			return InstalledVersion{}, false
+		}
+		version := (*versionQueue)[0]
+		*versionQueue = (*versionQueue)[1:]
+		return InstalledVersion{Version: version, Path: path}, true
+	}
+	// Format A has an explicit version, with or without the "Installed at" prefix.
+	if (strings.HasPrefix(line, "Installed at (") || strings.HasPrefix(line, "(")) && strings.Contains(line, "):") {
+		version, path := parseVersionLine(line)
+		return InstalledVersion{Version: version, Path: path}, version != "" && path != ""
+	}
+	return InstalledVersion{}, false
 }
 
 // sortVersionsDescending sorts installed versions by semantic version in descending order

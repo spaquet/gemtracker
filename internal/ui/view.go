@@ -590,10 +590,6 @@ func (m *Model) renderGemListTable(height int) string {
 	}
 
 	for i := m.GemListOffset; i < endIdx; i++ {
-		if i >= len(m.FirstLevelGems) {
-			break
-		}
-
 		gem := m.FirstLevelGems[i]
 		isSelected := i == m.GemListCursor
 
@@ -645,25 +641,7 @@ func (m *Model) colorizeVersion(version, updateType string) string {
 }
 
 func (m *Model) formatGemListRow(idx int, gem *gemfile.GemStatus, selected bool) string {
-	// CVE indicator - only show if vulnerable
-	cveSymbol := ""
-	if gem.IsVulnerable {
-		cveSymbol = "⚠"
-	} else {
-		cveSymbol = " "
-	}
-
-	// Apply CVE styling only if row is not selected (selected row gets uniform background)
-	var cveDisplay string
-	if selected {
-		cveDisplay = cveSymbol
-	} else {
-		if gem.IsVulnerable {
-			cveDisplay = BadgeVulnerableStyle.Render(cveSymbol)
-		} else {
-			cveDisplay = cveSymbol
-		}
-	}
+	cveDisplay := gemListCVEDisplay(gem, selected)
 
 	// Constraint display
 	constraintDisplay := gem.Constraint
@@ -678,27 +656,7 @@ func (m *Model) formatGemListRow(idx int, gem *gemfile.GemStatus, selected bool)
 		updateableVersion = "-"
 	}
 
-	// Latest version display with color coding based on update type
-	// Truncate BEFORE coloring so padding works correctly
-	var latestDisplay string
-	switch {
-	case gem.OutdatedFailed:
-		latestDisplay = "-"
-	case gem.LatestVersion == "":
-		latestDisplay = "…"
-	case gem.IsOutdated:
-		latestTrunc := truncateStr(gem.LatestVersion, 8)
-		// Determine update type: patch (green), minor (orange), major (red)
-		updateType := m.getUpdateType(gem.Version, gem.LatestVersion)
-		// Apply color only if row is not selected
-		if selected {
-			latestDisplay = latestTrunc
-		} else {
-			latestDisplay = m.colorizeVersion(latestTrunc, updateType)
-		}
-	default:
-		latestDisplay = "latest"
-	}
+	latestDisplay := m.gemListLatestDisplay(gem, selected)
 
 	// Groups display
 	groupsDisplay := strings.Join(gem.Groups, ",")
@@ -706,41 +664,7 @@ func (m *Model) formatGemListRow(idx int, gem *gemfile.GemStatus, selected bool)
 		groupsDisplay = groupsDisplay[:5] + "..."
 	}
 
-	// Health indicator (only on wide terminals)
-	healthDisplay := ""
-	if m.Width >= 80 {
-		if gem.Health == nil {
-			healthDisplay = " " // 1 space for loading state
-		} else {
-			// Get the symbol first
-			var healthSymbol string
-			switch gem.Health.Score {
-			case gemfile.HealthHealthy:
-				healthSymbol = "●"
-			case gemfile.HealthWarning:
-				healthSymbol = "●"
-			case gemfile.HealthCritical:
-				healthSymbol = "●"
-			default:
-				healthSymbol = "!"
-			}
-			// Apply style only if row is not selected
-			if selected {
-				healthDisplay = healthSymbol
-			} else {
-				switch gem.Health.Score {
-				case gemfile.HealthHealthy:
-					healthDisplay = BadgeHealthyDotStyle.Render(healthSymbol)
-				case gemfile.HealthWarning:
-					healthDisplay = BadgeWarningDotStyle.Render(healthSymbol)
-				case gemfile.HealthCritical:
-					healthDisplay = BadgeCriticalDotStyle.Render(healthSymbol)
-				default:
-					healthDisplay = BadgeErrorStyle.Render(healthSymbol)
-				}
-			}
-		}
-	}
+	healthDisplay := m.gemListHealthDisplay(gem, selected)
 
 	// Build the row as a single styled string to avoid transparent gaps between cells.
 	// Pre-colored cells (latest, health, CVE) use lipgloss.PlaceHorizontal for padding,
@@ -786,6 +710,58 @@ func (m *Model) formatGemListRow(idx int, gem *gemfile.GemStatus, selected bool)
 	// Apply row style to the entire row at once — Width fills to terminal edge
 	// with the style's background color applied to the padding.
 	return rowStyle.Width(m.Width).Render(rowContent)
+}
+
+func gemListCVEDisplay(gem *gemfile.GemStatus, selected bool) string {
+	if !gem.IsVulnerable {
+		return " "
+	}
+	if selected {
+		return "⚠"
+	}
+	return BadgeVulnerableStyle.Render("⚠")
+}
+
+func (m *Model) gemListLatestDisplay(gem *gemfile.GemStatus, selected bool) string {
+	switch {
+	case gem.OutdatedFailed:
+		return "-"
+	case gem.LatestVersion == "":
+		return "…"
+	case gem.IsOutdated:
+		latest := truncateStr(gem.LatestVersion, 8)
+		if selected {
+			return latest
+		}
+		return m.colorizeVersion(latest, m.getUpdateType(gem.Version, gem.LatestVersion))
+	default:
+		return "latest"
+	}
+}
+
+func (m *Model) gemListHealthDisplay(gem *gemfile.GemStatus, selected bool) string {
+	if m.Width < 80 {
+		return ""
+	}
+	if gem.Health == nil {
+		return " "
+	}
+	symbol := "●"
+	style := BadgeErrorStyle
+	switch gem.Health.Score {
+	case gemfile.HealthHealthy:
+		style = BadgeHealthyDotStyle
+	case gemfile.HealthWarning:
+		style = BadgeWarningDotStyle
+	case gemfile.HealthCritical:
+		style = BadgeCriticalDotStyle
+	default:
+		symbol = "!"
+	}
+	if selected {
+		return symbol
+	}
+	return style.Render(symbol)
 }
 
 // buildGemInfoLines builds the header, description, and health info lines for gem detail view
@@ -873,62 +849,7 @@ func (m *Model) viewGemDetail() string {
 		panelWidth = 20
 	}
 
-	var forwardContent string
-	var reverseContent string
-
-	if m.DependencyResult != nil && m.DependencyResult.DependencyInfo != nil {
-		forwardContent = m.renderDependencyPanel(m.DependencyResult.DependencyInfo.ForwardTree, panelHeight, true)
-		reverseContent = m.renderReverseDepsList(panelHeight)
-	} else {
-		forwardContent = strings.Repeat(" \n", panelHeight)
-		reverseContent = strings.Repeat(" \n", panelHeight)
-	}
-
-	// Calculate titles AFTER rendering panels so DetailForwardLines/DetailReverseLines are populated
-	forwardTitle := "Dependencies (what this gem needs)"
-	reverseTitle := "Used By (what depends on this gem)"
-
-	// Update titles based on currently selected gem in detail view
-	if m.DetailSection == 0 && m.DetailTreeCursor < len(m.DetailForwardLines) {
-		// If viewing forward dependencies, show what depends on the selected dependency
-		currentGem := m.DetailForwardLines[m.DetailTreeCursor]
-		reverseTitle = fmt.Sprintf("Used By %s (what depends on it)", currentGem)
-	} else if m.DetailSection == 1 && m.DetailTreeCursor < len(m.DetailReverseLines) {
-		// If viewing reverse dependencies section, show which forward gem we're looking at
-		currentGem := m.DetailReverseLines[m.DetailTreeCursor]
-		forwardTitle = fmt.Sprintf("Dependencies of %s", currentGem)
-	}
-
-	// Format titles with width constraint and apply text styling
-	titleStyle := OpaqueTextStyle
-	forwardTitleFormatted := titleStyle.Render(truncateStr(forwardTitle, panelWidth-2))
-	reverseTitleFormatted := titleStyle.Render(truncateStr(reverseTitle, panelWidth-2))
-
-	forwardSection := lipgloss.JoinVertical(lipgloss.Left,
-		forwardTitleFormatted,
-		forwardContent,
-	)
-
-	reverseSection := lipgloss.JoinVertical(lipgloss.Left,
-		reverseTitleFormatted,
-		reverseContent,
-	)
-
-	// Apply borders with width
-	borderStyle := PanelBorderStyle
-	if m.DetailSection == 0 {
-		borderStyle = PanelBorderActiveStyle
-	}
-
-	forwardPanel := borderStyle.Width(panelWidth).Render(forwardSection)
-	reverseBorderStyle := PanelBorderStyle
-	if m.DetailSection == 1 {
-		reverseBorderStyle = PanelBorderActiveStyle
-	}
-	reversePanel := reverseBorderStyle.Width(panelWidth).Render(reverseSection)
-
-	// Join panels horizontally
-	panelsRow := lipgloss.JoinHorizontal(lipgloss.Top, forwardPanel, "  ", reversePanel)
+	panelsRow := m.renderGemDetailPanels(panelHeight, panelWidth)
 
 	contentLines := []string{}
 	contentLines = append(contentLines, gemInfoLines...)
@@ -936,6 +857,37 @@ func (m *Model) viewGemDetail() string {
 	content := lipgloss.JoinVertical(lipgloss.Left, contentLines...)
 
 	return m.assembleViewWithChrome(content)
+}
+
+func (m *Model) renderGemDetailPanels(height, width int) string {
+	forwardContent := strings.Repeat(" \n", height)
+	reverseContent := forwardContent
+	if m.DependencyResult != nil && m.DependencyResult.DependencyInfo != nil {
+		forwardContent = m.renderDependencyPanel(m.DependencyResult.DependencyInfo.ForwardTree, height, true)
+		reverseContent = m.renderReverseDepsList(height)
+	}
+
+	// Rendering populates the dependency names used by the titles.
+	forwardTitle := "Dependencies (what this gem needs)"
+	reverseTitle := "Used By (what depends on this gem)"
+	if m.DetailSection == 0 && m.DetailTreeCursor < len(m.DetailForwardLines) {
+		reverseTitle = fmt.Sprintf("Used By %s (what depends on it)", m.DetailForwardLines[m.DetailTreeCursor])
+	} else if m.DetailSection == 1 && m.DetailTreeCursor < len(m.DetailReverseLines) {
+		forwardTitle = fmt.Sprintf("Dependencies of %s", m.DetailReverseLines[m.DetailTreeCursor])
+	}
+	forwardSection := lipgloss.JoinVertical(lipgloss.Left, OpaqueTextStyle.Render(truncateStr(forwardTitle, width-2)), forwardContent)
+	reverseSection := lipgloss.JoinVertical(lipgloss.Left, OpaqueTextStyle.Render(truncateStr(reverseTitle, width-2)), reverseContent)
+
+	forwardStyle := PanelBorderStyle
+	if m.DetailSection == 0 {
+		forwardStyle = PanelBorderActiveStyle
+	}
+	reverseStyle := PanelBorderStyle
+	if m.DetailSection == 1 {
+		reverseStyle = PanelBorderActiveStyle
+	}
+	return lipgloss.JoinHorizontal(lipgloss.Top,
+		forwardStyle.Width(width).Render(forwardSection), "  ", reverseStyle.Width(width).Render(reverseSection))
 }
 
 func (m *Model) renderDependencyPanel(node *gemfile.DependencyNode, height int, isForward bool) string {
@@ -990,24 +942,7 @@ func (m *Model) renderReverseDepsList(height int) string {
 		return strings.Repeat(" \n", height)
 	}
 
-	// Determine which gem's reverse dependencies to show
-	// If viewing a dependency in the forward tree, show its reverse deps
-	// Otherwise, show the originally selected gem's reverse deps
-	var reverseDeps []string
-
-	if m.DetailSection == 0 && m.DetailTreeCursor < len(m.DetailForwardLines) {
-		// User is navigating in the forward dependencies tree
-		// Get reverse dependencies for the currently selected dependency
-		currentGemName := m.DetailForwardLines[m.DetailTreeCursor]
-
-		// Use the AllGems map from DependencyResult to calculate reverse deps locally
-		if m.DependencyResult.AllGems != nil {
-			reverseDeps = gemfile.GetReverseDependencies(currentGemName, &gemfile.Gemfile{Gems: m.DependencyResult.AllGems})
-		}
-	} else {
-		// Show the originally selected gem's reverse dependencies
-		reverseDeps = m.DependencyResult.DependencyInfo.ReverseDeps
-	}
+	reverseDeps := m.reverseDepsForDetail()
 
 	// Clear DetailReverseLines for navigation tracking
 	m.DetailReverseLines = []string{}
@@ -1026,16 +961,7 @@ func (m *Model) renderReverseDepsList(height int) string {
 		lines = append(lines, nameLine)
 		m.DetailReverseLines = append(m.DetailReverseLines, depName)
 
-		// Description from AnalysisResult
-		desc := ""
-		if m.AnalysisResult != nil {
-			for _, gemStatus := range m.AnalysisResult.GemStatuses {
-				if gemStatus.Name == depName {
-					desc = gemStatus.Description
-					break
-				}
-			}
-		}
+		desc := m.gemDescription(depName)
 		if desc != "" {
 			descLine := "    " + truncateStr(desc, 50)
 			descStyle := OpaqueMutedStyle
@@ -1058,6 +984,28 @@ func (m *Model) renderReverseDepsList(height int) string {
 	}
 
 	return strings.Join(visibleLines[:height], "\n")
+}
+
+func (m *Model) reverseDepsForDetail() []string {
+	if m.DetailSection == 0 && m.DetailTreeCursor < len(m.DetailForwardLines) {
+		if m.DependencyResult.AllGems != nil {
+			name := m.DetailForwardLines[m.DetailTreeCursor]
+			return gemfile.GetReverseDependencies(name, &gemfile.Gemfile{Gems: m.DependencyResult.AllGems})
+		}
+		return nil
+	}
+	return m.DependencyResult.DependencyInfo.ReverseDeps
+}
+
+func (m *Model) gemDescription(name string) string {
+	if m.AnalysisResult != nil {
+		for _, gem := range m.AnalysisResult.GemStatuses {
+			if gem.Name == name {
+				return gem.Description
+			}
+		}
+	}
+	return ""
 }
 
 func (m *Model) renderTreeNode(node *gemfile.DependencyNode, depth int, lines *[]string, gemNames *[]string, maxLines int, lineIdx int, offset int) int {
@@ -1113,47 +1061,14 @@ func (m *Model) renderTreeNode(node *gemfile.DependencyNode, depth int, lines *[
 // ============================================================================
 
 func (m *Model) renderHealthSection(health *gemfile.GemHealth, maxLen int) []string {
-	var lines []string
-
-	// Health header with score
-	var scoreStr string
-	scoreStyle := BadgeHealthyDotStyle
-	switch health.Score {
-	case gemfile.HealthHealthy:
-		scoreStyle = BadgeHealthyDotStyle
-		scoreStr = "● HEALTHY"
-	case gemfile.HealthWarning:
-		scoreStyle = BadgeWarningDotStyle
-		scoreStr = "● WARNING"
-	case gemfile.HealthCritical:
-		scoreStyle = BadgeCriticalDotStyle
-		scoreStr = "● CRITICAL"
-	default:
-		scoreStr = "? UNKNOWN"
-	}
-
-	healthHeaderText := OpaqueTextStyle.Render("  Health: ")
-	healthHeader := healthHeaderText + scoreStyle.Render(scoreStr)
-	lines = append(lines, healthHeader)
+	lines := []string{renderHealthHeader(health.Score)}
 
 	// Health details line
 	var details []string
 
 	// Last release time
 	if !health.LastRelease.IsZero() {
-		daysAgo := int(time.Since(health.LastRelease).Hours() / 24)
-		var releaseStr string
-		switch {
-		case daysAgo < 1:
-			releaseStr = "days ago"
-		case daysAgo < 30:
-			releaseStr = fmt.Sprintf("%d days ago", daysAgo)
-		case daysAgo < 365:
-			releaseStr = fmt.Sprintf("%d months ago", daysAgo/30)
-		default:
-			releaseStr = fmt.Sprintf("%d years ago", daysAgo/365)
-		}
-		details = append(details, fmt.Sprintf("Last: %s", releaseStr))
+		details = append(details, "Last: "+releaseAge(health.LastRelease))
 	}
 
 	// Stars
@@ -1186,6 +1101,34 @@ func (m *Model) renderHealthSection(health *gemfile.GemHealth, maxLen int) []str
 	}
 
 	return lines
+}
+
+func renderHealthHeader(score gemfile.HealthScore) string {
+	style := BadgeHealthyDotStyle
+	label := "? UNKNOWN"
+	switch score {
+	case gemfile.HealthHealthy:
+		label = "● HEALTHY"
+	case gemfile.HealthWarning:
+		style, label = BadgeWarningDotStyle, "● WARNING"
+	case gemfile.HealthCritical:
+		style, label = BadgeCriticalDotStyle, "● CRITICAL"
+	}
+	return OpaqueTextStyle.Render("  Health: ") + style.Render(label)
+}
+
+func releaseAge(release time.Time) string {
+	daysAgo := int(time.Since(release).Hours() / 24)
+	switch {
+	case daysAgo < 1:
+		return "days ago"
+	case daysAgo < 30:
+		return fmt.Sprintf("%d days ago", daysAgo)
+	case daysAgo < 365:
+		return fmt.Sprintf("%d months ago", daysAgo/30)
+	default:
+		return fmt.Sprintf("%d years ago", daysAgo/365)
+	}
 }
 
 // ============================================================================
@@ -1417,16 +1360,7 @@ func (m *Model) appendUpgradeableSectionHeader(lines []string, section string, h
 func (m *Model) renderUpgradeableGemRow(gem *gemfile.GemStatus, selected, cursor bool) string {
 	isSelectable := m.IsGemSelectable(gem)
 	isChecked := m.SelectedUpgradeableGems != nil && m.SelectedUpgradeableGems[gem.Name]
-
-	var checkbox string
-	switch {
-	case !isSelectable:
-		checkbox = "[·]"
-	case isChecked:
-		checkbox = "[x]"
-	default:
-		checkbox = "[ ]"
-	}
+	checkbox := upgradeableCheckbox(isSelectable, isChecked)
 
 	constraintDisplay := gem.Constraint
 	if constraintDisplay == "" {
@@ -1463,6 +1397,16 @@ func (m *Model) renderUpgradeableGemRow(gem *gemfile.GemStatus, selected, cursor
 		return RowNormalStyle.Foreground(lipgloss.Color("242")).Render(row)
 	}
 	return RowNormalStyle.Render(row)
+}
+
+func upgradeableCheckbox(selectable, checked bool) string {
+	if !selectable {
+		return "[·]"
+	}
+	if checked {
+		return "[x]"
+	}
+	return "[ ]"
 }
 
 // ============================================================================
@@ -1632,38 +1576,33 @@ func (m *Model) getCVEGemInfo(gemName string) (gemType string, group string) {
 			return
 		}
 	}
-	// Not found in first-level, so it's transitive
-	// For transitive gems, try to find which first-level gems depend on it
-	// and show their groups as context
-	gemType = "Transitive"
+	return "Transitive", m.transitiveCVEGroup(gemName)
+}
+
+func (m *Model) transitiveCVEGroup(gemName string) string {
 	parentGems := m.findParentGems(gemName)
-	if len(parentGems) > 0 {
-		// Collect groups from all parent gems
-		groupsMap := make(map[string]bool)
-		for _, parentName := range parentGems {
-			for _, gem := range m.FirstLevelGems {
-				if gem.Name == parentName && len(gem.Groups) > 0 {
-					for _, g := range gem.Groups {
-						groupsMap[g] = true
-					}
+	if len(parentGems) == 0 {
+		return "—"
+	}
+	groupsMap := make(map[string]bool)
+	for _, parentName := range parentGems {
+		for _, gem := range m.FirstLevelGems {
+			if gem.Name == parentName && len(gem.Groups) > 0 {
+				for _, group := range gem.Groups {
+					groupsMap[group] = true
 				}
 			}
 		}
-		if len(groupsMap) > 0 {
-			// Sort and join groups
-			var groupList []string
-			for g := range groupsMap {
-				groupList = append(groupList, g)
-			}
-			sort.Strings(groupList)
-			group = strings.Join(groupList, ",")
-		} else {
-			group = "default"
-		}
-	} else {
-		group = "—"
 	}
-	return
+	if len(groupsMap) == 0 {
+		return "default"
+	}
+	var groups []string
+	for group := range groupsMap {
+		groups = append(groups, group)
+	}
+	sort.Strings(groups)
+	return strings.Join(groups, ",")
 }
 
 // isFrameworkGem checks if a gem is part of a known framework
@@ -1833,31 +1772,9 @@ func (m *Model) renderSanityTable(height int) string {
 		height = 1
 	}
 
-	// Show loading state
-	if m.SanityLoading {
-		msg := "Checking gem sizes..."
-		return lipgloss.NewStyle().
-			Foreground(lipgloss.Color(ColorTextMuted)).
-			Padding(2, 2).
-			Render(msg)
-	}
-
-	// Show error if gem dir not found
-	if m.GemDirPath == "" {
-		msg := "Unable to detect gem directory. Make sure Ruby is properly installed."
-		return lipgloss.NewStyle().
-			Foreground(lipgloss.Color(ColorDanger)).
-			Padding(2, 2).
-			Render(msg)
-	}
-
 	allGems := m.allGemsForSanity()
-	if len(allGems) == 0 {
-		msg := "No gems found."
-		return lipgloss.NewStyle().
-			Foreground(lipgloss.Color(ColorTextMuted)).
-			Padding(2, 2).
-			Render(msg)
+	if message, ok := m.sanityStateMessage(len(allGems)); ok {
+		return message
 	}
 
 	var lines []string
@@ -1895,25 +1812,7 @@ func (m *Model) renderSanityTable(height int) string {
 
 		// Add section header when entering a new section
 		if currentSection != lastSection {
-			// Add blank line before section (except for the very first section)
-			if lastSection != "" && len(lines) < height {
-				lines = append(lines, "")
-			}
-
-			if len(lines) < height {
-				lines = append(lines, lipgloss.NewStyle().
-					Bold(true).
-					Foreground(lipgloss.Color(ColorPrimary)).
-					Render(currentSection))
-			}
-
-			if len(lines) < height {
-				headerRow := fmt.Sprintf("  %-3s %-24s %-11s %s",
-					"ID", "Gem Name", "Installed", "Size")
-				header := TableHeaderStyle.Render(headerRow)
-				lines = append(lines, header)
-			}
-
+			lines = appendSanitySectionHeader(lines, currentSection, lastSection, height)
 			lastSection = currentSection
 		}
 
@@ -1921,26 +1820,49 @@ func (m *Model) renderSanityTable(height int) string {
 			break
 		}
 
-		gem := allGems[gemIdx]
-		size := m.GemSizes[gem.Name]
-		sizeStr := gemfile.FormatBytes(size)
-
-		isSelected := gemIdx == m.SanityCursor
-		row := fmt.Sprintf("  %-3d %-24s %-11s %s",
-			gemIdx+1, // Display ID: 1-based index
-			truncateStr(gem.Name, 24),
-			gem.Version,
-			sizeStr,
-		)
-		if isSelected {
-			row = RowSelectedStyle.Render(row)
-		} else {
-			row = RowNormalStyle.Render(row)
-		}
-		lines = append(lines, row)
+		lines = append(lines, m.sanityGemRow(gemIdx, allGems[gemIdx]))
 	}
 
 	return lipgloss.JoinVertical(lipgloss.Left, lines...)
+}
+
+func (m *Model) sanityStateMessage(gemCount int) (string, bool) {
+	message := ""
+	color := ColorTextMuted
+	switch {
+	case m.SanityLoading:
+		message = "Checking gem sizes..."
+	case m.GemDirPath == "":
+		message = "Unable to detect gem directory. Make sure Ruby is properly installed."
+		color = ColorDanger
+	case gemCount == 0:
+		message = "No gems found."
+	default:
+		return "", false
+	}
+	return lipgloss.NewStyle().Foreground(lipgloss.Color(color)).Padding(2, 2).Render(message), true
+}
+
+func appendSanitySectionHeader(lines []string, current, last string, height int) []string {
+	if last != "" && len(lines) < height {
+		lines = append(lines, "")
+	}
+	if len(lines) < height {
+		lines = append(lines, lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(ColorPrimary)).Render(current))
+	}
+	if len(lines) < height {
+		headerRow := fmt.Sprintf("  %-3s %-24s %-11s %s", "ID", "Gem Name", "Installed", "Size")
+		lines = append(lines, TableHeaderStyle.Render(headerRow))
+	}
+	return lines
+}
+
+func (m *Model) sanityGemRow(index int, gem *gemfile.GemStatus) string {
+	row := fmt.Sprintf("  %-3d %-24s %-11s %s", index+1, truncateStr(gem.Name, 24), gem.Version, gemfile.FormatBytes(m.GemSizes[gem.Name]))
+	if index == m.SanityCursor {
+		return RowSelectedStyle.Render(row)
+	}
+	return RowNormalStyle.Render(row)
 }
 
 func (m *Model) viewGemInfoModal() string {
@@ -1955,20 +1877,21 @@ func (m *Model) viewGemInfoModal() string {
 
 	// Create info modal
 	modal := m.renderGemInfoModalBox()
+	return m.placeCenteredModal(background, modal, 80)
+}
 
-	// Safety checks for invalid terminal size
+func (m *Model) placeCenteredModal(background, modal string, fallbackWidth int) string {
 	if m.Height <= 0 || m.Width <= 0 {
-		return background // Can't render modal if terminal is invalid
+		return background
 	}
 
 	// Calculate centered position
 	modalLines := strings.Split(modal, "\n")
 	modalH := len(modalLines)
 
-	// Calculate width safely, with fallback to reasonable default
 	modalW := lipgloss.Width(modal)
 	if modalW <= 0 {
-		modalW = 80 // Fallback to default width
+		modalW = fallbackWidth
 	}
 
 	// Limit modal height to prevent exceeding screen bounds
@@ -1980,7 +1903,6 @@ func (m *Model) viewGemInfoModal() string {
 		modalH = maxModalH
 	}
 
-	// Safety check to prevent division issues
 	if modalH <= 0 || modalW <= 0 {
 		return background
 	}
@@ -1995,7 +1917,6 @@ func (m *Model) viewGemInfoModal() string {
 		startCol = 0
 	}
 
-	// Overlay modal on background
 	return placeOverlay(startRow, startCol, modal, background)
 }
 
@@ -2206,7 +2127,18 @@ func (m *Model) renderProjectInfo(height int) string {
 	if height < 1 {
 		height = 1
 	}
+	sections := m.projectInfoSections()
+	var paddedLines []string
+	for _, line := range sections {
+		paddedLines = append(paddedLines, AppBackgroundStyle.Width(m.Width).Render(line))
+	}
+	for len(paddedLines) < height {
+		paddedLines = append(paddedLines, AppBackgroundStyle.Width(m.Width).Render(""))
+	}
+	return lipgloss.JoinVertical(lipgloss.Left, paddedLines[:height]...)
+}
 
+func (m *Model) projectInfoSections() []string {
 	title := "Project Information"
 	titleStyle := lipgloss.NewStyle().
 		Bold(true).
@@ -2265,34 +2197,22 @@ func (m *Model) renderProjectInfo(height int) string {
 	sections = append(sections, m.formatInfoLine("Direct Dependencies", fmt.Sprintf("%d", m.FirstLevelCount)))
 	sections = append(sections, m.formatInfoLine("Transitive Dependencies", fmt.Sprintf("%d", m.TransitiveDeps)))
 
-	// Insecure sources summary
-	if len(m.InsecureSourceGems) > 0 {
-		sections = append(sections, "")
-		insecureLabel := fmt.Sprintf("🔓 Insecure Gem Sources (%d)", len(m.InsecureSourceGems))
-		insecureStyle := lipgloss.NewStyle().
-			Bold(true).
-			Foreground(lipgloss.Color(ColorWarning)).
-			Background(lipgloss.Color("#262626"))
-		sections = append(sections, insecureStyle.Render(insecureLabel))
-		sections = append(sections, "")
-		for _, gem := range m.InsecureSourceGems {
-			sourceInfo := fmt.Sprintf("  • %s @ %s", gem.Name, gem.Source)
-			sections = append(sections, sourceInfo)
-		}
-	}
+	sections = append(sections, m.insecureProjectInfoLines()...)
 
-	// Pad each line to full width with background color
-	var paddedLines []string
-	for _, line := range sections {
-		paddedLines = append(paddedLines, AppBackgroundStyle.Width(m.Width).Render(line))
-	}
+	return sections
+}
 
-	// Padding to fill height
-	for len(paddedLines) < height {
-		paddedLines = append(paddedLines, AppBackgroundStyle.Width(m.Width).Render(""))
+func (m *Model) insecureProjectInfoLines() []string {
+	if len(m.InsecureSourceGems) == 0 {
+		return nil
 	}
-
-	return lipgloss.JoinVertical(lipgloss.Left, paddedLines[:height]...)
+	insecureLabel := fmt.Sprintf("🔓 Insecure Gem Sources (%d)", len(m.InsecureSourceGems))
+	insecureStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(ColorWarning)).Background(lipgloss.Color("#262626"))
+	lines := []string{"", insecureStyle.Render(insecureLabel), ""}
+	for _, gem := range m.InsecureSourceGems {
+		lines = append(lines, fmt.Sprintf("  • %s @ %s", gem.Name, gem.Source))
+	}
+	return lines
 }
 
 func (m *Model) formatInfoLine(label string, value string) string {
@@ -2373,13 +2293,6 @@ func (m *Model) renderFilterModalBox() string {
 	textStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(ColorText)).Background(lipgloss.Color("#3a3a3a"))
 	mutedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(ColorTextMuted)).Background(lipgloss.Color("#3a3a3a"))
 
-	checkbox := func(on bool) string {
-		if on {
-			return "[✓]"
-		}
-		return "[ ]"
-	}
-
 	lines := []string{}
 
 	title := "Filter Gems"
@@ -2391,7 +2304,7 @@ func (m *Model) renderFilterModalBox() string {
 	lines = append(lines, "")
 
 	upgradableLabel := "Show only upgradable"
-	upgradableLine := checkbox(m.ShowOnlyUpgradable) + " " + upgradableLabel
+	upgradableLine := filterCheckbox(m.ShowOnlyUpgradable) + " " + upgradableLabel
 	if m.FilterMenuCursor == 0 {
 		lines = append(lines, RowSelectedStyle.Render("› "+upgradableLine))
 	} else {
@@ -2404,7 +2317,7 @@ func (m *Model) renderFilterModalBox() string {
 		lines = append(lines, mutedStyle.Render("Filter by group:"))
 
 		for i, group := range m.AvailableGroups {
-			groupLine := checkbox(m.SelectedGroups[group]) + " " + group
+			groupLine := filterCheckbox(m.SelectedGroups[group]) + " " + group
 			menuIdx := 1 + i
 			if m.FilterMenuCursor == menuIdx {
 				lines = append(lines, RowSelectedStyle.Render("› "+groupLine))
@@ -2415,24 +2328,7 @@ func (m *Model) renderFilterModalBox() string {
 	}
 
 	lines = append(lines, "")
-	lines = append(lines, mutedStyle.Render("Active filters:"))
-
-	if !m.hasActiveFilters() {
-		lines = append(lines, textStyle.Render("  (none)"))
-	} else {
-		if m.ShowOnlyUpgradable {
-			lines = append(lines, textStyle.Render("  • Upgradable only"))
-		}
-		if len(m.SelectedGroups) > 0 {
-			var selectedGroups []string
-			for _, g := range m.AvailableGroups {
-				if m.SelectedGroups[g] {
-					selectedGroups = append(selectedGroups, g)
-				}
-			}
-			lines = append(lines, textStyle.Render(fmt.Sprintf("  • Groups: %s", strings.Join(selectedGroups, ", "))))
-		}
-	}
+	lines = append(lines, m.activeFilterLines(textStyle, mutedStyle)...)
 
 	lines = append(lines, "")
 	hintStyle := lipgloss.NewStyle().
@@ -2441,28 +2337,52 @@ func (m *Model) renderFilterModalBox() string {
 		Background(lipgloss.Color("#3a3a3a"))
 	lines = append(lines, hintStyle.Render("↑↓ navigate  space toggle  enter/esc close"))
 
-	// Create the modal box with border
-	content := strings.Join(lines, "\n")
+	return m.renderFilterBox(lines)
+}
 
-	// Calculate width - use enough space but not too much
-	modalWidth := lipgloss.Width(content) + 4 // 2 for padding left/right, 2 for border
+func (m *Model) activeFilterLines(textStyle, mutedStyle lipgloss.Style) []string {
+	lines := []string{mutedStyle.Render("Active filters:")}
+	if !m.hasActiveFilters() {
+		return append(lines, textStyle.Render("  (none)"))
+	}
+	if m.ShowOnlyUpgradable {
+		lines = append(lines, textStyle.Render("  • Upgradable only"))
+	}
+	if len(m.SelectedGroups) > 0 {
+		var selectedGroups []string
+		for _, group := range m.AvailableGroups {
+			if m.SelectedGroups[group] {
+				selectedGroups = append(selectedGroups, group)
+			}
+		}
+		lines = append(lines, textStyle.Render("  • Groups: "+strings.Join(selectedGroups, ", ")))
+	}
+	return lines
+}
+
+func (m *Model) renderFilterBox(lines []string) string {
+	content := strings.Join(lines, "\n")
+	modalWidth := lipgloss.Width(content) + 4
 	if modalWidth < 50 {
 		modalWidth = 50
 	}
 	if modalWidth > m.Width-4 {
 		modalWidth = m.Width - 4
 	}
-
-	// Apply border and styling; Width+Background fills the row with color
 	boxStyle := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color(ColorBorderActive)).
 		Background(lipgloss.Color("#3a3a3a")).
 		Padding(1, 2)
-
-	// Post-process: ensure surface background after all ANSI resets within modal
 	rendered := boxStyle.Width(modalWidth).Render(content)
 	return strings.ReplaceAll(rendered, "\x1b[m", "\x1b[m\x1b[48;2;58;58;58m")
+}
+
+func filterCheckbox(on bool) string {
+	if on {
+		return "[✓]"
+	}
+	return "[ ]"
 }
 
 func (m *Model) viewCVEFilterMenu() string {
@@ -2491,15 +2411,8 @@ func (m *Model) viewCVEFilterMenu() string {
 	return placeOverlay(startRow, startCol, modal, background)
 }
 
-func (m *Model) renderCVEFilterModalBox() string {
+func (m *Model) cveFilterLines() []string {
 	textStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(ColorText)).Background(lipgloss.Color("#3a3a3a"))
-
-	checkbox := func(on bool) string {
-		if on {
-			return "[✓]"
-		}
-		return "[ ]"
-	}
 
 	lines := []string{}
 
@@ -2513,7 +2426,7 @@ func (m *Model) renderCVEFilterModalBox() string {
 
 	severities := []string{"CRITICAL", "HIGH", "MODERATE", "LOW"}
 	for i, severity := range severities {
-		severityLine := checkbox(m.CVESelectedSeverities[severity]) + " " + severity + " only"
+		severityLine := filterCheckbox(m.CVESelectedSeverities[severity]) + " " + severity + " only"
 		if m.CVEFilterMenuCursor == i {
 			lines = append(lines, RowSelectedStyle.Render("› "+severityLine))
 		} else {
@@ -2523,7 +2436,7 @@ func (m *Model) renderCVEFilterModalBox() string {
 
 	lines = append(lines, "")
 
-	directLine := checkbox(m.CVEShowOnlyDirect) + " Direct only"
+	directLine := filterCheckbox(m.CVEShowOnlyDirect) + " Direct only"
 	if m.CVEFilterMenuCursor == 4 {
 		lines = append(lines, RowSelectedStyle.Render("› "+directLine))
 	} else {
@@ -2541,7 +2454,7 @@ func (m *Model) renderCVEFilterModalBox() string {
 		{"unacknowledged", "Unacknowledged"},
 	}
 	for i, state := range ackStates {
-		ackLine := checkbox(m.CVEAcknowledgmentFilters[state.key]) + " " + state.label
+		ackLine := filterCheckbox(m.CVEAcknowledgmentFilters[state.key]) + " " + state.label
 		if m.CVEFilterMenuCursor == 5+i {
 			lines = append(lines, RowSelectedStyle.Render("› "+ackLine))
 		} else {
@@ -2555,29 +2468,11 @@ func (m *Model) renderCVEFilterModalBox() string {
 		Italic(true).
 		Background(lipgloss.Color("#3a3a3a"))
 	lines = append(lines, hintStyle.Render("↑↓ navigate  space toggle  enter/esc close"))
+	return lines
+}
 
-	// Create the modal box with border
-	content := strings.Join(lines, "\n")
-
-	// Calculate width
-	modalWidth := lipgloss.Width(content) + 4 // 2 for padding left/right, 2 for border
-	if modalWidth < 50 {
-		modalWidth = 50
-	}
-	if modalWidth > m.Width-4 {
-		modalWidth = m.Width - 4
-	}
-
-	// Apply border and styling; Width+Background fills the row with color
-	boxStyle := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color(ColorBorderActive)).
-		Background(lipgloss.Color("#3a3a3a")).
-		Padding(1, 2)
-
-	// Post-process: ensure surface background after all ANSI resets within modal
-	rendered := boxStyle.Width(modalWidth).Render(content)
-	return strings.ReplaceAll(rendered, "\x1b[m", "\x1b[m\x1b[48;2;58;58;58m")
+func (m *Model) renderCVEFilterModalBox() string {
+	return m.renderFilterBox(m.cveFilterLines())
 }
 
 func (m *Model) viewCVEInfo() string {
@@ -2970,7 +2865,7 @@ func (m *Model) viewCVEComment() string {
 	return placeOverlay(startRow, startCol, modal, background)
 }
 
-func (m *Model) renderCVECommentModalBox() string {
+func (m *Model) cveCommentLines() []string {
 	textStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(ColorText))
 	mutedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(ColorTextMuted))
 
@@ -3033,9 +2928,12 @@ func (m *Model) renderCVECommentModalBox() string {
 	footerLine := "enter save  esc cancel  tab toggle decision"
 	footerStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(ColorTextMuted))
 	lines = append(lines, footerStyle.Render(footerLine))
+	return lines
+}
 
+func (m *Model) renderCVECommentModalBox() string {
 	// Build modal box
-	content := strings.Join(lines, "\n")
+	content := strings.Join(m.cveCommentLines(), "\n")
 	modalStyle := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color(ColorBorderActive)).
@@ -3082,47 +2980,10 @@ func (m *Model) viewUpgradeResultModal() string {
 
 	// Create result modal
 	modal := m.renderUpgradeResultModalBox()
-
-	// Safety checks for invalid terminal size
-	if m.Height <= 0 || m.Width <= 0 {
-		return background
-	}
-
-	// Calculate centered position
-	modalLines := strings.Split(modal, "\n")
-	modalH := len(modalLines)
-
-	modalW := lipgloss.Width(modal)
-	if modalW <= 0 {
-		modalW = 60
-	}
-
-	maxModalH := m.Height - 4
-	if maxModalH < 10 {
-		maxModalH = 10
-	}
-	if modalH > maxModalH {
-		modalH = maxModalH
-	}
-
-	if modalH <= 0 || modalW <= 0 {
-		return background
-	}
-
-	startRow := (m.Height - modalH) / 2
-	startCol := (m.Width - modalW) / 2
-
-	if startRow < 2 {
-		startRow = 2
-	}
-	if startCol < 0 {
-		startCol = 0
-	}
-
-	return placeOverlay(startRow, startCol, modal, background)
+	return m.placeCenteredModal(background, modal, 60)
 }
 
-func (m *Model) renderUpgradeResultModalBox() string {
+func (m *Model) upgradeResultLines() []string {
 	var lines []string
 
 	// Header
@@ -3181,8 +3042,11 @@ func (m *Model) renderUpgradeResultModalBox() string {
 		Align(lipgloss.Center).
 		Render("Press any key to continue")
 	lines = append(lines, hintLine)
+	return lines
+}
 
-	modalContent := lipgloss.JoinVertical(lipgloss.Left, lines...)
+func (m *Model) renderUpgradeResultModalBox() string {
+	modalContent := lipgloss.JoinVertical(lipgloss.Left, m.upgradeResultLines()...)
 
 	modalStyle := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
