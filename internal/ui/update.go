@@ -96,17 +96,8 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyPressMsg:
 		return m.handleKeyPress(msg)
 
-	case AnalysisCompleteMsg:
-		return m.handleAnalysisComplete(msg)
-
-	case DependencyCompleteMsg:
-		return m.handleDependencyComplete(msg)
-
-	case VersionCheckMsg:
-		return m.handleVersionCheck(msg)
-
-	case ProgressMsg:
-		return m.handleProgress(msg)
+	case AnalysisCompleteMsg, DependencyCompleteMsg, VersionCheckMsg, ProgressMsg, SanityDataMsg, GemInfoMsg:
+		return m.dispatchCoreMessages(msg)
 
 	case HealthItemMsg, HealthCompleteMsg, GitHubBatchCompleteMsg, HealthRateLimitedMsg:
 		return m.dispatchHealthMessages(msg)
@@ -120,13 +111,26 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case CVEScanStartedMsg, CVEProgressMsg, CVECompleteMsg, CVELoadFromCacheMsg, CVECommentsLoadedMsg, CVEEnrichmentCompleteMsg:
 		return m.dispatchCVEMessages(msg)
 
+	}
+
+	return m, nil
+}
+
+func (m *Model) dispatchCoreMessages(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case AnalysisCompleteMsg:
+		return m.handleAnalysisComplete(msg)
+	case DependencyCompleteMsg:
+		return m.handleDependencyComplete(msg)
+	case VersionCheckMsg:
+		return m.handleVersionCheck(msg)
+	case ProgressMsg:
+		return m.handleProgress(msg)
 	case SanityDataMsg:
 		return m.handleSanityData(msg)
-
 	case GemInfoMsg:
 		return m.handleGemInfo(msg)
 	}
-
 	return m, nil
 }
 
@@ -191,7 +195,7 @@ func (m *Model) handleErrorViewKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 }
 
 // moveCursorUp moves the cursor up within bounds.
-func (m *Model) moveCursorUp(cursor *int, maxItems int) {
+func (m *Model) moveCursorUp(cursor *int) {
 	if *cursor > 0 {
 		*cursor--
 	}
@@ -213,16 +217,22 @@ func (m *Model) switchViewTo(view ViewMode) {
 // selectGemFromList handles selecting a gem from the list.
 func (m *Model) selectGemFromList() (tea.Model, tea.Cmd) {
 	if len(m.FirstLevelGems) == 0 || m.GemListCursor >= len(m.FirstLevelGems) {
-		return nil, nil
+		return m, nil
 	}
 
-	m.SelectedGem = m.FirstLevelGems[m.GemListCursor]
+	return m.openGemDetail(m.FirstLevelGems[m.GemListCursor])
+}
+
+func (m *Model) openGemDetail(gem *gemfile.GemStatus) (tea.Model, tea.Cmd) {
+	m.SelectedGem = gem
 	m.CurrentView = ViewGemDetail
+	m.DetailSection = 0
+	return m.openDependencyDetail(gem.Name)
+}
+
+func (m *Model) openDependencyDetail(gemName string) (tea.Model, tea.Cmd) {
 	m.Loading = true
 	m.LoadingMessage = "Loading dependencies..."
-
-	// Reset navigation state for new detail view
-	m.DetailSection = 0
 	m.DetailTreeCursor = 0
 	m.DetailForwardOffset = 0
 	m.DetailReverseOffset = 0
@@ -231,7 +241,7 @@ func (m *Model) selectGemFromList() (tea.Model, tea.Cmd) {
 		tea.Tick(time.Millisecond*100, func(time.Time) tea.Msg {
 			return SpinnerTickMsg{}
 		}),
-		performDependencyAnalysis(m.GemfileLockPath, m.SelectedGem.Name),
+		performDependencyAnalysis(m.GemfileLockPath, gemName),
 	)
 }
 
@@ -319,7 +329,12 @@ func (m *Model) handleViewKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 
 	case ViewProjectInfo:
 		return m.handleProjectInfoKeys(msg)
+	}
+	return m.handleAuxViewKeys(msg)
+}
 
+func (m *Model) handleAuxViewKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	switch m.CurrentView {
 	case ViewFilterMenu:
 		return m.handleFilterMenuKeys(msg)
 
@@ -353,7 +368,7 @@ func (m *Model) handleSanityViewKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 func (m *Model) handleGemListKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "up":
-		m.moveCursorUp(&m.GemListCursor, len(m.FirstLevelGems))
+		m.moveCursorUp(&m.GemListCursor)
 		m.ensureGemListCursorVisible()
 		return m, nil
 
@@ -363,10 +378,7 @@ func (m *Model) handleGemListKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case "enter":
-		if model, cmd := m.selectGemFromList(); cmd != nil {
-			return model, cmd
-		}
-		return m, nil
+		return m.selectGemFromList()
 
 	case "tab":
 		m.switchViewTo(ViewSearch)
@@ -442,51 +454,21 @@ func (m *Model) handleGemDetailKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case "up":
-		if m.DetailTreeCursor > 0 {
-			m.DetailTreeCursor--
-			m.ensureDetailCursorVisible()
-		}
+		m.moveCursorUp(&m.DetailTreeCursor)
+		m.ensureDetailCursorVisible()
 		return m, nil
 
 	case "down":
-		maxCursor := 0
+		maxItems := len(m.DetailReverseLines)
 		if m.DetailSection == 0 {
-			maxCursor = len(m.DetailForwardLines) - 1
-		} else {
-			maxCursor = len(m.DetailReverseLines) - 1
+			maxItems = len(m.DetailForwardLines)
 		}
-		if m.DetailTreeCursor < maxCursor {
-			m.DetailTreeCursor++
-			m.ensureDetailCursorVisible()
-		}
+		m.moveCursorDown(&m.DetailTreeCursor, maxItems)
+		m.ensureDetailCursorVisible()
 		return m, nil
 
 	case "enter":
-		selectedGemName := m.selectedGemNameFromDetail()
-		if selectedGemName != "" {
-			var targetGem *gemfile.GemStatus
-			for _, gem := range m.AnalysisResult.GemStatuses {
-				if gem.Name == selectedGemName {
-					targetGem = gem
-					break
-				}
-			}
-			if targetGem != nil {
-				m.SelectedGem = targetGem
-			}
-			m.DetailTreeCursor = 0
-			m.DetailForwardOffset = 0
-			m.DetailReverseOffset = 0
-			m.Loading = true
-			m.LoadingMessage = "Loading dependencies..."
-			return m, tea.Batch(
-				tea.Tick(time.Millisecond*100, func(time.Time) tea.Msg {
-					return SpinnerTickMsg{}
-				}),
-				performDependencyAnalysis(m.GemfileLockPath, selectedGemName),
-			)
-		}
-		return m, nil
+		return m.selectDetailGem()
 
 	case "o":
 		if m.SelectedGem != nil {
@@ -496,6 +478,20 @@ func (m *Model) handleGemDetailKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	}
 
 	return m, nil
+}
+
+func (m *Model) selectDetailGem() (tea.Model, tea.Cmd) {
+	name := m.selectedGemNameFromDetail()
+	if name == "" {
+		return m, nil
+	}
+	for _, gem := range m.AnalysisResult.GemStatuses {
+		if gem.Name == name {
+			m.SelectedGem = gem
+			return m.openDependencyDetail(name)
+		}
+	}
+	return m.openDependencyDetail(name)
 }
 
 func (m *Model) handleSearchKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
@@ -520,31 +516,18 @@ func (m *Model) handleSearchKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case "up":
-		if m.SearchCursor > 0 {
-			m.SearchCursor--
-			m.ensureSearchCursorVisible()
-		}
+		m.moveCursorUp(&m.SearchCursor)
+		m.ensureSearchCursorVisible()
 		return m, nil
 
 	case "down":
-		if m.SearchCursor < len(m.SearchResults)-1 {
-			m.SearchCursor++
-			m.ensureSearchCursorVisible()
-		}
+		m.moveCursorDown(&m.SearchCursor, len(m.SearchResults))
+		m.ensureSearchCursorVisible()
 		return m, nil
 
 	case "enter":
 		if len(m.SearchResults) > 0 && m.SearchCursor < len(m.SearchResults) {
-			m.SelectedGem = m.SearchResults[m.SearchCursor]
-			m.CurrentView = ViewGemDetail
-			m.Loading = true
-			m.LoadingMessage = "Loading dependencies..."
-			return m, tea.Batch(
-				tea.Tick(time.Millisecond*100, func(time.Time) tea.Msg {
-					return SpinnerTickMsg{}
-				}),
-				performDependencyAnalysis(m.GemfileLockPath, m.SelectedGem.Name),
-			)
+			return m.openGemDetail(m.SearchResults[m.SearchCursor])
 		}
 		return m, nil
 
@@ -568,52 +551,37 @@ func (m *Model) handleUpgradeableKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) 
 
 	switch msg.String() {
 	case "tab":
-		m.CurrentView = ViewCVE
-		m.ActiveTab = ViewCVE
+		m.switchViewTo(ViewCVE)
 		return m.ensureCVEScanStarted()
 
 	case "shift+tab":
-		m.CurrentView = ViewSearch
-		m.ActiveTab = ViewSearch
+		m.switchViewTo(ViewSearch)
 		return m, nil
 
 	case "up":
-		if m.UpgradeableCursor > 0 {
-			m.UpgradeableCursor--
-			m.ensureUpgradeableCursorVisible()
-		}
+		m.moveCursorUp(&m.UpgradeableCursor)
+		m.ensureUpgradeableCursorVisible()
 		return m, nil
 
 	case "down":
-		allUpgradeable := m.allUpgradeableGems()
-		if m.UpgradeableCursor < len(allUpgradeable)-1 {
-			m.UpgradeableCursor++
-			m.ensureUpgradeableCursorVisible()
-		}
+		m.moveCursorDown(&m.UpgradeableCursor, len(m.allUpgradeableGems()))
+		m.ensureUpgradeableCursorVisible()
 		return m, nil
 
 	case "enter":
 		allUpgradeable := m.allUpgradeableGems()
 		if len(allUpgradeable) > 0 && m.UpgradeableCursor < len(allUpgradeable) {
-			m.SelectedGem = allUpgradeable[m.UpgradeableCursor]
-			m.CurrentView = ViewGemDetail
 			m.ActiveTab = ViewUpgradeable
-			m.Loading = true
-			m.LoadingMessage = "Loading dependencies..."
-			return m, tea.Batch(
-				tea.Tick(time.Millisecond*100, func(time.Time) tea.Msg {
-					return SpinnerTickMsg{}
-				}),
-				performDependencyAnalysis(m.GemfileLockPath, m.SelectedGem.Name),
-			)
+			return m.openGemDetail(allUpgradeable[m.UpgradeableCursor])
 		}
 		return m, nil
+	}
+	return m.handleUpgradeActionKeys(msg.String())
+}
 
-	case " ":
-		m.ToggleSelectionAtCursor()
-		return m, nil
-
-	case "space":
+func (m *Model) handleUpgradeActionKeys(key string) (tea.Model, tea.Cmd) {
+	switch key {
+	case " ", "space":
 		m.ToggleSelectionAtCursor()
 		return m, nil
 
@@ -643,7 +611,7 @@ func (m *Model) handleCVEKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case "up":
-		m.moveCursorUp(&m.CVECursor, len(m.CVEVulnerabilities))
+		m.moveCursorUp(&m.CVECursor)
 		m.ensureCVECursorVisible()
 		return m, nil
 
@@ -917,56 +885,40 @@ func (m *Model) handleSanityKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case "up":
-		if m.SanityCursor > 0 {
-			m.SanityCursor--
-			m.ensureSanityCursorVisible()
-		}
+		m.moveCursorUp(&m.SanityCursor)
+		m.ensureSanityCursorVisible()
 		return m, nil
 
 	case "down":
-		if m.SanityCursor < len(allGems)-1 {
-			m.SanityCursor++
-			m.ensureSanityCursorVisible()
-		}
+		m.moveCursorDown(&m.SanityCursor, len(allGems))
+		m.ensureSanityCursorVisible()
 		return m, nil
 
 	case "enter":
 		// Navigate to gem detail view (same as other tabs)
 		if len(allGems) > 0 && m.SanityCursor < len(allGems) {
-			m.SelectedGem = allGems[m.SanityCursor]
-			m.CurrentView = ViewGemDetail
 			m.ActiveTab = ViewSanity
-			m.Loading = true
-			m.LoadingMessage = "Loading dependencies..."
-			m.DetailSection = 0
-			m.DetailTreeCursor = 0
-			m.DetailForwardOffset = 0
-			m.DetailReverseOffset = 0
-			return m, tea.Batch(
-				tea.Tick(time.Millisecond*100, func(time.Time) tea.Msg {
-					return SpinnerTickMsg{}
-				}),
-				performDependencyAnalysis(m.GemfileLockPath, m.SelectedGem.Name),
-			)
+			return m.openGemDetail(allGems[m.SanityCursor])
 		}
 		return m, nil
 
 	case "i":
-		// Open gem info modal with current gem data
-		if len(allGems) > 0 && m.SanityCursor < len(allGems) {
-			gem := allGems[m.SanityCursor]
-			m.ShowingGemInfo = true
-			m.GemInfoLoading = true
-			m.CurrentGemInfoOutput = ""
-			m.ParsedGemInfo = nil
-			m.GemInfoScrollOffset = 0 // Reset scroll position
-			// Fetch gem info asynchronously
-			return m, fetchGemInfo(gem.Name)
-		}
-		return m, nil
+		return m.openSanityGemInfo(allGems)
 	}
 
 	return m, nil
+}
+
+func (m *Model) openSanityGemInfo(gems []*gemfile.GemStatus) (tea.Model, tea.Cmd) {
+	if len(gems) == 0 || m.SanityCursor >= len(gems) {
+		return m, nil
+	}
+	m.ShowingGemInfo = true
+	m.GemInfoLoading = true
+	m.CurrentGemInfoOutput = ""
+	m.ParsedGemInfo = nil
+	m.GemInfoScrollOffset = 0
+	return m, fetchGemInfo(gems[m.SanityCursor].Name)
 }
 
 func (m *Model) handleGemInfoKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
@@ -1179,9 +1131,11 @@ func (m *Model) handleFilterMenuKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+var cveSeverityFilters = []string{"CRITICAL", "HIGH", "MODERATE", "LOW"}
+var cveAcknowledgmentFilters = []string{"acknowledged", "ignored", "unacknowledged"}
+
 func (m *Model) handleCVEFilterMenuKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
-	// 4 severity options + 1 direct option + 3 acknowledgment options
-	totalOptions := 8
+	totalOptions := len(cveSeverityFilters) + 1 + len(cveAcknowledgmentFilters)
 
 	switch msg.String() {
 	case "up":
@@ -1197,25 +1151,7 @@ func (m *Model) handleCVEFilterMenuKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd
 		return m, nil
 
 	case "space":
-		// Toggle the selected filter
-		switch m.CVEFilterMenuCursor {
-		case 0: // CRITICAL
-			m.CVESelectedSeverities["CRITICAL"] = !m.CVESelectedSeverities["CRITICAL"]
-		case 1: // HIGH
-			m.CVESelectedSeverities["HIGH"] = !m.CVESelectedSeverities["HIGH"]
-		case 2: // MODERATE
-			m.CVESelectedSeverities["MODERATE"] = !m.CVESelectedSeverities["MODERATE"]
-		case 3: // LOW
-			m.CVESelectedSeverities["LOW"] = !m.CVESelectedSeverities["LOW"]
-		case 4: // Direct only
-			m.CVEShowOnlyDirect = !m.CVEShowOnlyDirect
-		case 5: // Acknowledged
-			m.CVEAcknowledgmentFilters["acknowledged"] = !m.CVEAcknowledgmentFilters["acknowledged"]
-		case 6: // Ignored
-			m.CVEAcknowledgmentFilters["ignored"] = !m.CVEAcknowledgmentFilters["ignored"]
-		case 7: // Unacknowledged
-			m.CVEAcknowledgmentFilters["unacknowledged"] = !m.CVEAcknowledgmentFilters["unacknowledged"]
-		}
+		m.toggleCVEFilter(totalOptions)
 		// Apply filters immediately
 		m.applyCVEFilters()
 		return m, nil
@@ -1227,6 +1163,19 @@ func (m *Model) handleCVEFilterMenuKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd
 	}
 
 	return m, nil
+}
+
+func (m *Model) toggleCVEFilter(totalOptions int) {
+	switch {
+	case m.CVEFilterMenuCursor >= 0 && m.CVEFilterMenuCursor < len(cveSeverityFilters):
+		severity := cveSeverityFilters[m.CVEFilterMenuCursor]
+		m.CVESelectedSeverities[severity] = !m.CVESelectedSeverities[severity]
+	case m.CVEFilterMenuCursor == len(cveSeverityFilters):
+		m.CVEShowOnlyDirect = !m.CVEShowOnlyDirect
+	case m.CVEFilterMenuCursor > len(cveSeverityFilters) && m.CVEFilterMenuCursor < totalOptions:
+		state := cveAcknowledgmentFilters[m.CVEFilterMenuCursor-len(cveSeverityFilters)-1]
+		m.CVEAcknowledgmentFilters[state] = !m.CVEAcknowledgmentFilters[state]
+	}
 }
 
 func (m *Model) handlePathInputKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
@@ -1457,21 +1406,20 @@ func (m *Model) applyHealthCache(healthCache *cache.HealthCacheEntry) {
 	}
 	m.HealthPending = remaining
 
-	// Also set on UnfilteredGems and FirstLevelGems for consistency
-	for _, gem := range m.UnfilteredGems {
-		if cached, ok := healthCache.Gems[gem.Name]; ok && cached != nil && gem.Health == nil {
-			gem.Health = cached
-		}
-	}
-	for _, gem := range m.FirstLevelGems {
-		if cached, ok := healthCache.Gems[gem.Name]; ok && cached != nil && gem.Health == nil {
-			gem.Health = cached
-		}
-	}
+	applyCachedHealthToGems(m.UnfilteredGems, healthCache)
+	applyCachedHealthToGems(m.FirstLevelGems, healthCache)
 
 	// If all gems loaded from cache, stop health loading now
 	if m.HealthLoadedCount == m.HealthTotalCount {
 		m.HealthLoading = false
+	}
+}
+
+func applyCachedHealthToGems(gems []*gemfile.GemStatus, healthCache *cache.HealthCacheEntry) {
+	for _, gem := range gems {
+		if cached, ok := healthCache.Gems[gem.Name]; ok && cached != nil && gem.Health == nil {
+			gem.Health = cached
+		}
 	}
 }
 
@@ -1518,25 +1466,9 @@ func (m *Model) handleHealthItem(msg HealthItemMsg) (tea.Model, tea.Cmd) {
 		}
 	}
 
-	// Update all gem lists
-	for _, gem := range m.FirstLevelGems {
-		if gem.Name == msg.GemName {
-			gem.Health = msg.Health
-			break
-		}
-	}
-	for _, gem := range m.UnfilteredGems {
-		if gem.Name == msg.GemName {
-			gem.Health = msg.Health
-			break
-		}
-	}
-	for _, gem := range m.AnalysisResult.GemStatuses {
-		if gem.Name == msg.GemName {
-			gem.Health = msg.Health
-			break
-		}
-	}
+	setGemHealth(m.FirstLevelGems, msg.GemName, msg.Health)
+	setGemHealth(m.UnfilteredGems, msg.GemName, msg.Health)
+	setGemHealth(m.AnalysisResult.GemStatuses, msg.GemName, msg.Health)
 
 	m.HealthLoadedCount++
 
@@ -1551,6 +1483,15 @@ func (m *Model) handleHealthItem(msg HealthItemMsg) (tea.Model, tea.Cmd) {
 
 	// All gems processed, emit complete message
 	return m, func() tea.Msg { return HealthCompleteMsg{} }
+}
+
+func setGemHealth(gems []*gemfile.GemStatus, name string, health *gemfile.GemHealth) {
+	for _, gem := range gems {
+		if gem.Name == name {
+			gem.Health = health
+			return
+		}
+	}
 }
 
 func (m *Model) handleGitHubBatchComplete(msg GitHubBatchCompleteMsg) (tea.Model, tea.Cmd) {
@@ -1602,43 +1543,13 @@ func (m *Model) handleOutdatedItem(msg OutdatedItemMsg) (tea.Model, tea.Cmd) {
 		}
 		// Network/timeout error: mark gem as failed, continue queue
 		logger.Error("Outdated check failed for gem %q: %v", msg.GemName, msg.Error)
-		for _, gem := range m.AnalysisResult.GemStatuses {
-			if gem.Name == msg.GemName {
-				gem.OutdatedFailed = true
-				break
-			}
-		}
+		m.markOutdatedFailed(msg.GemName)
 		m.OutdatedErrorCount++
 		// Report individual gem check failure to Sentry
 		err := fmt.Errorf("failed to check outdated version for gem %q: %w", msg.GemName, msg.Error)
 		telemetry.CaptureException(err, sentry.LevelError)
 	} else {
-		// Success: update gem fields
-		for _, gem := range m.AnalysisResult.GemStatuses {
-			if gem.Name == msg.GemName {
-				gem.IsOutdated = msg.IsOutdated
-				gem.LatestVersion = msg.LatestVersion
-				gem.Description = msg.Description
-
-				// Prefer GitHub source from Gemfile over rubygems.org homepage
-				if gem.GitHubSource != "" && m.OutdatedChecker != nil {
-					githubURL := m.OutdatedChecker.GetGitHubURL(gem.Name)
-					if githubURL != "" {
-						gem.HomepageURL = githubURL
-					} else {
-						gem.HomepageURL = msg.HomepageURL
-					}
-				} else {
-					gem.HomepageURL = msg.HomepageURL
-				}
-
-				// If gem has no constraint, updateable version = latest version
-				if gem.Constraint == "" {
-					gem.UpdateableVersion = msg.LatestVersion
-				}
-				break
-			}
-		}
+		m.applyOutdatedResult(msg)
 	}
 
 	// Pop the first pending gem
@@ -1651,6 +1562,36 @@ func (m *Model) handleOutdatedItem(msg OutdatedItemMsg) (tea.Model, tea.Cmd) {
 	}
 
 	return m, func() tea.Msg { return OutdatedCompleteMsg{} }
+}
+
+func (m *Model) markOutdatedFailed(name string) {
+	for _, gem := range m.AnalysisResult.GemStatuses {
+		if gem.Name == name {
+			gem.OutdatedFailed = true
+			return
+		}
+	}
+}
+
+func (m *Model) applyOutdatedResult(msg OutdatedItemMsg) {
+	for _, gem := range m.AnalysisResult.GemStatuses {
+		if gem.Name != msg.GemName {
+			continue
+		}
+		gem.IsOutdated = msg.IsOutdated
+		gem.LatestVersion = msg.LatestVersion
+		gem.Description = msg.Description
+		gem.HomepageURL = msg.HomepageURL
+		if gem.GitHubSource != "" && m.OutdatedChecker != nil {
+			if githubURL := m.OutdatedChecker.GetGitHubURL(gem.Name); githubURL != "" {
+				gem.HomepageURL = githubURL
+			}
+		}
+		if gem.Constraint == "" {
+			gem.UpdateableVersion = msg.LatestVersion
+		}
+		return
+	}
 }
 
 func (m *Model) handleOutdatedComplete() (tea.Model, tea.Cmd) {

@@ -164,19 +164,8 @@ func buildReverseDependencyTree(gemName string, gemfile *Gemfile, visited map[st
 		Children: make([]*DependencyNode, 0),
 	}
 
-	// Find all gems that depend on this gem
-	directParents := make(map[string]bool)
-	for _, parentGem := range gemfile.Gems {
-		for _, dep := range parentGem.Dependencies {
-			if dep == gemName {
-				directParents[parentGem.Name] = true
-				break
-			}
-		}
-	}
-
 	// Add parent nodes
-	for parentName := range directParents {
+	for _, parentName := range GetReverseDependencies(gemName, gemfile) {
 		parentGem, ok := gemfile.Gems[parentName]
 		if !ok {
 			continue

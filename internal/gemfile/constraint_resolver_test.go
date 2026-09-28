@@ -134,10 +134,12 @@ func TestMatchesConstraint_PessimisticMinor(t *testing.T) {
 		expected   bool
 	}{
 		{"~> 7.2", "7.2.0", true},
+		{"~> 7.2", "7", true},
 		{"~> 7.2", "7.3.0", true},
 		{"~> 7.2", "7.99.0", true},
 		{"~> 7.2", "8.0.0", false},
 		{"~> 7.2.0", "7.2.0", true},
+		{"~> 7.2.0", "7", false},
 		{"~> 7.2.0", "7.2.1", true},
 		{"~> 7.2.0", "7.3.0", false},
 	}

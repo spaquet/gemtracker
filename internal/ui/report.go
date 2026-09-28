@@ -132,7 +132,10 @@ func resolveOutputPath(outputPath string) (string, bool, error) {
 	if !isInteractive {
 		return outputPath, true, nil
 	}
+	return promptOutputConflict(outputPath)
+}
 
+func promptOutputConflict(outputPath string) (string, bool, error) {
 	ext := filepath.Ext(outputPath)
 
 	for {
@@ -153,18 +156,12 @@ func resolveOutputPath(outputPath string) (string, bool, error) {
 		case "C":
 			return "", false, nil
 		case "N":
-			fmt.Fprintf(os.Stderr, "New filename (without extension to keep %s): ", ext)
-			var newName string
-			if _, err := fmt.Fscan(os.Stdin, &newName); err != nil {
+			newName, ok := readNewOutputName(ext)
+			if !ok {
 				return "", false, nil
 			}
-			newName = strings.TrimSpace(newName)
 			if newName == "" {
 				continue
-			}
-			// Add original extension if user didn't provide one
-			if filepath.Ext(newName) == "" {
-				newName += ext
 			}
 			outputPath = newName
 			// Re-check if new name also exists
@@ -180,20 +177,26 @@ func resolveOutputPath(outputPath string) (string, bool, error) {
 	}
 }
 
+func readNewOutputName(ext string) (string, bool) {
+	fmt.Fprintf(os.Stderr, "New filename (without extension to keep %s): ", ext)
+	var name string
+	if _, err := fmt.Fscan(os.Stdin, &name); err != nil {
+		return "", false
+	}
+	name = strings.TrimSpace(name)
+	if name != "" && filepath.Ext(name) == "" {
+		name += ext
+	}
+	return name, true
+}
+
 // parseProjectDependencies detects whether the project has a lock file or gemspec and parses accordingly.
 // Returns the parsed Gemfile, a boolean indicating if it's a gemspec, and any error.
 func parseProjectDependencies(projectPath string) (*gemfile.Gemfile, bool, error) {
-	// Expand ~ to home directory
-	expandedPath := projectPath
-	if len(projectPath) > 0 && projectPath[0] == '~' {
-		home := os.Getenv("HOME")
-		expandedPath = home + projectPath[1:]
-	}
-
 	// Convert to absolute path
-	absPath, err := filepath.Abs(expandedPath)
+	absPath, err := filepath.Abs(expandHome(projectPath))
 	if err != nil {
-		absPath = expandedPath
+		absPath = expandHome(projectPath)
 	}
 
 	// Check if it's a directory
@@ -218,15 +221,9 @@ func parseProjectDependencies(projectPath string) (*gemfile.Gemfile, bool, error
 	}
 
 	// Try gemspec next
-	files, err := os.ReadDir(absPath)
-	if err == nil {
-		for _, file := range files {
-			if !file.IsDir() && strings.HasSuffix(file.Name(), ".gemspec") {
-				gemspecPath := filepath.Join(absPath, file.Name())
-				gf, err := gemfile.ParseGemspec(gemspecPath)
-				return gf, true, err
-			}
-		}
+	if gemspecPath := gemfile.FindGemspec(absPath); gemspecPath != "" {
+		gf, err := gemfile.ParseGemspec(gemspecPath)
+		return gf, true, err
 	}
 
 	// No dependency files found
@@ -258,8 +255,33 @@ func (rg *ReportGenerator) Generate(format, outputPath string) error {
 	// Analyze gems
 	logger.Info("Analyzing gems...")
 	analysis := gemfile.Analyze(gf)
+	gemStatusMap := rg.checkOutdatedGems(gf, analysis, isGemspec)
+	vulns := rg.scanReportVulnerabilities(analysis)
+	printProgress("Building %s report...", strings.ToUpper(format))
+	reportData := rg.buildReportData(analysis, gemStatusMap, gf, vulns)
+	printProgressDone("✓ Report generated")
 
-	// Check for outdated gems
+	var reportErr error
+	switch strings.ToLower(format) {
+	case "text":
+		reportErr = rg.generateTextReport(reportData, outputPath)
+	case "csv":
+		reportErr = rg.generateCSVReport(reportData, outputPath)
+	case "json":
+		reportErr = rg.generateJSONReport(reportData, outputPath)
+	default:
+		return fmt.Errorf("unknown format: %s (supported: text, csv, json)", format)
+	}
+	if reportErr != nil {
+		return reportErr
+	}
+	if outputPath != "" {
+		printProgressDone("✓ Report written to: %s", outputPath)
+	}
+	return nil
+}
+
+func (rg *ReportGenerator) checkOutdatedGems(gf *gemfile.Gemfile, analysis *gemfile.AnalysisResult, isGemspec bool) map[string]*gemfile.GemStatus {
 	printProgress("Checking for outdated gems... ")
 	logger.Info("Checking for outdated gems...")
 	outdatedChecker := gemfile.NewOutdatedChecker()
@@ -270,7 +292,6 @@ func (rg *ReportGenerator) Generate(format, outputPath string) error {
 		outdatedChecker.EnrichGemspecDependencies(gf)
 	}
 
-	// Build gem status map
 	gemStatusMap := make(map[string]*gemfile.GemStatus)
 	for _, status := range analysis.GemStatuses {
 		gemStatusMap[status.Name] = status
@@ -305,8 +326,10 @@ func (rg *ReportGenerator) Generate(format, outputPath string) error {
 		}
 	}
 	printProgressDone("✓ Checked %d gems for updates (%d outdated)", total, outdatedCount)
+	return gemStatusMap
+}
 
-	// Check for vulnerabilities using OSV.dev
+func (rg *ReportGenerator) scanReportVulnerabilities(analysis *gemfile.AnalysisResult) []*gemfile.Vulnerability {
 	printProgress("Scanning for vulnerabilities...")
 	logger.Info("Scanning for vulnerabilities...")
 	vulns := make([]*gemfile.Vulnerability, 0)
@@ -322,35 +345,7 @@ func (rg *ReportGenerator) Generate(format, outputPath string) error {
 		rg.mergeVulnerabilitiesIntoGems(analysis.GemStatuses, vulns)
 		printProgressDone("✓ Found %d vulnerabilities", len(vulns))
 	}
-
-	// Build report data
-	printProgress("Building %s report...", strings.ToUpper(format))
-	reportData := rg.buildReportData(analysis, gemStatusMap, gf, vulns)
-	printProgressDone("✓ Report generated")
-
-	// Generate report based on format
-	var reportErr error
-	switch strings.ToLower(format) {
-	case "text":
-		reportErr = rg.generateTextReport(reportData, outputPath)
-	case "csv":
-		reportErr = rg.generateCSVReport(reportData, outputPath)
-	case "json":
-		reportErr = rg.generateJSONReport(reportData, outputPath)
-	default:
-		return fmt.Errorf("unknown format: %s (supported: text, csv, json)", format)
-	}
-
-	if reportErr != nil {
-		return reportErr
-	}
-
-	// Show final status
-	if outputPath != "" {
-		printProgressDone("✓ Report written to: %s", outputPath)
-	}
-
-	return nil
+	return vulns
 }
 
 // buildReportData builds structured report data from analysis results
@@ -361,76 +356,18 @@ func (rg *ReportGenerator) buildReportData(analysis *gemfile.AnalysisResult, gem
 		firstLevelMap[name] = true
 	}
 
-	// Build reverse dependency map: gem name → list of gems that depend on it
-	reverseDepMap := make(map[string][]string)
-	for _, gem := range gf.Gems {
-		for _, dep := range gem.Dependencies {
-			reverseDepMap[dep] = append(reverseDepMap[dep], gem.Name)
-		}
-	}
-	// Sort reverse deps for consistent output
-	for _, deps := range reverseDepMap {
-		sort.Strings(deps)
-	}
-
-	// Build vulnerability map by gem name
-	vulnByGem := make(map[string][]*gemfile.Vulnerability)
-	for _, vuln := range vulnerabilities {
-		vulnByGem[vuln.GemName] = append(vulnByGem[vuln.GemName], vuln)
-	}
+	reverseDepMap := buildReverseDepMap(gf)
+	vulnByGem := groupVulnerabilities(vulnerabilities)
 
 	// Convert gem statuses to reports
 	allGems := make([]*GemReport, 0)
 	outdatedGems := make([]*GemReport, 0)
 	vulnerableGems := make([]*GemReport, 0)
 
-	// Build insecure source map for quick lookup
-	insecureSourceMap := make(map[string]bool)
 	insecureSourceGemsSlice := make([]*GemReport, 0)
-	for _, gem := range analysis.InsecureSourceGems {
-		insecureSourceMap[gem.Name] = true
-	}
 
 	for _, status := range analysis.GemStatuses {
-		// Get source info from Gemfile
-		var source string
-		var isInsecureSource bool
-		if gem, ok := gf.Gems[status.Name]; ok {
-			source = gem.Source
-			isInsecureSource = gem.InsecureSource
-		}
-
-		// Build vulnerabilities array for this gem
-		var vulnReports []*VulnerabilityReport
-		if gemVulns, ok := vulnByGem[status.Name]; ok {
-			for _, vuln := range gemVulns {
-				vulnReports = append(vulnReports, &VulnerabilityReport{
-					CVE:      vuln.CVE,
-					OSVID:    vuln.OSVId,
-					Severity: vuln.Severity,
-					CVSS:     vuln.CVSS,
-					Summary:  vuln.Description,
-				})
-			}
-		}
-
-		report := &GemReport{
-			Name:              status.Name,
-			Version:           status.Version,
-			Groups:            status.Groups,
-			IsFirstLevel:      firstLevelMap[status.Name],
-			IsOutdated:        status.IsOutdated,
-			LatestVersion:     status.LatestVersion,
-			IsVulnerable:      status.IsVulnerable,
-			Vulnerabilities:   vulnReports,
-			VulnerabilityInfo: status.VulnerabilityInfo,
-			VulnerabilityURL:  status.VulnerabilityURL,
-			HomepageURL:       status.HomepageURL,
-			Description:       status.Description,
-			ReverseDeps:       reverseDepMap[status.Name],
-			Source:            source,
-			IsInsecureSource:  isInsecureSource,
-		}
+		report := makeGemReport(status, gf.Gems[status.Name], firstLevelMap[status.Name], reverseDepMap[status.Name], vulnByGem[status.Name])
 
 		allGems = append(allGems, report)
 
@@ -440,7 +377,7 @@ func (rg *ReportGenerator) buildReportData(analysis *gemfile.AnalysisResult, gem
 		if status.IsVulnerable {
 			vulnerableGems = append(vulnerableGems, report)
 		}
-		if isInsecureSource {
+		if report.IsInsecureSource {
 			insecureSourceGemsSlice = append(insecureSourceGemsSlice, report)
 		}
 	}
@@ -449,8 +386,11 @@ func (rg *ReportGenerator) buildReportData(analysis *gemfile.AnalysisResult, gem
 	sort.Slice(allGems, func(i, j int) bool { return allGems[i].Name < allGems[j].Name })
 	sort.Slice(outdatedGems, func(i, j int) bool { return outdatedGems[i].Name < outdatedGems[j].Name })
 	sort.Slice(vulnerableGems, func(i, j int) bool { return vulnerableGems[i].Name < vulnerableGems[j].Name })
+	sort.Slice(insecureSourceGemsSlice, func(i, j int) bool { return insecureSourceGemsSlice[i].Name < insecureSourceGemsSlice[j].Name })
+	return assembleReportData(gf.Path, allGems, outdatedGems, vulnerableGems, insecureSourceGemsSlice)
+}
 
-	// Count first-level gems
+func assembleReportData(path string, allGems, outdatedGems, vulnerableGems, insecureSourceGemsSlice []*GemReport) *ReportData {
 	firstLevelCount := 0
 	for _, gem := range allGems {
 		if gem.IsFirstLevel {
@@ -461,17 +401,12 @@ func (rg *ReportGenerator) buildReportData(analysis *gemfile.AnalysisResult, gem
 	// Calculate transitive dependencies
 	transitiveDeps := len(allGems) - firstLevelCount
 
-	// Sort insecure source gems by name
-	sort.Slice(insecureSourceGemsSlice, func(i, j int) bool { return insecureSourceGemsSlice[i].Name < insecureSourceGemsSlice[j].Name })
-
-	// Build summary
 	summary := fmt.Sprintf("Total gems: %d, Direct: %d, Transitive: %d, Outdated: %d, Vulnerable: %d, Insecure sources: %d",
 		len(allGems), firstLevelCount, transitiveDeps, len(outdatedGems), len(vulnerableGems), len(insecureSourceGemsSlice))
 
-	// Extract project directory name from Gemfile path for display
-	absPath, err := filepath.Abs(gf.Path)
+	absPath, err := filepath.Abs(path)
 	if err != nil {
-		absPath = gf.Path
+		absPath = path
 	}
 	projectDir := filepath.Base(filepath.Dir(absPath))
 
@@ -490,6 +425,50 @@ func (rg *ReportGenerator) buildReportData(analysis *gemfile.AnalysisResult, gem
 		VulnerableCount:        len(vulnerableGems),
 		InsecureSourceCount:    len(insecureSourceGemsSlice),
 	}
+}
+
+func buildReverseDepMap(gf *gemfile.Gemfile) map[string][]string {
+	reverseDeps := make(map[string][]string)
+	for _, gem := range gf.Gems {
+		for _, dep := range gem.Dependencies {
+			reverseDeps[dep] = append(reverseDeps[dep], gem.Name)
+		}
+	}
+	for _, deps := range reverseDeps {
+		sort.Strings(deps)
+	}
+	return reverseDeps
+}
+
+func groupVulnerabilities(vulns []*gemfile.Vulnerability) map[string][]*gemfile.Vulnerability {
+	byGem := make(map[string][]*gemfile.Vulnerability)
+	for _, vuln := range vulns {
+		byGem[vuln.GemName] = append(byGem[vuln.GemName], vuln)
+	}
+	return byGem
+}
+
+func makeGemReport(status *gemfile.GemStatus, gem *gemfile.Gem, firstLevel bool, reverseDeps []string, vulns []*gemfile.Vulnerability) *GemReport {
+	var vulnReports []*VulnerabilityReport
+	for _, vuln := range vulns {
+		vulnReports = append(vulnReports, &VulnerabilityReport{
+			CVE: vuln.CVE, OSVID: vuln.OSVId, Severity: vuln.Severity,
+			CVSS: vuln.CVSS, Summary: vuln.Description,
+		})
+	}
+	report := &GemReport{
+		Name: status.Name, Version: status.Version, Groups: status.Groups,
+		IsFirstLevel: firstLevel, IsOutdated: status.IsOutdated,
+		LatestVersion: status.LatestVersion, IsVulnerable: status.IsVulnerable,
+		Vulnerabilities: vulnReports, VulnerabilityInfo: status.VulnerabilityInfo,
+		VulnerabilityURL: status.VulnerabilityURL, HomepageURL: status.HomepageURL,
+		Description: status.Description, ReverseDeps: reverseDeps,
+	}
+	if gem != nil {
+		report.Source = gem.Source
+		report.IsInsecureSource = gem.InsecureSource
+	}
+	return report
 }
 
 // groupGemsByGroup partitions gems into a map keyed by their bundle groups.
@@ -617,50 +596,12 @@ func (rg *ReportGenerator) generateTextReport(data *ReportData, outputPath strin
 
 	// Vulnerable gems section
 	if data.VulnerableCount > 0 {
-		output.WriteString("VULNERABLE GEMS\n")
-		output.WriteString(strings.Repeat("-", 80) + "\n")
-		for _, gem := range data.VulnerableGems {
-			// Determine direct/transitive marker
-			depType := "[transitive]"
-			if gem.IsFirstLevel {
-				depType = "[direct]"
-			}
-
-			// Format groups
-			groups := ""
-			if len(gem.Groups) > 0 {
-				groups = " [" + strings.Join(gem.Groups, ", ") + "]"
-			}
-
-			// Header line: bullet, name+version, direct/transitive, groups, reverse deps
-			header := fmt.Sprintf("  • %s (%s) %s%s", gem.Name, gem.Version, depType, groups)
-			if len(gem.ReverseDeps) > 0 {
-				header += fmt.Sprintf("  [used by: %s]", strings.Join(gem.ReverseDeps, ", "))
-			}
-			output.WriteString(header + "\n")
-
-			// CVE detail line
-			fmt.Fprintf(&output, "    %s\n", gem.VulnerabilityInfo)
-
-			// URL line if available
-			if gem.VulnerabilityURL != "" {
-				fmt.Fprintf(&output, "    %s\n", gem.VulnerabilityURL)
-			}
-			output.WriteString("\n")
-		}
+		writeVulnerableGems(&output, data.VulnerableGems)
 	}
 
 	// Insecure sources section
 	if data.InsecureSourceCount > 0 {
-		output.WriteString("INSECURE GEM SOURCES\n")
-		output.WriteString(strings.Repeat("-", 80) + "\n")
-		output.WriteString("The following gems are sourced from insecure protocols (http://, git://).\n")
-		output.WriteString("Consider switching to secure HTTPS sources when possible.\n\n")
-		for _, gem := range data.InsecureSourceGems {
-			fmt.Fprintf(&output, "  • %s (%s)\n", gem.Name, gem.Version)
-			fmt.Fprintf(&output, "    Source: %s\n", gem.Source)
-			output.WriteString("\n")
-		}
+		writeInsecureSources(&output, data.InsecureSourceGems)
 	}
 
 	// Outdated gems section
@@ -677,6 +618,43 @@ func (rg *ReportGenerator) generateTextReport(data *ReportData, outputPath strin
 
 	// Write to file or stdout
 	return rg.writeOutput(output.String(), outputPath)
+}
+
+func writeVulnerableGems(output *strings.Builder, gems []*GemReport) {
+	output.WriteString("VULNERABLE GEMS\n")
+	output.WriteString(strings.Repeat("-", 80) + "\n")
+	for _, gem := range gems {
+		depType := "[transitive]"
+		if gem.IsFirstLevel {
+			depType = "[direct]"
+		}
+		groups := ""
+		if len(gem.Groups) > 0 {
+			groups = " [" + strings.Join(gem.Groups, ", ") + "]"
+		}
+		header := fmt.Sprintf("  • %s (%s) %s%s", gem.Name, gem.Version, depType, groups)
+		if len(gem.ReverseDeps) > 0 {
+			header += fmt.Sprintf("  [used by: %s]", strings.Join(gem.ReverseDeps, ", "))
+		}
+		output.WriteString(header + "\n")
+		fmt.Fprintf(output, "    %s\n", gem.VulnerabilityInfo)
+		if gem.VulnerabilityURL != "" {
+			fmt.Fprintf(output, "    %s\n", gem.VulnerabilityURL)
+		}
+		output.WriteString("\n")
+	}
+}
+
+func writeInsecureSources(output *strings.Builder, gems []*GemReport) {
+	output.WriteString("INSECURE GEM SOURCES\n")
+	output.WriteString(strings.Repeat("-", 80) + "\n")
+	output.WriteString("The following gems are sourced from insecure protocols (http://, git://).\n")
+	output.WriteString("Consider switching to secure HTTPS sources when possible.\n\n")
+	for _, gem := range gems {
+		fmt.Fprintf(output, "  • %s (%s)\n", gem.Name, gem.Version)
+		fmt.Fprintf(output, "    Source: %s\n", gem.Source)
+		output.WriteString("\n")
+	}
 }
 
 // generateCSVReport generates a CSV report

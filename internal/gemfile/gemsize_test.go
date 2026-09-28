@@ -20,3 +20,14 @@ func TestExtractVersionsFromFirstLine(t *testing.T) {
 		t.Fatalf("expected no versions, got %v", got)
 	}
 }
+
+func TestParseGemInfoFormats(t *testing.T) {
+	legacy := ParseGemInfo("rack (3.2.6, 3.2.5)\nInstalled at (3.2.6): /new\n(3.2.5): /old")
+	if want := []InstalledVersion{{Version: "3.2.6", Path: "/new"}, {Version: "3.2.5", Path: "/old"}}; !slices.Equal(legacy.Versions, want) {
+		t.Fatalf("legacy format: got %v, want %v", legacy.Versions, want)
+	}
+	current := ParseGemInfo("rack (3.2.6)\nInstalled at: /new")
+	if want := []InstalledVersion{{Version: "3.2.6", Path: "/new"}}; !slices.Equal(current.Versions, want) {
+		t.Fatalf("current format: got %v, want %v", current.Versions, want)
+	}
+}

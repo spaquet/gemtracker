@@ -104,34 +104,18 @@ func (cr *ConstraintResolver) matchesPessimisticVersion(constraintStr, version s
 		return false
 	}
 
-	// For ~> X.Y.Z, allow X.Y.* but not X.(Y+1)
-	if len(constraintParts) >= 3 {
-		// Major must match exactly
-		if versionParts[0] != constraintParts[0] {
-			return false
-		}
-		// Minor must match exactly
-		if len(versionParts) < 2 || len(constraintParts) < 2 || versionParts[1] != constraintParts[1] {
-			return false
-		}
-		// Patch can be >= constraint's patch
-		if len(versionParts) >= 3 && len(constraintParts) >= 3 {
-			return versionParts[2] >= constraintParts[2]
-		}
-		return true
-	}
-
-	// For ~> X.Y, allow X.* but not (X+1)
 	if len(constraintParts) >= 2 {
-		// Major must match exactly
 		if versionParts[0] != constraintParts[0] {
 			return false
 		}
-		// Minor can be >= constraint's minor
-		if len(versionParts) >= 2 {
-			return versionParts[1] >= constraintParts[1]
+		if len(versionParts) < 2 {
+			return len(constraintParts) == 2
 		}
-		return true
+		if len(constraintParts) >= 3 {
+			return versionParts[1] == constraintParts[1] &&
+				(len(versionParts) < 3 || versionParts[2] >= constraintParts[2])
+		}
+		return versionParts[1] >= constraintParts[1]
 	}
 
 	// Single version number constraint
@@ -337,31 +321,5 @@ func compareVersionStrings(v1, v2 string) int {
 // parseVersionParts extracts numeric parts from a version string.
 // E.g., "1.2.3" -> ["1", "2", "3"]
 func parseVersionParts(version string) []string {
-	var parts []string
-	var current string
-
-	for _, ch := range version {
-		if (ch >= '0' && ch <= '9') || ch == '.' {
-			current += string(ch)
-		} else {
-			if current != "" && current != "." {
-				parts = append(parts, strings.Split(strings.Trim(current, "."), ".")...)
-			}
-			current = ""
-		}
-	}
-
-	if current != "" && current != "." {
-		parts = append(parts, strings.Split(strings.Trim(current, "."), ".")...)
-	}
-
-	// Filter out empty strings
-	var filtered []string
-	for _, p := range parts {
-		if p != "" {
-			filtered = append(filtered, p)
-		}
-	}
-
-	return filtered
+	return strings.FieldsFunc(version, func(ch rune) bool { return ch < '0' || ch > '9' })
 }
