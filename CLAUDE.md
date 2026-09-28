@@ -14,7 +14,7 @@ The tool provides developers with quick, actionable insights into their gem depe
 
 ## Technology Stack
 
-- **Language**: Go 1.24.0
+- **Language**: Go 1.27.1
 - **TUI Framework**: BubbleTea (charmbracelet/bubbletea) for interactive terminal UI
 - **Dependencies**:
   - `charmbracelet/bubbles` - Reusable components for BubbleTea
@@ -164,7 +164,7 @@ When clicking a gem:
 ## Running & Building
 
 ### Prerequisites
-- Go 1.24.0 or later
+- Go 1.27.1 or later
 - A Ruby project with `Gemfile.lock` in the current directory
 
 ### Build Targets (Makefile)

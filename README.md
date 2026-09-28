@@ -154,7 +154,7 @@ curl -L https://github.com/spaquet/gemtracker/releases/download/v1.0.0/gemtracke
 
 ### From Source (All Platforms)
 
-Requires Go 1.27 or later:
+Requires Go 1.27.1 or later:
 ```bash
 git clone https://github.com/spaquet/gemtracker
 cd gemtracker
@@ -550,14 +550,14 @@ VERSION=1.0.0 COMMIT=abc123 DATE=2026-04-04 make build
 
 ## Tech Stack
 
-- **Language**: Go 1.27+
+- **Language**: Go 1.27.1+
 - **TUI Framework**: BubbleTea + Lipgloss (charmbracelet)
 - **Data Source**: rubygems.org API + Gemfile.lock parsing
 
 ## Development
 
 ### Prerequisites
-- Go 1.27 or later
+- Go 1.27.1 or later
 - Make
 
 ### Setup
