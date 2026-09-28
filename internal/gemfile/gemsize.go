@@ -201,7 +201,8 @@ func sanitizeGemOutput(s string) string {
 // removeANSICodes removes ANSI escape sequences from a string
 func removeANSICodes(s string) string {
 	// Basic ANSI escape sequence removal
-	result := ""
+	var result strings.Builder
+	result.Grow(len(s))
 	inEscape := false
 	for _, ch := range s {
 		switch {
@@ -212,23 +213,24 @@ func removeANSICodes(s string) string {
 				inEscape = false
 			}
 		default:
-			result += string(ch)
+			result.WriteRune(ch)
 		}
 	}
-	return result
+	return result.String()
 }
 
 // replaceInvalidUTF8 replaces invalid UTF-8 sequences with '?'
 func replaceInvalidUTF8(s string) string {
-	result := ""
+	var result strings.Builder
+	result.Grow(len(s))
 	for _, ch := range s {
 		if ch == '\ufffd' { // Unicode replacement character
-			result += "?"
+			result.WriteByte('?')
 		} else {
-			result += string(ch)
+			result.WriteRune(ch)
 		}
 	}
-	return result
+	return result.String()
 }
 
 // CalculateProjectSize calculates the total size of all project gems and returns
@@ -318,17 +320,6 @@ func ParseGemInfo(output string) *ParsedGemInfo {
 	// Step 2: Parse all lines for installed paths
 	for _, line := range lines {
 		trimmed := strings.TrimSpace(line)
-
-		// Skip metadata lines (Platform, Authors, Homepage, License, Description)
-		if strings.HasPrefix(trimmed, "Platform:") ||
-			strings.HasPrefix(trimmed, "Authors:") ||
-			strings.HasPrefix(trimmed, "Author:") ||
-			strings.HasPrefix(trimmed, "Homepage:") ||
-			strings.HasPrefix(trimmed, "License:") ||
-			strings.HasPrefix(trimmed, "Installed at:") && !strings.Contains(trimmed, "):") {
-			// This is Format B "Installed at: /path" - continue below
-			_ = trimmed
-		}
 
 		// Format B: "Installed at: /path" (no version in parentheses)
 		if strings.HasPrefix(trimmed, "Installed at:") && !strings.Contains(trimmed, "):") {
