@@ -96,6 +96,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyPressMsg:
 		return m.handleKeyPress(msg)
 
+	case tea.PasteMsg:
+		return m.handlePaste(msg)
+
 	case AnalysisCompleteMsg, DependencyCompleteMsg, VersionCheckMsg, ProgressMsg, SanityDataMsg, GemInfoMsg:
 		return m.dispatchCoreMessages(msg)
 
@@ -532,15 +535,27 @@ func (m *Model) handleSearchKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	default:
-		// Pass to text input
-		var cmd tea.Cmd
-		m.SearchInput, cmd = m.SearchInput.Update(msg)
-		m.SearchQuery = m.SearchInput.Value()
-		m.updateSearchResults()
-		m.SearchCursor = 0
-		m.SearchOffset = 0
-		return m, cmd
+		return m.updateSearchInput(msg)
 	}
+}
+
+// updateSearchInput forwards a message to the search text input and refreshes results.
+func (m *Model) updateSearchInput(msg tea.Msg) (tea.Model, tea.Cmd) {
+	var cmd tea.Cmd
+	m.SearchInput, cmd = m.SearchInput.Update(msg)
+	m.SearchQuery = m.SearchInput.Value()
+	m.updateSearchResults()
+	m.SearchCursor = 0
+	m.SearchOffset = 0
+	return m, cmd
+}
+
+// handlePaste inserts pasted text into the search field when the search view is active.
+func (m *Model) handlePaste(msg tea.PasteMsg) (tea.Model, tea.Cmd) {
+	if m.CurrentView != ViewSearch {
+		return m, nil
+	}
+	return m.updateSearchInput(msg)
 }
 
 func (m *Model) handleUpgradeableKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
