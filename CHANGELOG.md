@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v1.4.0] - 2026-11-22
+
+### Added
+- **Clipboard Paste** - Paste text into the search field, CVE comment input, and project path input
+- **Copy on Select** - Drag with the mouse to select on-screen text; it is copied to the clipboard on release (via OSC52) and a notification confirms the copy
+  - Mouse mode is now enabled, so use Shift-drag for the terminal's native selection
+  - Mouse wheel scrolls lists like the arrow keys
+  - Requires a terminal with OSC52 support (iTerm2 needs "Allow clipboard access"; tmux needs `set-clipboard on`)
+
+### Changed
+- **Dependencies** - Updated Go dependencies to their latest versions
+  - charm.land/bubbletea/v2: v2.0.10 → v2.1.2
+  - charm.land/bubbles/v2: v2.2.1 → v2.2.2
+  - charm.land/lipgloss/v2: v2.0.6 → v2.1.1
+  - github.com/getsentry/sentry-go: v0.49.0 → v0.50.0
+
 ## [v1.3.17] - 2026-09-28
 
 ### Changed
