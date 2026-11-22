@@ -93,8 +93,8 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case ProgressTickMsg:
 		return m.handleProgressTick()
 
-	case tea.KeyPressMsg:
-		return m.handleKeyPress(msg)
+	case tea.KeyPressMsg, tea.PasteMsg, tea.MouseMsg, NoticeExpiredMsg:
+		return m.dispatchInputMessages(msg)
 
 	case AnalysisCompleteMsg, DependencyCompleteMsg, VersionCheckMsg, ProgressMsg, SanityDataMsg, GemInfoMsg:
 		return m.dispatchCoreMessages(msg)
@@ -113,6 +113,20 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	}
 
+	return m, nil
+}
+
+func (m *Model) dispatchInputMessages(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.KeyPressMsg:
+		return m.handleKeyPress(msg)
+	case tea.PasteMsg:
+		return m.handlePaste(msg)
+	case tea.MouseMsg:
+		return m.handleMouse(msg)
+	case NoticeExpiredMsg:
+		return m.handleNoticeExpired(msg)
+	}
 	return m, nil
 }
 
@@ -532,15 +546,33 @@ func (m *Model) handleSearchKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	default:
-		// Pass to text input
-		var cmd tea.Cmd
-		m.SearchInput, cmd = m.SearchInput.Update(msg)
-		m.SearchQuery = m.SearchInput.Value()
-		m.updateSearchResults()
-		m.SearchCursor = 0
-		m.SearchOffset = 0
-		return m, cmd
+		return m.updateSearchInput(msg)
 	}
+}
+
+// updateSearchInput forwards a message to the search text input and refreshes results.
+func (m *Model) updateSearchInput(msg tea.Msg) (tea.Model, tea.Cmd) {
+	var cmd tea.Cmd
+	m.SearchInput, cmd = m.SearchInput.Update(msg)
+	m.SearchQuery = m.SearchInput.Value()
+	m.updateSearchResults()
+	m.SearchCursor = 0
+	m.SearchOffset = 0
+	return m, cmd
+}
+
+// handlePaste inserts pasted text into the text input of the active view.
+func (m *Model) handlePaste(msg tea.PasteMsg) (tea.Model, tea.Cmd) {
+	var cmd tea.Cmd
+	switch m.CurrentView {
+	case ViewSearch:
+		return m.updateSearchInput(msg)
+	case ViewCVEComment:
+		m.CVECommentInput, cmd = m.CVECommentInput.Update(msg)
+	case ViewSelectPath:
+		m.PathInput, cmd = m.PathInput.Update(msg)
+	}
+	return m, cmd
 }
 
 func (m *Model) handleUpgradeableKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {

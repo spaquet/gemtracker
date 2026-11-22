@@ -173,7 +173,7 @@ func (m *Model) View() tea.View {
 		}
 	}()
 
-	content := m.renderCurrentView()
+	content := m.decorateScreen(m.renderCurrentView())
 
 	// Ensure entire viewport has opaque background to prevent terminal transparency
 	// from showing through gaps in styled output
@@ -181,6 +181,7 @@ func (m *Model) View() tea.View {
 
 	v := tea.NewView(content)
 	v.AltScreen = true
+	v.MouseMode = tea.MouseModeCellMotion
 
 	bgColor, _ := colorful.Hex("#262626")
 	v.BackgroundColor = bgColor
