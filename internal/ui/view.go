@@ -250,10 +250,10 @@ func (m *Model) renderSecondaryView() string {
 // ============================================================================
 
 var viewHints = map[ViewMode][]string{
-	ViewGemList:       {"↑↓ navigate", "enter select", "f filter", "u upgradable", "c clear", "r refresh", "tab next", "q quit"},
-	ViewGemDetail:     {"esc back", "tab section", "↑↓ navigate", "enter select", "o open url", "q quit"},
+	ViewGemList:       {"↑↓ navigate", "enter select", "o open", "f filter", "u upgradable", "c clear", "r refresh", "tab next", "q quit"},
+	ViewGemDetail:     {"esc back", "tab section", "↑↓ navigate", "enter select", "o open page", "q quit"},
 	ViewSearch:        {"type search", "↑↓ navigate", "enter select", "esc clear"},
-	ViewUpgradeable:   {"↑↓ navigate", "space toggle", "ctrl+a all", "ctrl+d none", "u upgrade", "tab next", "q quit"},
+	ViewUpgradeable:   {"↑↓ navigate", "space toggle", "ctrl+a all", "ctrl+d none", "u upgrade", "o releases", "tab next", "q quit"},
 	ViewCVE:           {"↑↓ navigate", "enter select", "f filter", "i info", "c comment", "tab next", "q quit"},
 	ViewSanity:        {"↑↓ navigate", "enter select", "i info", "tab next", "q quit"},
 	ViewProjectInfo:   {"tab next", "shift+tab prev", "q quit"},

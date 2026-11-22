@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v1.4.1] - 2026-11-22
+
+### Added
+- **Open Gem Pages from Lists** - Press `o` on the gem list to open the selected gem's homepage/source, and on the upgradable list to open its release page ([#84](https://github.com/spaquet/gemtracker/issues/84))
+  - Release page is the GitHub `/releases` page when the gem's source is on GitHub, otherwise the rubygems.org version history
+  - Gems without a known homepage fall back to their rubygems.org page (also applies to `o` in the gem detail view)
+
 ## [v1.4.0] - 2026-11-22
 
 ### Added
