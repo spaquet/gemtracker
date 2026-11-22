@@ -120,3 +120,39 @@ func TestMouseClickWithoutDragDoesNotCopy(t *testing.T) {
 		t.Fatal("plain click must not copy")
 	}
 }
+
+func TestGemLinks(t *testing.T) {
+	gh := &gemfile.GemStatus{Name: "rails", HomepageURL: "https://github.com/rails/rails"}
+	none := &gemfile.GemStatus{Name: "foo"}
+	other := &gemfile.GemStatus{Name: "bar", HomepageURL: "https://bar.example.com"}
+
+	tests := []struct{ name, got, want string }{
+		{"page github", gemPageURL(gh), "https://github.com/rails/rails"},
+		{"page fallback", gemPageURL(none), "https://rubygems.org/gems/foo"},
+		{"release github", gemReleaseURL(gh), "https://github.com/rails/rails/releases"},
+		{"release non-github", gemReleaseURL(other), "https://rubygems.org/gems/bar/versions"},
+		{"release no url", gemReleaseURL(none), "https://rubygems.org/gems/foo/versions"},
+	}
+	for _, tt := range tests {
+		if tt.got != tt.want {
+			t.Errorf("%s: got %q, want %q", tt.name, tt.got, tt.want)
+		}
+	}
+}
+
+func TestOpenKeyOnListsWithEmptyData(t *testing.T) {
+	m := NewModel("dev", "", "", "Gemfile.lock", true, false)
+	m.CurrentView = ViewGemList
+	if _, cmd := m.Update(tea.KeyPressMsg{Code: 'o', Text: "o"}); cmd != nil {
+		t.Fatal("o on empty gem list must be a no-op")
+	}
+	m.CurrentView = ViewUpgradeable
+	if _, cmd := m.Update(tea.KeyPressMsg{Code: 'o', Text: "o"}); cmd != nil {
+		t.Fatal("o on empty upgradable list must be a no-op")
+	}
+	m.FirstLevelGems = []*gemfile.GemStatus{{Name: "rails"}}
+	m.CurrentView = ViewGemList
+	if _, cmd := m.Update(tea.KeyPressMsg{Code: 'o', Text: "o"}); cmd == nil {
+		t.Fatal("o on gem list should open the browser")
+	}
+}

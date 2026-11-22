@@ -403,22 +403,24 @@ func (m *Model) handleGemListKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.switchViewTo(ViewProjectInfo)
 		return m, nil
 
-	case "u":
-		m.toggleUpgradableFilter()
-		return m, nil
-
-	case "c":
-		m.clearFilters()
-		return m, nil
-
-	case "f":
-		m.CurrentView = ViewFilterMenu
-		return m, nil
-
-	case "r":
-		return m.performRefresh()
 	}
 
+	return m.handleGemListActionKeys(msg.String())
+}
+
+func (m *Model) handleGemListActionKeys(key string) (tea.Model, tea.Cmd) {
+	switch key {
+	case "u":
+		m.toggleUpgradableFilter()
+	case "c":
+		m.clearFilters()
+	case "f":
+		m.CurrentView = ViewFilterMenu
+	case "r":
+		return m.performRefresh()
+	case "o":
+		return m, m.openGemListPage()
+	}
 	return m, nil
 }
 
@@ -435,25 +437,6 @@ func (m *Model) selectedGemNameFromDetail() string {
 		}
 	}
 	return ""
-}
-
-func (m *Model) openGemURL(url string) {
-	if url == "" {
-		return
-	}
-
-	var cmd *exec.Cmd
-	switch runtime.GOOS {
-	case "darwin":
-		cmd = exec.Command("open", url)
-	case "linux":
-		cmd = exec.Command("xdg-open", url)
-	case "windows":
-		cmd = exec.Command("cmd", "/c", "start", url)
-	default:
-		return
-	}
-	_ = cmd.Start()
 }
 
 func (m *Model) handleGemDetailKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
@@ -486,7 +469,7 @@ func (m *Model) handleGemDetailKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 
 	case "o":
 		if m.SelectedGem != nil {
-			m.openGemURL(m.SelectedGem.HomepageURL)
+			return m, openBrowserCmd(gemPageURL(m.SelectedGem))
 		}
 		return m, nil
 	}
@@ -627,6 +610,9 @@ func (m *Model) handleUpgradeActionKeys(key string) (tea.Model, tea.Cmd) {
 
 	case "u":
 		return m.startUpgrade()
+
+	case "o":
+		return m, m.openUpgradeableReleasePage()
 	}
 
 	return m, nil
