@@ -89,6 +89,13 @@ var StatusBarStyle = lipgloss.NewStyle().
 	Foreground(lipgloss.Color(ColorTextMuted)).
 	Padding(0, 2)
 
+// NoticeStyle renders transient notifications (e.g. "copied to clipboard").
+var NoticeStyle = lipgloss.NewStyle().
+	Background(lipgloss.Color("#262626")).
+	Foreground(lipgloss.Color(ColorSuccess)).
+	Bold(true).
+	Padding(0, 2)
+
 var KeyHintKeyStyle = lipgloss.NewStyle().
 	Foreground(lipgloss.Color(ColorPrimary)).
 	Background(lipgloss.Color("#262626")).

@@ -99,6 +99,12 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.PasteMsg:
 		return m.handlePaste(msg)
 
+	case tea.MouseMsg:
+		return m.handleMouse(msg)
+
+	case NoticeExpiredMsg:
+		return m.handleNoticeExpired(msg)
+
 	case AnalysisCompleteMsg, DependencyCompleteMsg, VersionCheckMsg, ProgressMsg, SanityDataMsg, GemInfoMsg:
 		return m.dispatchCoreMessages(msg)
 

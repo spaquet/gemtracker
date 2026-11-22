@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
@@ -62,5 +63,60 @@ func TestPasteIntoOtherInputs(t *testing.T) {
 	m.Update(tea.PasteMsg{Content: "/tmp/proj"})
 	if got := m.PathInput.Value(); got != "/tmp/proj" {
 		t.Fatalf("path input = %q", got)
+	}
+}
+
+func TestSelectionText(t *testing.T) {
+	lines := []string{"hello world", "  second line  ", "third"}
+	tests := []struct {
+		name string
+		sel  selection
+		want string
+	}{
+		{"single line", selection{startX: 6, startY: 0, endX: 10, endY: 0}, "world"},
+		{"reversed drag", selection{startX: 10, startY: 0, endX: 6, endY: 0}, "world"},
+		{"multi line", selection{startX: 6, startY: 0, endX: 4, endY: 2}, "world\n  second line\nthird"},
+	}
+	for _, tt := range tests {
+		if got := tt.sel.text(lines); got != tt.want {
+			t.Errorf("%s: got %q, want %q", tt.name, got, tt.want)
+		}
+	}
+}
+
+func TestMouseDragCopiesAndNotifies(t *testing.T) {
+	m := NewModel("dev", "", "", "Gemfile.lock", true, false)
+	m.Width, m.Height = 80, 24
+	m.switchViewTo(ViewSearch)
+
+	m.Update(tea.MouseClickMsg{X: 0, Y: 0, Button: tea.MouseLeft})
+	m.Update(tea.MouseMotionMsg{X: 10, Y: 1, Button: tea.MouseLeft})
+	_, cmd := m.Update(tea.MouseReleaseMsg{X: 10, Y: 1, Button: tea.MouseLeft})
+
+	if cmd == nil {
+		t.Fatal("expected clipboard command after drag")
+	}
+	if !strings.Contains(m.Notice, "Copied") {
+		t.Fatalf("Notice = %q, want copy notification", m.Notice)
+	}
+
+	// Stale expiry must not clear a newer notice; matching expiry clears it.
+	m.Update(NoticeExpiredMsg{Seq: m.noticeSeq - 1})
+	if m.Notice == "" {
+		t.Fatal("stale expiry cleared notice")
+	}
+	m.Update(NoticeExpiredMsg{Seq: m.noticeSeq})
+	if m.Notice != "" || !m.Selection.empty() {
+		t.Fatal("expiry did not clear notice and selection")
+	}
+}
+
+func TestMouseClickWithoutDragDoesNotCopy(t *testing.T) {
+	m := NewModel("dev", "", "", "Gemfile.lock", true, false)
+	m.Width, m.Height = 80, 24
+	m.Update(tea.MouseClickMsg{X: 3, Y: 3, Button: tea.MouseLeft})
+	_, cmd := m.Update(tea.MouseReleaseMsg{X: 3, Y: 3, Button: tea.MouseLeft})
+	if cmd != nil || m.Notice != "" {
+		t.Fatal("plain click must not copy")
 	}
 }

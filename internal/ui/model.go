@@ -231,8 +231,11 @@ type GemInfoMsg struct {
 // and error states. It implements the tea.Model interface and coordinates all UI updates.
 type Model struct {
 	// Window dimensions (updated on resize)
-	Width  int
-	Height int
+	Selection selection // Mouse text selection over the rendered screen
+	Notice    string    // Transient notification shown in the last screen row
+	noticeSeq int       // Identifies the latest notification so stale expiries are ignored
+	Width     int
+	Height    int
 
 	// CurrentView is the screen currently being displayed
 	CurrentView ViewMode
