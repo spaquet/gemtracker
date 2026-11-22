@@ -46,3 +46,21 @@ func TestPasteIntoSearchField(t *testing.T) {
 		t.Fatalf("paste outside search changed input to %q", got)
 	}
 }
+
+func TestPasteIntoOtherInputs(t *testing.T) {
+	m := NewModel("dev", "", "", "Gemfile.lock", true, false)
+
+	m.CurrentView = ViewCVEComment
+	m.CVECommentInput.Focus()
+	m.Update(tea.PasteMsg{Content: "accepted risk"})
+	if got := m.CVECommentInput.Value(); got != "accepted risk" {
+		t.Fatalf("comment input = %q", got)
+	}
+
+	m.CurrentView = ViewSelectPath
+	m.PathInput.Focus()
+	m.Update(tea.PasteMsg{Content: "/tmp/proj"})
+	if got := m.PathInput.Value(); got != "/tmp/proj" {
+		t.Fatalf("path input = %q", got)
+	}
+}

@@ -550,12 +550,18 @@ func (m *Model) updateSearchInput(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-// handlePaste inserts pasted text into the search field when the search view is active.
+// handlePaste inserts pasted text into the text input of the active view.
 func (m *Model) handlePaste(msg tea.PasteMsg) (tea.Model, tea.Cmd) {
-	if m.CurrentView != ViewSearch {
-		return m, nil
+	var cmd tea.Cmd
+	switch m.CurrentView {
+	case ViewSearch:
+		return m.updateSearchInput(msg)
+	case ViewCVEComment:
+		m.CVECommentInput, cmd = m.CVECommentInput.Update(msg)
+	case ViewSelectPath:
+		m.PathInput, cmd = m.PathInput.Update(msg)
 	}
-	return m.updateSearchInput(msg)
+	return m, cmd
 }
 
 func (m *Model) handleUpgradeableKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
