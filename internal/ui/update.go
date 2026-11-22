@@ -93,17 +93,8 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case ProgressTickMsg:
 		return m.handleProgressTick()
 
-	case tea.KeyPressMsg:
-		return m.handleKeyPress(msg)
-
-	case tea.PasteMsg:
-		return m.handlePaste(msg)
-
-	case tea.MouseMsg:
-		return m.handleMouse(msg)
-
-	case NoticeExpiredMsg:
-		return m.handleNoticeExpired(msg)
+	case tea.KeyPressMsg, tea.PasteMsg, tea.MouseMsg, NoticeExpiredMsg:
+		return m.dispatchInputMessages(msg)
 
 	case AnalysisCompleteMsg, DependencyCompleteMsg, VersionCheckMsg, ProgressMsg, SanityDataMsg, GemInfoMsg:
 		return m.dispatchCoreMessages(msg)
@@ -122,6 +113,20 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	}
 
+	return m, nil
+}
+
+func (m *Model) dispatchInputMessages(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.KeyPressMsg:
+		return m.handleKeyPress(msg)
+	case tea.PasteMsg:
+		return m.handlePaste(msg)
+	case tea.MouseMsg:
+		return m.handleMouse(msg)
+	case NoticeExpiredMsg:
+		return m.handleNoticeExpired(msg)
+	}
 	return m, nil
 }
 

@@ -102,35 +102,42 @@ func (m *Model) screenLines() []string {
 func (m *Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.MouseClickMsg:
-		if msg.Button != tea.MouseLeft {
-			return m, nil
+		if msg.Button == tea.MouseLeft {
+			m.Notice = ""
+			m.Selection = selection{dragging: true, startX: msg.X, startY: msg.Y, endX: msg.X, endY: msg.Y}
 		}
-		m.Notice = ""
-		m.Selection = selection{dragging: true, startX: msg.X, startY: msg.Y, endX: msg.X, endY: msg.Y}
-
 	case tea.MouseMotionMsg:
 		if m.Selection.dragging {
 			m.Selection.endX, m.Selection.endY = msg.X, msg.Y
 		}
-
 	case tea.MouseReleaseMsg:
-		if !m.Selection.dragging {
-			return m, nil
-		}
-		m.Selection.dragging = false
-		m.Selection.endX, m.Selection.endY = msg.X, msg.Y
-		if m.Selection.empty() {
-			return m, nil
-		}
-		return m.copySelection()
-
+		return m.finishSelection(msg)
 	case tea.MouseWheelMsg:
-		switch msg.Button {
-		case tea.MouseWheelUp:
-			return m.handleKeyPress(tea.KeyPressMsg{Code: tea.KeyUp})
-		case tea.MouseWheelDown:
-			return m.handleKeyPress(tea.KeyPressMsg{Code: tea.KeyDown})
-		}
+		return m.handleWheel(msg)
+	}
+	return m, nil
+}
+
+// finishSelection ends a drag and copies the selection if it covers any cells.
+func (m *Model) finishSelection(msg tea.MouseReleaseMsg) (tea.Model, tea.Cmd) {
+	if !m.Selection.dragging {
+		return m, nil
+	}
+	m.Selection.dragging = false
+	m.Selection.endX, m.Selection.endY = msg.X, msg.Y
+	if m.Selection.empty() {
+		return m, nil
+	}
+	return m.copySelection()
+}
+
+// handleWheel scrolls like the arrow keys, since mouse mode disables terminal alternate-scroll.
+func (m *Model) handleWheel(msg tea.MouseWheelMsg) (tea.Model, tea.Cmd) {
+	switch msg.Button {
+	case tea.MouseWheelUp:
+		return m.handleKeyPress(tea.KeyPressMsg{Code: tea.KeyUp})
+	case tea.MouseWheelDown:
+		return m.handleKeyPress(tea.KeyPressMsg{Code: tea.KeyDown})
 	}
 	return m, nil
 }
